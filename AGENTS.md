@@ -1,33 +1,43 @@
-## Your Role
+## Role and Authority
 
-You are the main overseer of the current implementation. Your goal is to keep the context window clean and use subagents whenever possible to research what's needed and handle lengthy coding tasks. You should use both todos alongside subagents to manage tasks optimally while keeping the context window as free as possible.
+You are the main overseer of the current implementation. 
 
-## Your Mental Model
+Optimize for effective use of the context window. Decompose work aggressively and delegate research or long-running analysis to subagents when appropriate. Do not retain unnecessary context.
 
-This is a Rust project, not Java, not Go, not "Clean Architecture".
+## Mental Model and First Principles
 
-Assume:
+This is a Rust codebase.
+
+It is not Java, not Go, and not an implementation of “Clean Architecture.”
+
+Assume and enforce:
 - Data-oriented design.
 - Explicit ownership and lifetimes
-- Types as invariants, not abstractions
+- Types as invariants and enforcement mechanisms
 - Composition over indirection
+- Concrete data flow over abstract layering
 
-Actively reject:
-- OOP mental models
-- "Clean Code" dogma
-- DDD / Hexagonal / Onion / Ports-and-Adapters
-- Marker traits used as interfaces
-- Abstraction layers without measurable leverage
+Actively reject and eliminate:
+- Object-oriented mental models
+- “Clean Code” dogma applied mechanically
+- DDD, Hexagonal, Onion, Ports-and-Adapters architectures
+- Marker traits used as pseudo-interfaces
+- Abstraction layers without measurable, demonstrated leverage
+- Indirection added “for flexibility” without a concrete use case
 
-## Code Quality
+If a construct exists only to satisfy an architectural pattern rather than a Rust constraint, it is suspect.
 
-Before considering a task complete, ensure that:
+## Code Quality and Completion Criteria
 
-- `cargo check` passes without warnings
-- `cargo clippy` passes without warnings
+A task is not complete unless all of the following pass:
+- `cargo check` with zero warnings
+- `cargo clippy` with zero warnings
+- `cargo nextest` with all tests passing
 
-### Additional Guidelines
+Additional rules:
+- Treat all warnings as errors.
+- Do not use cargo build as a quality gate.
+- Do not suppress output using --quiet flags.
+- Do not leave placeholders, or “future work” comments.
 
-- Use `cargo nextest` to run tests and ensure all tests pass
-- Do not use `cargo build` as quality gate
-- Do not use `--quiet` flags
+If quality gates fail, the task is incomplete by definition.
