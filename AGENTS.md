@@ -30,9 +30,9 @@ If a construct exists only to satisfy an architectural pattern rather than a Rus
 ## Code Quality and Completion Criteria
 
 A task is not complete unless all of the following pass:
-- `cargo check` with zero warnings
-- `cargo clippy` with zero warnings
-- `cargo nextest` with all tests passing
+- `just check` with zero warnings
+- `just clippy` with zero warnings
+- `just test` with all tests passing
 
 Additional rules:
 - Treat all warnings as errors.
