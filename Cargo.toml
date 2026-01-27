@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+
+members = [
+    "christina",
+    "christina-core",
+    "christina-git",
+    "christina-llm",
+]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_must_use = "warn"
+unused_crate_dependencies = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+clone_on_ref_ptr = "warn"
+large_futures = "warn"
+unnecessary_wraps = "warn"
+large_enum_variant = "warn"
+module_name_repetitions = "allow"
+
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = "unpacked"
+panic = "unwind"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "unwind"
