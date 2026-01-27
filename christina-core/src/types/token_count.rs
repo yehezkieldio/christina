@@ -59,3 +59,64 @@ impl FromStr for TokenCount {
         Self::try_from(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_count_new_valid() {
+        assert!(TokenCount::new(1).is_some());
+        assert!(TokenCount::new(100).is_some());
+        assert!(TokenCount::new(MAX_INPUT).is_some());
+    }
+
+    #[test]
+    fn token_count_new_zero_fails() {
+        assert!(TokenCount::new(0).is_none())
+    }
+
+    #[test]
+    fn token_count_new_saturating() {
+        assert_eq!(TokenCount::new_saturating(0).get(), 1);
+        assert_eq!(TokenCount::new_saturating(50).get(), 50);
+    }
+
+    #[test]
+    fn token_count_try_from_usize() {
+        assert!(TokenCount::try_from_usize(1).is_ok());
+        assert!(TokenCount::try_from_usize(0).is_err());
+    }
+
+    #[test]
+    fn token_count_max_values() {
+        assert_eq!(MAX_INPUT, 256_000);
+        assert_eq!(MAX_OUTPUT, 4_096);
+    }
+
+    #[test]
+    fn token_count_conversions() {
+        match TokenCount::new(42) {
+            Some(tc) => {
+                let as_u32: u32 = tc.into();
+                let as_usize: usize = tc.into();
+                assert_eq!(as_u32, 42);
+                assert_eq!(as_usize, 42);
+            }
+            None => panic!("Failed to create TokenCount"),
+        }
+    }
+
+    #[test]
+    fn test_token_count_try_from() {
+        assert!(TokenCount::try_from(1u32).is_ok());
+        assert!(TokenCount::try_from(0u32).is_err());
+    }
+
+    #[test]
+    fn test_token_count_from_str() {
+        assert!("12".parse::<TokenCount>().is_ok());
+        assert!("0".parse::<TokenCount>().is_err());
+        assert!("abc".parse::<TokenCount>().is_err());
+    }
+}
