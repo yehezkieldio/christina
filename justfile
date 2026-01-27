@@ -16,3 +16,4 @@ test:
 # Format the code and check for formatting issues
 format:
     cargo fmt --all -- --check
+fmt: format
