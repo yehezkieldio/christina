@@ -10,4 +10,6 @@ Christina is a personal Command Line Interface (CLI) tool designed to streamline
 
 ## License
 
-This project is licensed either under the MIT License or the Apache License 2.0, at your option. Detailed license information can be found in the [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) files.
+Licensed under either the MIT License or the Apache License 2.0, at your option
+
+For detailed license information, please refer to the [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) files.
