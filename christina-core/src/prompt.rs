@@ -236,3 +236,73 @@ impl<'a> PromptBuilder<'a> {
         prompt
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_prompt_format() {
+        let builder = PromptBuilder::new();
+        let prompt = builder.build_system_prompt();
+
+        assert!(prompt.contains("type(scope): description"));
+        assert!(!prompt.contains("ADDITIONAL CONSTRAINT"));
+    }
+
+    #[test]
+    fn system_prompt_conventional_commits() {
+        let builder = PromptBuilder::new();
+        let prompt = builder.build_system_prompt();
+        assert!(prompt.contains("Conventional Commits"));
+    }
+
+    #[test]
+    fn summary_prompt() {
+        let builder = PromptBuilder::new().with_diff("diff --git a/foo.rs");
+        let prompt = builder.build_summary_prompt();
+
+        assert!(prompt.contains("```diff"));
+        assert!(prompt.contains("diff --git a/foo.rs"));
+        assert!(prompt.contains("SINGLE sentence"));
+    }
+
+    #[test]
+    fn intent_prompt() {
+        let summaries = vec![
+            "Added user authentication".to_string(),
+            "Fixed login bug".to_string(),
+        ];
+        let builder = PromptBuilder::new().with_summaries(&summaries);
+        let prompt = builder.build_intent_prompt();
+
+        assert!(prompt.contains("1. Added user authentication"));
+        assert!(prompt.contains("2. Fixed login bug"));
+    }
+
+    #[test]
+    fn synthesis_prompt() {
+        let themes = vec![Theme::new(
+            "Authentication",
+            "Add user login flow",
+            5,
+            "feature",
+        )];
+        let builder = PromptBuilder::new().with_themes(&themes);
+        let prompt = builder.build_synthesis_prompt();
+
+        assert!(prompt.contains("Authentication (feature)"));
+        assert!(prompt.contains("[5 files]"));
+    }
+
+    #[test]
+    fn direct_prompt_with_context() {
+        let builder = PromptBuilder::new()
+            .with_diff("some diff")
+            .with_user_context("This fixes issue #123");
+        let prompt = builder.build_direct_prompt();
+
+        assert!(prompt.contains("some diff"));
+        assert!(prompt.contains("This fixes issue #123"));
+    }
+}
