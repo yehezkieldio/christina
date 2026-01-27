@@ -6,7 +6,7 @@
 
 ---
 
-Christina is a personal Command Line Interface (CLI) tool designed to streamline version control workflows. It analyzes your staged Git changes and uses AI to automatically generate meaningful, conventional commit messages, saving you time and ensuring consistency across your project history, *most of the time.*
+Christina is a personal Terminal User Interface (TUI) tool designed to streamline version control workflows. It analyzes your staged Git changes and uses AI to automatically generate meaningful, conventional commit messages, saving you time and ensuring consistency across your project history, *most of the time.*
 
 ## License
 
