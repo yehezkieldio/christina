@@ -13,7 +13,11 @@ clippy:
 test:
     cargo nextest run
 
-# Format the code and check for formatting issues
-format:
+# Check code formatting without making changes
+format-check:
     cargo fmt --all -- --check
+
+# Format the codebase
+format:
+    cargo fmt --all
 fmt: format
