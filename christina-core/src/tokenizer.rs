@@ -44,9 +44,9 @@ pub trait Tokenizer: Send + Sync {
 
             if token_count <= limit {
                 best = boundary;
-                low = mid + 1;
+                low = mid;
             } else {
-                high = mid;
+                high = mid - 1;
             }
         }
 
