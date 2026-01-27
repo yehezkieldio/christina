@@ -1,3 +1,4 @@
+pub mod prompt;
 pub mod state;
 pub mod tokenizer;
 pub mod types;
