@@ -8,7 +8,7 @@ Optimize for effective use of the context window. Decompose work aggressively an
 
 This is a Rust codebase.
 
-It is not Java, not Go, and not an implementation of “Clean Architecture.”
+It is not Java, not Go, and not an implementation of "Clean Architecture."
 
 Assume and enforce:
 - Data-oriented design.
@@ -35,9 +35,10 @@ A task is not complete unless all of the following pass:
 - `just test` with all tests passing
 
 Additional rules:
-- Treat all warnings as errors.
-- Do not use cargo build as a quality gate.
-- Do not suppress output using --quiet flags.
-- Do not leave placeholders, or “future work” comments.
+- Format code with `just format`
+- Treat all warnings as errors
+- Do not use `cargo build` as a quality gate
+- Do not suppress output using `--quiet` flags
+- Do not leave placeholders, or "future work" comments
 
 If quality gates fail, the task is incomplete by definition.
