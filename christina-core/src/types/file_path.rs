@@ -52,3 +52,50 @@ impl AsRef<Path> for FilePath {
         Path::new(self.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn filepath_from_str() {
+        let path = FilePath::from("src/main.rs");
+        let as_str: &str = path.as_ref();
+        assert_eq!(as_str, "src/main.rs");
+    }
+
+    #[test]
+    fn filepath_equality() {
+        let p1 = FilePath::from("file.txt");
+        let p2 = FilePath::from("file.txt");
+        assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn filepath_display() {
+        let path = FilePath::from("path/to/file.rs");
+        assert_eq!(format!("{}", path), "path/to/file.rs");
+    }
+
+    #[test]
+    fn filepath_as_path() {
+        let fp = FilePath::from("src/lib.rs");
+        let p: &Path = fp.as_ref();
+        assert_eq!(p.to_str(), Some("src/lib.rs"));
+    }
+
+    #[test]
+    #[should_panic(expected = "FilePath must be relative")]
+    #[cfg(debug_assertions)]
+    fn filepath_absolute_panics_debug() {
+        FilePath::new("/absolute/path");
+    }
+
+    #[test]
+    fn filepath_extension() {
+        let path = FilePath::from("file.rs");
+        let p: &Path = path.as_ref();
+        assert_eq!(p.extension().and_then(|e| e.to_str()), Some("rs"));
+    }
+}
