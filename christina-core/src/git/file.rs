@@ -4,6 +4,12 @@ use compact_str::CompactString;
 
 use crate::types::FilePath;
 
+pub const BINARY_EXTENSIONS: &[&str] = &[
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".pdf", ".zip", ".tar", ".gz", ".rar",
+    ".7z", ".exe", ".dll", ".so", ".dylib", ".wasm", ".pyc", ".class", ".ttf", ".otf", ".woff",
+    ".woff2", ".mp3", ".mp4", ".avi", ".mov", ".mkv", ".db", ".sqlite", ".bin",
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GitFileStatus {
     Added,
@@ -61,13 +67,7 @@ impl GitFileStatus {
     }
 
     pub fn might_be_binary(&self, path: &str) -> bool {
-        let binary_extensions = [
-            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".pdf", ".zip", ".tar", ".gz",
-            ".rar", ".7z", ".exe", ".dll", ".so", ".dylib", ".wasm", ".pyc", ".class", ".ttf",
-            ".otf", ".woff", ".woff2", ".mp3", ".mp4", ".avi", ".mov", ".mkv", ".db", ".sqlite",
-            ".bin",
-        ];
-        binary_extensions
+        BINARY_EXTENSIONS
             .iter()
             .any(|ext| path.to_lowercase().ends_with(ext))
     }
