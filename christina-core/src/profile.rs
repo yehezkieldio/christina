@@ -1,0 +1,153 @@
+use std::collections::HashMap;
+
+use anyhow::{Result, anyhow};
+use serde::{Deserialize, Serialize};
+
+use crate::types::{
+    ModelName, ProviderKind, TokenCount,
+    token_count::{MAX_INPUT, MAX_OUTPUT},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderProfile {
+    pub name: String,
+    pub provider: ProviderKind,
+    pub model: ModelName,
+    pub api_url: Option<url::Url>,
+    pub api_key: Option<String>,
+    pub max_input_tokens: TokenCount,
+    pub max_output_tokens: TokenCount,
+    pub azure_api_version: Option<String>,
+    pub azure_deployment_id: Option<String>,
+}
+
+impl ProviderProfile {
+    pub fn new(name: String, provider: ProviderKind, model: ModelName) -> Self {
+        Self {
+            name,
+            provider,
+            model,
+            api_url: None,
+            api_key: None,
+            max_input_tokens: TokenCount::new_saturating(128000),
+            max_output_tokens: TokenCount::new_saturating(2048),
+            azure_api_version: Some("2024-12-01-preview".to_string()),
+            azure_deployment_id: None,
+        }
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.name.is_empty() {
+            return Err(anyhow!("Profile name cannot be empty"));
+        }
+
+        if self.max_input_tokens.get() > MAX_INPUT {
+            return Err(anyhow!("Max input tokens cannot exceed {}", MAX_INPUT));
+        }
+
+        if self.max_output_tokens.get() > MAX_OUTPUT {
+            return Err(anyhow!("Max output tokens cannot exceed {}", MAX_OUTPUT));
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Profiles {
+    pub active: Option<String>,
+    #[serde(flatten)]
+    pub definitions: HashMap<String, ProviderProfile>,
+}
+
+impl Profiles {
+    pub fn new() -> Self {
+        Self {
+            active: None,
+            definitions: HashMap::new(),
+        }
+    }
+
+    pub fn fix_names(&mut self) {
+        for (key, profile) in &mut self.definitions {
+            if profile.name.is_empty() {
+                profile.name = key.clone();
+            }
+        }
+    }
+
+    pub fn add(&mut self, profile: ProviderProfile) -> Result<()> {
+        profile.validate()?;
+
+        if self.definitions.contains_key(&profile.name) {
+            return Err(anyhow!("Profile '{}' already exists", profile.name));
+        }
+
+        let name = profile.name.clone();
+        self.definitions.insert(name, profile);
+
+        Ok(())
+    }
+
+    pub fn remove(&mut self, name: &str) -> Result<()> {
+        if self.definitions.remove(name).is_none() {
+            return Err(anyhow!("Profile '{}' not found", name));
+        }
+
+        if self.active.as_deref() == Some(name) {
+            self.active = None;
+        }
+
+        Ok(())
+    }
+
+    pub fn get(&self, name: &str) -> Option<&ProviderProfile> {
+        self.definitions.get(name)
+    }
+
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut ProviderProfile> {
+        self.definitions.get_mut(name)
+    }
+
+    pub fn set_active(&mut self, name: &str) -> Result<()> {
+        if !self.definitions.contains_key(name) {
+            return Err(anyhow!("Profile '{}' not found", name));
+        }
+        self.active = Some(name.to_string());
+        Ok(())
+    }
+
+    pub fn get_active(&self) -> Option<&ProviderProfile> {
+        self.active.as_ref().and_then(|name| self.get(name))
+    }
+
+    pub fn list_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.definitions.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    pub fn exists(&self, name: &str) -> bool {
+        self.definitions.contains_key(name)
+    }
+
+    pub fn update(&mut self, name: &str, profile: ProviderProfile) -> Result<()> {
+        profile.validate()?;
+
+        if !self.definitions.contains_key(name) {
+            return Err(anyhow!("Profile '{}' not found", name));
+        }
+
+        if profile.name != name {
+            return Err(anyhow!(
+                "Profile name mismatch: expected '{}', got '{}'. Use remove() + add() to rename.",
+                name,
+                profile.name
+            ));
+        }
+
+        self.definitions.insert(name.to_string(), profile);
+        Ok(())
+    }
+}
