@@ -1,6 +1,7 @@
 [package]
 name = "christina-git"
 version = "0.1.0"
+description = "Git integration for Christina."
 edition = "2024"
 
 [dependencies]

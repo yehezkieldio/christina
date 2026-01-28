@@ -1,6 +1,11 @@
 [package]
 name = "christina-llm"
 version = "0.1.0"
+description = "LLM orchestration for Christina."
 edition = "2024"
 
 [dependencies]
+
+
+[lints]
+workspace = true

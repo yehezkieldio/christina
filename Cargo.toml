@@ -8,6 +8,10 @@ members = [
     "christina-llm",
 ]
 
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
 [workspace.dependencies]
 anyhow = "1.0.100"
 thiserror = "2.0.18"

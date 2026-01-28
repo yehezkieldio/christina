@@ -3,7 +3,6 @@ name = "christina-core"
 version = "0.1.0"
 description = "Core domain logic, types, and shared utilities for Christina."
 edition = "2024"
-license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = { workspace = true }
