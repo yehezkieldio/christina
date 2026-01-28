@@ -1,3 +1,3 @@
 pub mod file;
 
-// pub use file::{GitFile, GitFileStatus};
+pub use file::{GitFile, GitFileStatus};
