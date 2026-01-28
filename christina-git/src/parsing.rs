@@ -285,3 +285,244 @@ pub fn truncate_deletion_diff(content: &str, max_deletion_lines: usize) -> Strin
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mock_tokenizer(text: &str) -> TokenCount {
+        TokenCount::new_saturating((text.len() / 4).max(1) as u32)
+    }
+
+    #[test]
+    fn extract_file_paths_from_git_diff() {
+        let diff = "\
+diff --git a/src/main.rs b/src/main.rs
+index 1234567..abcdefg 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,3 +1,4 @@
++use std::io;
+ fn main() {
+ }
+diff --git a/Cargo.toml b/Cargo.toml
+index 2345678..bcdefgh 100644
+";
+
+        let paths = extract_file_paths(diff);
+        assert_eq!(
+            paths,
+            vec![FilePath::from("src/main.rs"), FilePath::from("Cargo.toml")]
+        );
+    }
+
+    #[test]
+    fn parse_git_diff_header_standard() {
+        assert_eq!(
+            parse_git_diff_header("diff --git a/src/main.rs b/src/main.rs"),
+            Some(FilePath::from("src/main.rs"))
+        );
+        assert_eq!(
+            parse_git_diff_header("diff --git a/Cargo.toml b/Cargo.toml"),
+            Some(FilePath::from("Cargo.toml"))
+        );
+    }
+
+    #[test]
+    fn parse_git_diff_header_with_mnemonic_prefixes() {
+        // git diff --no-index uses c/ and i/ prefixes (mnemonic)
+        assert_eq!(
+            parse_git_diff_header("diff --git c/file.txt i/file.txt"),
+            Some(FilePath::from("file.txt"))
+        );
+        // git diff --no-index with w/ prefix
+        assert_eq!(
+            parse_git_diff_header("diff --git w/file.txt i/file.txt"),
+            Some(FilePath::from("file.txt"))
+        );
+    }
+
+    #[test]
+    fn parse_git_diff_header_handles_whitespace() {
+        // Multiple spaces between diff and --git
+        assert_eq!(
+            parse_git_diff_header("diff  --git a/file.txt b/file.txt"),
+            Some(FilePath::from("file.txt"))
+        );
+        // Tab character
+        assert_eq!(
+            parse_git_diff_header("diff\t--git a/file.txt b/file.txt"),
+            Some(FilePath::from("file.txt"))
+        );
+        // Leading/trailing whitespace
+        assert_eq!(
+            parse_git_diff_header("  diff --git a/file.txt b/file.txt  "),
+            Some(FilePath::from("file.txt"))
+        );
+    }
+
+    #[test]
+    fn parse_git_diff_header_without_prefixes() {
+        // No prefix (diff.noprefix = true)
+        // When path has no slash, it's returned as-is
+        assert_eq!(
+            parse_git_diff_header("diff --git file.txt file.txt"),
+            Some(FilePath::from("file.txt"))
+        );
+        // When path has slashes, first component is treated as prefix and stripped
+        assert_eq!(
+            parse_git_diff_header("diff --git path/to/file.txt path/to/file.txt"),
+            Some(FilePath::from("to/file.txt"))
+        );
+    }
+
+    #[test]
+    fn split_diff_by_individual_files() {
+        let diff = "\
+diff --git a/file1.txt b/file1.txt
+content1
+diff --git a/file2.txt b/file2.txt
+content2";
+
+        let files = split_by_files(diff, mock_tokenizer);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].path, FilePath::from("file1.txt"));
+        assert_eq!(files[1].path, FilePath::from("file2.txt"));
+    }
+
+    #[test]
+    fn split_by_files_ignores_inline_headers() {
+        let diff = "\
+diff --git a/real.txt b/real.txt
+Some content with diff --git a/fake.txt b/fake.txt embedded
+More content";
+
+        let files = split_by_files(diff, mock_tokenizer);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, FilePath::from("real.txt"));
+    }
+
+    #[test]
+    fn parse_git_diff_header_extracts_rename_destination() {
+        // Test rename handling - should return destination path (b/ side)
+        assert_eq!(
+            parse_git_diff_header("diff --git a/old/path.rs b/new/path.rs"),
+            Some(FilePath::from("new/path.rs"))
+        );
+
+        // Same path on both sides (normal diff)
+        assert_eq!(
+            parse_git_diff_header("diff --git a/file.rs b/file.rs"),
+            Some(FilePath::from("file.rs"))
+        );
+    }
+
+    #[test]
+    fn is_deletion_only_correctly_identifies_pure_deletions() {
+        // Pure deletion
+        let deletion_diff = "\
+diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +0,0 @@
+-line 1
+-line 2
+-line 3";
+        assert!(is_deletion_only(deletion_diff));
+
+        // Mixed (deletion and addition)
+        let mixed_diff = "\
+diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +1,3 @@
+-old line
++new line
+ context line";
+        assert!(!is_deletion_only(mixed_diff));
+
+        // Addition only
+        let addition_diff = "\
+diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt
+@@ -0,0 +1,2 @@
++new line 1
++new line 2";
+        assert!(!is_deletion_only(addition_diff));
+    }
+
+    #[test]
+    fn is_all_file_deletions_verifies_multiple_file_states() {
+        // Single file deletion
+        let single_deletion = "\
+diff --git a/file.txt b/file.txt
+deleted file mode 100644
+index abcdef..0000000";
+        assert!(is_all_file_deletions(single_deletion));
+
+        // Multiple file deletions
+        let multi_deletion = "\
+diff --git a/file1.txt b/file1.txt
+deleted file mode 100644
+diff --git a/file2.txt b/file2.txt
+deleted file mode 100644";
+        assert!(is_all_file_deletions(multi_deletion));
+
+        // Mixed (deletion and modification)
+        let mixed = "\
+diff --git a/deleted.txt b/deleted.txt
+deleted file mode 100644
+diff --git a/modified.txt b/modified.txt
+--- a/modified.txt
++++ b/modified.txt";
+        assert!(!is_all_file_deletions(mixed));
+
+        // No deletions
+        let no_deletions = "\
+diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt";
+        assert!(!is_all_file_deletions(no_deletions));
+    }
+
+    #[test]
+    fn truncate_deletion_diff_respects_line_limit() {
+        let deletion_diff = "\
+diff --git a/file.txt b/file.txt
+deleted file mode 100644
+--- a/file.txt
++++ /dev/null
+@@ -1,10 +0,0 @@
+-line 1
+-line 2
+-line 3
+-line 4
+-line 5
+-line 6
+-line 7
+-line 8
+-line 9
+-line 10";
+
+        let truncated = truncate_deletion_diff(deletion_diff, 3);
+
+        // Should keep metadata headers
+        assert!(truncated.contains("diff --git"));
+        assert!(truncated.contains("deleted file mode"));
+        assert!(truncated.contains("---"));
+        assert!(truncated.contains("+++"));
+        assert!(truncated.contains("@@"));
+
+        // Should keep first 3 deletion lines
+        assert!(truncated.contains("-line 1"));
+        assert!(truncated.contains("-line 2"));
+        assert!(truncated.contains("-line 3"));
+
+        // Should have truncation notice
+        assert!(truncated.contains("[... deleted content truncated"));
+
+        // Should not have all 10 lines
+        assert!(!truncated.contains("-line 10"));
+    }
+}
