@@ -116,3 +116,50 @@ impl fmt::Display for GitFile {
         write!(f, "{} {}", self.status, self.path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn git_file_status_parse_char() {
+        assert_eq!(GitFileStatus::parse("A"), GitFileStatus::Added);
+        assert_eq!(GitFileStatus::parse("M"), GitFileStatus::Modified);
+        assert_eq!(GitFileStatus::parse("D"), GitFileStatus::Deleted);
+        assert_eq!(GitFileStatus::parse("R"), GitFileStatus::Renamed);
+        assert_eq!(GitFileStatus::parse("C"), GitFileStatus::Copied);
+        assert_eq!(GitFileStatus::parse("?"), GitFileStatus::Untracked);
+        assert_eq!(GitFileStatus::parse("X"), GitFileStatus::Unknown);
+    }
+
+    #[test]
+    fn git_file_status_parse_words() {
+        assert_eq!(GitFileStatus::parse("added"), GitFileStatus::Added);
+        assert_eq!(GitFileStatus::parse("MODIFIED"), GitFileStatus::Modified);
+        assert_eq!(GitFileStatus::parse("deleted"), GitFileStatus::Deleted);
+        assert_eq!(GitFileStatus::parse("RENAMED"), GitFileStatus::Renamed);
+        assert_eq!(GitFileStatus::parse("copied"), GitFileStatus::Copied);
+        assert_eq!(GitFileStatus::parse("untracked"), GitFileStatus::Untracked);
+        assert_eq!(GitFileStatus::parse("unknown"), GitFileStatus::Unknown);
+    }
+
+    #[test]
+    fn git_file_status_binary_heuristic() {
+        assert!(GitFileStatus::Added.might_be_binary("image.PNG"));
+        assert!(GitFileStatus::Added.might_be_binary("archive.tar.gz"));
+        assert!(!GitFileStatus::Added.might_be_binary("src/main.rs"));
+    }
+
+    #[test]
+    fn git_file_binary_marker() {
+        let diff = "Binary files a/image.png and b/image.png differ";
+        let file = GitFile::new("image.png".to_string(), "M".to_string(), diff.to_string());
+        assert!(file.is_binary);
+    }
+
+    #[test]
+    fn git_file_extension() {
+        let file = GitFile::new("src/lib.rs".to_string(), "A".to_string(), "".to_string());
+        assert_eq!(file.extension(), Some("rs"));
+    }
+}
