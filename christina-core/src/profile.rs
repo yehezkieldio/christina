@@ -151,3 +151,46 @@ impl Profiles {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_validation() {
+        let profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-5-nano"),
+        );
+        assert!(profile.validate().is_ok());
+
+        let invalid = ProviderProfile {
+            name: "".to_string(),
+            ..profile
+        };
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn profiles_manager() {
+        let mut manager = Profiles::new();
+        let profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4.1-mini"),
+        );
+
+        assert!(manager.add(profile.clone()).is_ok());
+        assert!(manager.exists("test"));
+        assert_eq!(manager.get("test").unwrap().name, "test");
+
+        assert!(manager.set_active("test").is_ok());
+        assert_eq!(manager.get_active().unwrap().name, "test");
+
+        assert!(manager.remove("test").is_ok());
+        assert!(!manager.exists("test"));
+        assert!(manager.get_active().is_none());
+    }
+}
