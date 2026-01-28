@@ -8,7 +8,7 @@ edition = "2024"
 christina-core = { path = "../christina-core" }
 llm = { version = "1.3.7", default-features = false, features = ["rustls-tls", "azure_openai", "groq", "openai", "openrouter", "mistral"] }
 tiktoken-rs = { version = "0.9.1", default-features = false }
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true }
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
