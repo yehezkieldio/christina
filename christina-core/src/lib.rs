@@ -5,6 +5,7 @@ pub mod state;
 pub mod tokenizer;
 pub mod types;
 
+pub use git::{GitFile, GitFileStatus};
 pub use profile::{Profiles, ProviderProfile};
 pub use state::{AppState, ReviewAction, StateMachine};
 pub use tokenizer::Tokenizer;
