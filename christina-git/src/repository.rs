@@ -714,3 +714,315 @@ impl From<christina_core::GitFileStatus> for FileStatus {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use anyhow::Context;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn init_repo() -> anyhow::Result<(TempDir, git2::Repository)> {
+        let temp_dir = TempDir::new().context("Failed to create temp directory")?;
+        let repo = git2::Repository::init(temp_dir.path())?;
+
+        let mut config = repo.config()?;
+        config.set_str("user.name", "Test User")?;
+        config.set_str("user.email", "test@example.com")?;
+        // Explicitly disable GPG signing to ensure tests pass regardless of user's global config
+        config.set_bool("commit.gpgsign", false)?;
+
+        Ok((temp_dir, repo))
+    }
+
+    fn create_commit(
+        repo: &git2::Repository,
+        message: &str,
+        path: &str,
+        contents: &str,
+    ) -> anyhow::Result<()> {
+        let workdir = match repo.workdir() {
+            Some(dir) => dir,
+            None => return Err(anyhow::anyhow!("Repository has no workdir")),
+        };
+        let file_path = workdir.join(path);
+        fs::write(&file_path, contents)?;
+        let mut index = repo.index()?;
+        index.add_path(std::path::Path::new(path))?;
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
+        let signature = repo.signature()?;
+
+        let parents = match repo.head() {
+            Ok(head) => {
+                vec![head.peel_to_commit()?]
+            }
+            Err(e) if e.code() == git2::ErrorCode::UnbornBranch => vec![],
+            Err(e) => return Err(e.into()),
+        };
+
+        let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parent_refs,
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn file_status_as_char() {
+        assert_eq!(FileStatus::Added.as_char(), 'A');
+        assert_eq!(FileStatus::Deleted.as_char(), 'D');
+        assert_eq!(FileStatus::Modified.as_char(), 'M');
+        assert_eq!(FileStatus::Renamed.as_char(), 'R');
+        assert_eq!(FileStatus::Copied.as_char(), 'C');
+        assert_eq!(FileStatus::Other.as_char(), '?');
+    }
+
+    #[test]
+    fn file_status_display() {
+        assert_eq!(format!("{}", FileStatus::Added), "A");
+        assert_eq!(format!("{}", FileStatus::Modified), "M");
+    }
+
+    /// Test unstaging behavior when HEAD doesn't exist (initial commit scenario).
+    /// This verifies the guard in `unstage_files()` that handles the `if let Ok(head) = repo.head()` case.
+    #[test]
+    fn unstage_initial_commit() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        // Create and stage a file (no HEAD exists yet - this is an initial commit scenario)
+        let file_path = repo_path.join("test.txt");
+        fs::write(&file_path, "initial content").context("Failed to write test file")?;
+
+        let mut index = repo.index()?;
+        index.add_path(std::path::Path::new("test.txt"))?;
+        index.write()?;
+
+        // Verify the file is staged
+        let statuses = repo.statuses(Some(
+            git2::StatusOptions::new()
+                .include_untracked(false)
+                .include_ignored(false),
+        ))?;
+        assert_eq!(statuses.len(), 1);
+        assert!(statuses.get(0).unwrap().status().is_index_new());
+
+        // Act: Attempt to unstage the file (tests the no-HEAD code path)
+        let git_repo = GitRepository::open(Some(repo_path))?;
+        let relative_path = std::path::PathBuf::from("test.txt");
+        let result = git_repo.unstage_files(&[relative_path]);
+
+        // Assert: The unstage operation should succeed despite no HEAD
+        assert!(
+            result.is_ok(),
+            "Unstaging should succeed in initial commit scenario"
+        );
+
+        // Verify the file is now untracked (unstaged successfully)
+        let statuses_after = repo.statuses(Some(
+            git2::StatusOptions::new()
+                .include_untracked(true)
+                .include_ignored(false),
+        ))?;
+
+        let status = statuses_after.get(0).unwrap();
+        assert!(
+            status.status().is_wt_new(),
+            "File should be untracked after unstaging"
+        );
+        assert!(
+            !status.status().is_index_new(),
+            "File should not be in index after unstaging"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn stage_multiple_files() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+        std::env::set_current_dir(repo_path)?;
+        let file_a = repo_path.join("a.txt");
+        let file_b = repo_path.join("b.txt");
+        fs::write(&file_a, "alpha")?;
+        fs::write(&file_b, "beta")?;
+
+        let git_repo = GitRepository::open(Some(repo_path))?;
+        let files = vec![
+            (std::path::PathBuf::from("a.txt"), GitFileStatus::Added),
+            (std::path::PathBuf::from("b.txt"), GitFileStatus::Added),
+        ];
+        git_repo.stage_files(&files)?;
+
+        let statuses = repo.statuses(Some(
+            git2::StatusOptions::new()
+                .include_untracked(false)
+                .include_ignored(false),
+        ))?;
+        assert_eq!(statuses.len(), 2);
+        for entry in statuses.iter() {
+            assert!(entry.status().is_index_new());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn unstage_nonexistent_file() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        create_commit(&repo, "feat: init", "readme.md", "hello")?;
+        let git_repo = GitRepository::open(Some(repo_path))?;
+        let result = git_repo.unstage_files(&[std::path::PathBuf::from("missing.txt")]);
+
+        assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn create_commit_empty_message_fails() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        let file_path = repo_path.join("example.txt");
+        fs::write(&file_path, "content")?;
+        let mut index = repo.index()?;
+        index.add_path(std::path::Path::new("example.txt"))?;
+        index.write()?;
+
+        let message = CommitMessage::try_from("".to_string());
+        assert!(message.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn binary_file_detection() {
+        let binary_content =
+            "diff --git a/image.png b/image.png\nBinary files a/image.png and b/image.png differ";
+        let file = christina_core::git::GitFile::new(
+            "image.png".to_string(),
+            "M".to_string(),
+            binary_content.to_string(),
+        );
+        assert!(file.is_binary);
+    }
+
+    #[test]
+    fn staged_diff_empty() -> anyhow::Result<()> {
+        let (temp_dir, _repo) = init_repo()?;
+        let git_repo = GitRepository::open(Some(temp_dir.path()))?;
+        let staged = git_repo.get_staged_diff()?;
+        assert!(staged.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn commit_history_empty_repo() -> anyhow::Result<()> {
+        let (temp_dir, _repo) = init_repo()?;
+        let git_repo = GitRepository::open(Some(temp_dir.path()))?;
+        let history = git_repo.get_commit_history(10)?;
+        assert_eq!(history.len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn commit_history_single_commit() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        create_commit(&repo, "feat: add initial file", "file.txt", "content")?;
+
+        let git_repo = GitRepository::open(Some(repo_path))?;
+        let history = git_repo.get_commit_history(10)?;
+
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].subject, "feat: add initial file");
+        assert_eq!(history[0].sha.len(), 7);
+        Ok(())
+    }
+
+    #[test]
+    fn commit_history_skips_merges() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        create_commit(&repo, "feat: first", "file1.txt", "content1")?;
+        create_commit(&repo, "feat: second", "file2.txt", "content2")?;
+
+        let head = repo.head()?;
+        let merge_commit = head.peel_to_commit()?;
+        let tree = merge_commit.tree()?;
+        let signature = repo.signature()?;
+
+        let parent_first = repo.find_commit(repo.head()?.target().unwrap())?;
+        let parent_second = repo.find_commit(parent_first.parent_id(0)?)?;
+
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "Merge: combine branches",
+            &tree,
+            &[&parent_first, &parent_second],
+        )?;
+
+        let git_repo = GitRepository::open(Some(repo_path))?;
+        let history = git_repo.get_commit_history(10)?;
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].subject, "feat: second");
+        assert_eq!(history[1].subject, "feat: first");
+        Ok(())
+    }
+
+    #[test]
+    fn commit_history_skips_fixups() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        create_commit(&repo, "feat: main change", "file.txt", "content")?;
+        create_commit(&repo, "fixup! feat: main change", "file.txt", "updated")?;
+        create_commit(&repo, "squash! feat: main change", "file.txt", "final")?;
+        create_commit(&repo, "feat: another change", "file.txt", "more")?;
+
+        let git_repo = GitRepository::open(Some(repo_path))?;
+        let history = git_repo.get_commit_history(10)?;
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].subject, "feat: another change");
+        assert_eq!(history[1].subject, "feat: main change");
+        Ok(())
+    }
+
+    #[test]
+    fn commit_history_limit() -> anyhow::Result<()> {
+        let (temp_dir, repo) = init_repo()?;
+        let repo_path = temp_dir.path();
+
+        create_commit(&repo, "feat: commit 1", "file.txt", "content1")?;
+        create_commit(&repo, "feat: commit 2", "file.txt", "content2")?;
+        create_commit(&repo, "feat: commit 3", "file.txt", "content3")?;
+        create_commit(&repo, "feat: commit 4", "file.txt", "content4")?;
+
+        let git_repo = GitRepository::open(Some(repo_path))?;
+
+        let history = git_repo.get_commit_history(2)?;
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].subject, "feat: commit 4");
+        assert_eq!(history[1].subject, "feat: commit 3");
+
+        let history_all = git_repo.get_commit_history(100)?;
+        assert_eq!(history_all.len(), 4);
+        Ok(())
+    }
+}
