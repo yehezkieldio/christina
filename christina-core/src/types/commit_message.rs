@@ -104,6 +104,7 @@ impl std::ops::Deref for CommitMessage {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
