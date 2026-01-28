@@ -12,7 +12,7 @@ pub const LOCKFILE_TOKEN_LIMIT: u32 = 100;
 
 /// Split diff into chunks recursively by files, hunks, then lines.
 ///
-/// Uses a greedy packing algorithm to fill chunks up to the token limit
+/// Uses a greedy packing algorithm (First-Fit) to fill chunks up to the token limit
 /// while maintaining semantic coherence at file boundaries.
 ///
 /// - All file_diffs must contain valid UTF-8 content
