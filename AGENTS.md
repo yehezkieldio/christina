@@ -6,7 +6,7 @@ Optimize for effective use of the context window. Decompose work aggressively an
 
 ## Mental Model and First Principles
 
-This is a Rust codebase.
+This is a Rust codebase, performance is a design-time habit, not just a post-development fix. Always consider performance and optimization when complexity is unaffected, strive for algorithmic improvements and better memory representations.
 
 It is not Java, not Go, and not an implementation of "Clean Architecture."
 
