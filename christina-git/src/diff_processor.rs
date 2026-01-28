@@ -274,3 +274,356 @@ impl<'a> DiffProcessor<'a> {
         Ok(chunks)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    struct SimpleTokenizer;
+    impl Tokenizer for SimpleTokenizer {
+        fn count_tokens(&self, text: &str) -> TokenCount {
+            TokenCount::new_saturating((text.len() / 4).max(1) as u32)
+        }
+
+        fn encoding_name(&self) -> &str {
+            "mock-4chars"
+        }
+
+        fn encode(&self, text: &str) -> Vec<u32> {
+            text.chars()
+                .collect::<Vec<_>>()
+                .chunks(4)
+                .enumerate()
+                .map(|(i, _)| i as u32)
+                .collect()
+        }
+
+        fn decode(&self, tokens: &[u32]) -> Option<String> {
+            Some("x".repeat(tokens.len() * 4))
+        }
+    }
+
+    fn create_tokenizer() -> SimpleTokenizer {
+        SimpleTokenizer
+    }
+
+    #[test]
+    fn empty_diff_processing() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let chunks = processor.process("");
+        assert_eq!(chunks.len(), 0);
+    }
+
+    #[test]
+    fn small_diff_single_chunk() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(10000));
+        let diff = "diff --git a/test.txt b/test.txt\n+new line\n";
+        let chunks = processor.process(diff);
+        assert_eq!(chunks.len(), 1);
+    }
+
+    #[test]
+    fn binary_detection_with_nul_byte_start() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // NUL byte at the start
+        let content = "diff --git a/file.bin b/file.bin\n\0binary content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_detection_with_nul_byte_middle() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // NUL byte in the middle of content
+        let content = "diff --git a/file.bin b/file.bin\nsome text\0more binary stuff";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_detection_with_nul_byte_late() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // NUL byte after 1000 bytes but within 8192 limit
+        let mut content = String::with_capacity(4000);
+        content.push_str("diff --git a/file.bin b/file.bin\n");
+        content.push_str(&"a".repeat(1500));
+        content.push('\0');
+        content.push_str(&"b".repeat(1500));
+        assert!(processor.is_binary_content(&content));
+    }
+
+    #[test]
+    fn text_file_without_nul_bytes() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/file.txt b/file.txt\n+This is a normal text file\n+with multiple lines\n+of UTF-8 content";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn empty_file_is_not_binary() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn utf8_content_is_not_binary() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // UTF-8 with various unicode characters
+        let content = "diff --git a/file.txt b/file.txt\n+Hello 世界 🌍 Привет\n+Γεια σας αΛΛΕΣ";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn mixed_content_mostly_text_with_nul() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/file.mixed b/file.mixed\n+lots of text\n+and more text\n\0\n+but also binary";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_detection_git_binary_patch_marker() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/image.png b/image.png\nGIT binary patch\nliteral 100";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_detection_binary_files_marker() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content =
+            "diff --git a/image.png b/image.png\nBinary files a/image.png and b/image.png differ";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_png() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/image.png b/image.png\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_jpg() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/photo.jpg b/photo.jpg\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_jpeg() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/photo.jpeg b/photo.jpeg\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_gif() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/animation.gif b/animation.gif\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_pdf() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/document.pdf b/document.pdf\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_zip() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/archive.zip b/archive.zip\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_tar_gz() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/package.tar.gz b/package.tar.gz\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_woff() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/font.woff b/font.woff\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_mp4() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/video.mp4 b/video.mp4\n+file content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_in_path_a() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Test detection in a/ path
+        let content = "diff --git a/src/assets/image.png b/src/assets/image.png\n+content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn binary_extension_in_path_b() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Test detection in b/ path
+        let content = "diff --git a/src/file.txt b/src/assets/image.jpg\n+content";
+        assert!(processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn non_binary_extension_txt() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/readme.txt b/readme.txt\n+This is text\n+More text";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn non_binary_extension_rs() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/main.rs b/main.rs\n+fn main() {\n+    println!(\"Hello\");\n+}";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn non_binary_extension_json() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let content = "diff --git a/config.json b/config.json\n+{\n+  \"key\": \"value\"\n+}";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn non_diff_header_no_binary_detection() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Content without proper diff header - extension detection should not apply
+        let content = "+some content about image.png";
+        assert!(!processor.is_binary_content(content));
+    }
+
+    #[test]
+    fn process_safe_empty_diff() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let result = processor.process_safe("");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn process_safe_text_file_only() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+new line\n";
+        let result = processor.process_safe(diff);
+        assert!(result.is_ok());
+        let chunks = result.unwrap();
+        assert!(!chunks.is_empty());
+    }
+
+    #[test]
+    fn process_safe_binary_file_generates_notice() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+text content\ndiff --git a/test.bin b/test.bin\nindex 1234567..abcdefg\n--- a/test.bin\n+++ b/test.bin\n@@ -0,0 +1 @@\n\0binary content";
+        let result = processor.process_safe(diff);
+        assert!(result.is_ok());
+        let chunks = result.unwrap();
+        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
+    }
+
+    #[test]
+    fn process_safe_all_binary_files_returns_error() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Create a diff with only binary files and no text files
+        let diff = "diff --git a/test.bin b/test.bin\n\0binary\n";
+        let result = processor.process_safe(diff);
+        // Should return error because there's no text content
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No processable diff content"));
+    }
+
+    #[test]
+    fn process_safe_mixed_binary_and_text() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Mix of binary and text files
+        let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+text content\n";
+        let result = processor.process_safe(diff);
+        assert!(result.is_ok());
+        let chunks = result.unwrap();
+        // Should have at least one chunk from text file
+        assert!(!chunks.is_empty());
+    }
+
+    #[test]
+    fn process_safe_respects_max_diff_size() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Create a very large diff that exceeds MAX_DIFF_SIZE
+        let huge_diff = "a".repeat(MAX_DIFF_SIZE + 1000);
+        let result = processor.process_safe(&huge_diff);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds maximum"));
+    }
+
+    #[test]
+    fn process_safe_binary_extension_image() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        let diff = "diff --git a/readme.txt b/readme.txt\nindex 1234567..abcdefg\n--- a/readme.txt\n+++ b/readme.txt\n@@ -0,0 +1 @@\n+text\ndiff --git a/logo.png b/logo.png\nindex 1234567..abcdefg\n--- a/logo.png\n+++ b/logo.png\n@@ -0,0 +1 @@\n";
+        let result = processor.process_safe(diff);
+        assert!(result.is_ok());
+        let chunks = result.unwrap();
+        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
+    }
+
+    #[test]
+    fn processor_new_initializes_defaults() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(5000));
+        // Verify that processor was created successfully
+        assert_eq!(processor.token_limit, TokenCount::new_saturating(5000));
+        assert_eq!(processor.ignore_files.len(), 0);
+        assert_eq!(processor.max_diff_size, MAX_DIFF_SIZE);
+    }
+
+    #[test]
+    fn processor_with_ignore_files() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(5000))
+            .with_ignore_files(vec!["*.lock".to_string(), "*.log".to_string()]);
+        assert_eq!(processor.ignore_files.len(), 2);
+        assert!(processor.ignore_files.contains(&"*.lock".to_string()));
+        assert!(processor.ignore_files.contains(&"*.log".to_string()));
+    }
+}
