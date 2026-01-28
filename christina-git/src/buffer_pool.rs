@@ -76,3 +76,50 @@ pub(crate) fn release_buffer(buffer: ChunkBuffer) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buffer_reuse() {
+        let mut buf1 = acquire_buffer();
+        buf1.content_mut().push_str("test content");
+        let addr1 = buf1.content_mut().as_ptr();
+        release_buffer(buf1);
+
+        let mut buf2 = acquire_buffer();
+        let addr2 = buf2.content_mut().as_ptr();
+        release_buffer(buf2);
+
+        // Should reuse the same buffer allocation
+        assert_eq!(addr1, addr2);
+    }
+
+    #[test]
+    fn buffer_cleared_on_acquire() {
+        let mut buf = acquire_buffer();
+        buf.content_mut().push_str("old content");
+        buf.file_paths_mut().push(FilePath::from("old_file.txt"));
+        release_buffer(buf);
+
+        let mut buf = acquire_buffer();
+        assert!(buf.is_empty());
+        assert!(buf.file_paths_mut().is_empty());
+        release_buffer(buf);
+    }
+
+    #[test]
+    fn buffer_pool_limit() {
+        // Fill pool beyond limit
+        for _ in 0..20 {
+            let buf = acquire_buffer();
+            release_buffer(buf);
+        }
+
+        // Pool should not exceed limit
+        BUFFER_POOL.with(|pool| {
+            assert!(pool.borrow().len() <= 16);
+        });
+    }
+}
