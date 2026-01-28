@@ -8,5 +8,9 @@ christina-core = { path = "../christina-core" }
 thiserror = { workspace = true }
 git2 = { version = "0.20.3", default-features = false }
 
+[dev-dependencies]
+anyhow = { workspace = true }
+tempfile = { workspace = true }
+
 [lints]
 workspace = true
