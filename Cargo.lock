@@ -166,7 +166,6 @@ dependencies = [
  "llm",
  "lru",
  "parking_lot",
- "regex",
  "serde",
  "serde_json",
  "thiserror",
