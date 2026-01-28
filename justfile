@@ -12,6 +12,8 @@ clippy:
 # Run the test suite using Nextest
 test:
     cargo nextest run
+test-one name:
+    cargo nextest run {{name}}
 
 # Check code formatting without making changes
 format-check:
