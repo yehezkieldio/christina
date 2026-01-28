@@ -1,3 +1,4 @@
+pub mod git;
 pub mod profile;
 pub mod prompt;
 pub mod state;
