@@ -102,3 +102,77 @@ impl std::ops::Deref for CommitMessage {
         self.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_commit_messages() {
+        assert!(CommitMessage::try_from("feat: add new feature".to_string()).is_ok());
+        assert!(CommitMessage::try_from("fix: resolve bug".to_string()).is_ok());
+        assert!(CommitMessage::try_from("chore: update deps".to_string()).is_ok());
+        assert!(CommitMessage::try_from("docs: improve readme".to_string()).is_ok());
+        assert!(CommitMessage::try_from("refactor: simplify code".to_string()).is_ok());
+        assert!(CommitMessage::try_from("test: add tests".to_string()).is_ok());
+    }
+
+    #[test]
+    fn invalid_commit_messages() {
+        assert!(CommitMessage::try_from("no prefix".to_string()).is_err());
+        assert!(CommitMessage::try_from("FEAT: wrong case".to_string()).is_err());
+        assert!(CommitMessage::try_from("feat: ".to_string()).is_err());
+        assert!(CommitMessage::try_from("".to_string()).is_err());
+    }
+
+    #[test]
+    fn commit_message_with_scope() {
+        assert!(CommitMessage::try_from("feat(api): add endpoint".to_string()).is_ok());
+        assert!(CommitMessage::try_from("fix(ui): button alignment".to_string()).is_ok());
+    }
+
+    #[test]
+    fn commit_message_multiline_rejected() {
+        let msg = "feat: add feature\n\nDetailed description here\n\nBREAKING CHANGE: something";
+        assert!(CommitMessage::try_from(msg.to_string()).is_err());
+    }
+
+    #[test]
+    fn commit_message_as_ref() {
+        let msg = match CommitMessage::try_from("feat: test".to_string()) {
+            Ok(value) => value,
+            Err(err) => panic!("unexpected error: {}", err),
+        };
+        let s: &str = msg.as_ref();
+        assert_eq!(s, "feat: test");
+    }
+
+    #[test]
+    fn validation_mode_strict() {
+        let long_msg = "a".repeat(73);
+        let msg = format!("feat: {}", long_msg);
+        let result = CommitMessage::validate(msg, ValidationMode::Strict, Some(72));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validation_mode_soft() {
+        let long_msg = "a".repeat(73);
+        let msg = format!("feat: {}", long_msg);
+        let result = CommitMessage::validate(msg, ValidationMode::Soft, Some(72));
+        assert!(result.is_ok());
+        let (_, warnings) = result.unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("exceeds recommended"));
+    }
+
+    #[test]
+    fn validation_mode_disabled() {
+        let long_msg = "a".repeat(200);
+        let msg = format!("feat: {}", long_msg);
+        let result = CommitMessage::validate(msg, ValidationMode::Disabled, Some(72));
+        assert!(result.is_ok());
+        let (_, warnings) = result.unwrap();
+        assert!(warnings.is_empty());
+    }
+}
