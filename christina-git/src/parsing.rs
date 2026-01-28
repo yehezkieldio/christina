@@ -3,7 +3,7 @@ use christina_core::{
     types::{FilePath, TokenCount},
 };
 
-fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
     }
