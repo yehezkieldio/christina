@@ -30,3 +30,45 @@ impl fmt::Display for ProviderKind {
         write!(f, "{}", s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn provider_kind_from_str() {
+        match ProviderKind::from_str("openai") {
+            Ok(kind) => assert_eq!(kind, ProviderKind::OpenAI),
+            Err(err) => panic!("unexpected error: {}", err),
+        }
+        match ProviderKind::from_str("azure") {
+            Ok(kind) => assert_eq!(kind, ProviderKind::Azure),
+            Err(err) => panic!("unexpected error: {}", err),
+        }
+    }
+
+    #[test]
+    fn provider_kind_case_insensitive() {
+        match ProviderKind::from_str("OpenAI") {
+            Ok(kind) => assert_eq!(kind, ProviderKind::OpenAI),
+            Err(err) => panic!("unexpected error: {}", err),
+        }
+        match ProviderKind::from_str("AZURE") {
+            Ok(kind) => assert_eq!(kind, ProviderKind::Azure),
+            Err(err) => panic!("unexpected error: {}", err),
+        }
+    }
+
+    #[test]
+    fn provider_kind_invalid() {
+        assert!(ProviderKind::from_str("invalid").is_err());
+        assert!(ProviderKind::from_str("").is_err());
+    }
+
+    #[test]
+    fn provider_kind_display() {
+        assert_eq!(ProviderKind::OpenAI.to_string(), "openai");
+        assert_eq!(ProviderKind::Azure.to_string(), "azure");
+    }
+}
