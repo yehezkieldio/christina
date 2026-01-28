@@ -275,3 +275,95 @@ impl Tokenizer for TokenizerService {
         self.slice_to_token_limit(text, limit)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenizer_count_tokens() {
+        let tokenizer = TokenizerService::new().expect("tokenizer creation should succeed");
+
+        // Simple text should have tokens
+        let count = tokenizer.count_tokens("Hello, world!");
+        assert!(count.get() > 0);
+        assert!(count.get() < 10); // Reasonable upper bound
+    }
+
+    #[test]
+    fn tokenizer_slice_to_limit() {
+        let tokenizer = TokenizerService::new().expect("tokenizer creation should succeed");
+        let text = "Hello, world! This is a longer text that has many tokens.";
+
+        // Slicing to 3 tokens should return less text
+        let sliced = tokenizer.slice_to_token_limit(text, TokenCount::new_saturating(3));
+        assert!(sliced.len() < text.len());
+        assert!(tokenizer.count_tokens(sliced).get() > 0);
+
+        // Slicing with large limit should return full text
+        let full = tokenizer.slice_to_token_limit(text, TokenCount::new_saturating(1000));
+        assert_eq!(full, text);
+    }
+
+    #[test]
+    fn tokenizer_slice_empty() {
+        let tokenizer = TokenizerService::new().expect("tokenizer creation should succeed");
+
+        // Zero limit should return empty string
+        let slice = tokenizer.slice_to_token_limit("Hello", TokenCount::new_saturating(1));
+        assert!(!slice.is_empty());
+
+        // Empty input should return empty string
+        assert_eq!(
+            tokenizer.slice_to_token_limit("", TokenCount::new_saturating(1)),
+            ""
+        );
+    }
+
+    #[test]
+    fn token_budget_remaining() {
+        let budget = TokenBudget::new(
+            TokenCount::new_saturating(100_000),
+            TokenCount::new_saturating(4_000),
+            TokenCount::new_saturating(1_000),
+            TokenCount::new_saturating(500),
+        );
+        let remaining = budget.remaining_for_diff().expect("valid budget");
+
+        // Should be max_input - max_output - reserved_for_prompt - reserved_for_messages
+        assert_eq!(remaining.get(), 100_000 - 4_000 - 1_000 - 500);
+    }
+
+    #[test]
+    fn token_budget_invalid_returns_error() {
+        // max_output + reserved exceeds max_input
+        let budget = TokenBudget::new(
+            TokenCount::new_saturating(4_096),
+            TokenCount::new_saturating(3_000),
+            TokenCount::new_saturating(1_000),
+            TokenCount::new_saturating(500),
+        );
+        let result = budget.remaining_for_diff();
+
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert!(err.contains("exceeds max_input"));
+        }
+    }
+
+    #[test]
+    fn token_budget_presets() {
+        let small = TokenBudget::small();
+        assert_eq!(small.max_input.get(), 32_000);
+
+        let medium = TokenBudget::medium();
+        assert_eq!(medium.max_input.get(), 128_000);
+
+        let large = TokenBudget::large();
+        assert_eq!(large.max_input.get(), 256_000);
+
+        let massive = TokenBudget::massive();
+        assert_eq!(massive.max_input.get(), 1_000_000);
+    }
+}
