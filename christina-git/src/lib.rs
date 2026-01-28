@@ -1,3 +1,4 @@
+pub mod parsing;
 pub mod repository;
 
 mod buffer_pool;
