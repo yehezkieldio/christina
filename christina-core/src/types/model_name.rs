@@ -38,3 +38,34 @@ impl AsRef<str> for ModelName {
         self.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_name_from_str() {
+        let model = ModelName::from("gpt-5");
+        assert_eq!(model.as_ref(), "gpt-5");
+    }
+
+    #[test]
+    fn model_name_equality() {
+        let m1 = ModelName::from("claude-sonnet-4.5");
+        let m2 = ModelName::from("claude-sonnet-4.5");
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn model_name_display() {
+        let model = ModelName::from("gpt-5.2-codex");
+        assert_eq!(format!("{}", model), "gpt-5.2-codex");
+    }
+
+    #[test]
+    fn model_name_clone() {
+        let m1 = ModelName::from("kimi-k2.5");
+        let m2 = m1.clone();
+        assert_eq!(m1, m2);
+    }
+}
