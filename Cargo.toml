@@ -58,3 +58,6 @@ panic = "unwind"
 
 [profile.test]
 opt-level = 1
+
+[profile.dist]
+inherits = "release"

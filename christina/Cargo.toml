@@ -3,6 +3,8 @@ name = "christina"
 version = "0.1.0"
 description = "AI-powered conventional commit message generator."
 edition = "2024"
+repository = "https://github.com/yehezkieldio/christina"
+homepage = "https://github.com/yehezkieldio/christina"
 
 [[bin]]
 name = "christina"
