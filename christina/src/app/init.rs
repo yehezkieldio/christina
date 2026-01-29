@@ -16,7 +16,6 @@ use super::context::AppContextData;
 use super::state::{TuiSessionData, TuiUiState};
 use crate::tui::{DataState, UiState};
 
-/// Result of initialization with potential warnings.
 pub struct InitResult {
     pub context: AppContextData,
     pub ui: TuiUiState,
@@ -25,7 +24,6 @@ pub struct InitResult {
     pub warnings: Vec<String>,
 }
 
-/// Initialize application context (config, repository discovery).
 pub fn init_context() -> (AppContextData, Vec<String>) {
     let mut warnings = Vec::new();
 

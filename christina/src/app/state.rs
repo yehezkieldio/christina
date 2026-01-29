@@ -11,12 +11,7 @@ impl Drop for AbortOnDrop {
     }
 }
 
-/// Generation state - bundles task handle and generation ID to prevent invalid states.
-///
-/// This enum makes it impossible to have:
-/// - A generation_id without a running task
-/// - A running task without a generation_id
-/// - An "is_loading" flag out of sync with the actual task state
+/// Bundles task handle and generation ID to prevent invalid states.
 pub enum GenerationState {
     Idle,
     Running {
