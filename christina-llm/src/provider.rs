@@ -333,4 +333,35 @@ impl Provider {
             }
         }
     }
+
+    pub fn mock(response: impl Into<String>) -> Self {
+        Provider::Mock {
+            response: response.into(),
+            delay_ms: 100,
+        }
+    }
+
+    pub fn mock_with_delay(response: impl Into<String>, delay_ms: u64) -> Self {
+        Provider::Mock {
+            response: response.into(),
+            delay_ms,
+        }
+    }
+
+    pub fn mock_sequence(responses: Vec<Result<String, CompletionError>>) -> Self {
+        Provider::MockSequence {
+            responses: std::sync::Arc::new(std::sync::Mutex::new(responses)),
+            delay_ms: 0,
+        }
+    }
+
+    pub fn mock_sequence_with_delay(
+        responses: Vec<Result<String, CompletionError>>,
+        delay_ms: u64,
+    ) -> Self {
+        Provider::MockSequence {
+            responses: std::sync::Arc::new(std::sync::Mutex::new(responses)),
+            delay_ms,
+        }
+    }
 }
