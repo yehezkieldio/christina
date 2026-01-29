@@ -1,5 +1,11 @@
-use christina_core::types::{ModelName, ProviderKind, TokenCount};
+use anyhow::Result;
+use christina_core::{
+    ProviderProfile,
+    types::{ModelName, ProviderKind, TokenCount},
+};
 use url::Url;
+
+use crate::providers::azure::parse_azure_url;
 
 #[derive(Clone)]
 pub struct ApiKey(String);
@@ -196,4 +202,68 @@ pub enum Provider {
         responses: std::sync::Arc<std::sync::Mutex<Vec<Result<String, CompletionError>>>>,
         delay_ms: u64,
     },
+}
+
+impl Provider {
+    pub fn from_profile(profile: &ProviderProfile, api_key: &str) -> Result<Self> {
+        match profile.provider {
+            ProviderKind::OpenAI => Ok(Provider::OpenAI {
+                model: profile.model.clone(),
+                api_key: ApiKey::new(api_key),
+                base_url: profile.api_url.clone(),
+                max_tokens: profile.max_output_tokens,
+                temperature: 0.3,
+            }),
+
+            ProviderKind::Azure => {
+                let parsed = profile
+                    .api_url
+                    .as_ref()
+                    .and_then(|url| parse_azure_url(url.as_str()));
+
+                let (endpoint, api_version, deployment_id) = if let Some(parsed) = parsed {
+                    (
+                        parsed.endpoint,
+                        profile
+                            .azure_api_version
+                            .clone()
+                            .unwrap_or(parsed.api_version),
+                        profile
+                            .azure_deployment_id
+                            .clone()
+                            .unwrap_or(parsed.deployment_id),
+                    )
+                } else {
+                    let endpoint = profile
+                        .api_url
+                        .clone()
+                        .ok_or_else(|| {
+                            ProviderError::MissingConfig("model_api_url (Azure endpoint)".into())
+                        })?
+                        .to_string();
+
+                    let api_version = profile
+                        .azure_api_version
+                        .clone()
+                        .ok_or_else(|| ProviderError::MissingConfig("azure_api_version".into()))?;
+
+                    let deployment_id = profile.azure_deployment_id.clone().ok_or_else(|| {
+                        ProviderError::MissingConfig("azure_deployment_id".into())
+                    })?;
+
+                    (endpoint, api_version, deployment_id)
+                };
+
+                Ok(Provider::Azure {
+                    model: profile.model.clone(),
+                    api_key: ApiKey::new(api_key),
+                    endpoint,
+                    api_version,
+                    deployment_id,
+                    max_tokens: profile.max_output_tokens,
+                    temperature: 0.3,
+                })
+            }
+        }
+    }
 }
