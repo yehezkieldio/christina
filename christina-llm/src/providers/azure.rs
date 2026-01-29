@@ -1,4 +1,11 @@
+use christina_core::types::{ModelName, TokenCount};
+use llm::builder::LLMBackend;
 use url::Url;
+
+use crate::{
+    ChatMessage, CompletionError,
+    providers::http::{LlmConfig, build_llm, convert_messages, extract_system_prompt},
+};
 
 #[derive(Debug, Clone)]
 pub struct ParsedAzureConfig {
@@ -36,5 +43,44 @@ pub fn parse_azure_url(url: &str) -> Option<ParsedAzureConfig> {
         endpoint,
         deployment_id,
         api_version,
+    })
+}
+
+pub struct AzureGenRequest<'a> {
+    pub model: &'a ModelName,
+    pub api_key: &'a str,
+    pub endpoint: &'a str,
+    pub api_version: &'a str,
+    pub deployment_id: &'a str,
+    pub max_tokens: TokenCount,
+    pub temperature: f32,
+    pub messages: &'a [ChatMessage],
+}
+
+pub async fn generate(req: AzureGenRequest<'_>) -> Result<String, CompletionError> {
+    let system_prompt = extract_system_prompt(req.messages);
+
+    let llm = build_llm(LlmConfig {
+        backend: LLMBackend::AzureOpenAI,
+        api_key: req.api_key,
+        model: req.model.as_ref(),
+        max_tokens: req.max_tokens.get(),
+        temperature: req.temperature,
+        base_url: Some(req.endpoint),
+        api_version: Some(req.api_version),
+        deployment_id: Some(req.deployment_id),
+        system_prompt,
+    })
+    .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
+
+    let llm_messages = convert_messages(req.messages);
+
+    let response = llm
+        .chat(&llm_messages)
+        .await
+        .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
+
+    response.text().map(|s| s.to_string()).ok_or_else(|| {
+        CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
     })
 }
