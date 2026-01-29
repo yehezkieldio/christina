@@ -84,3 +84,52 @@ pub async fn generate(req: AzureGenRequest<'_>) -> Result<String, CompletionErro
         CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
     })
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::panic,
+    reason = "test assertions use panic for failure reporting"
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_azure_url_full() {
+        let url = "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-12-01-preview";
+        let parsed = parse_azure_url(url);
+
+        let p = parsed.unwrap_or_else(|| panic!("Valid Azure URL should parse: {}", url));
+        assert_eq!(p.endpoint, "https://myresource.cognitiveservices.azure.com");
+        assert_eq!(p.deployment_id, "gpt-4");
+        assert_eq!(p.api_version, "2024-12-01-preview");
+    }
+
+    #[test]
+    fn parse_azure_url_openai_azure_domain() {
+        let url = "https://myresource.openai.azure.com/openai/deployments/gpt-4.1-mini/chat/completions?api-version=2025-01-01";
+        let parsed = parse_azure_url(url);
+
+        let p = parsed.unwrap_or_else(|| panic!("Valid Azure OpenAI URL should parse: {}", url));
+        assert_eq!(p.endpoint, "https://myresource.openai.azure.com");
+        assert_eq!(p.deployment_id, "gpt-4.1-mini");
+        assert_eq!(p.api_version, "2025-01-01");
+    }
+
+    #[test]
+    fn parse_azure_url_non_azure() {
+        let url = "https://api.openai.com/v1/chat/completions";
+        let parsed = parse_azure_url(url);
+
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn parse_azure_url_defaults_api_version() {
+        let url = "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4/chat/completions";
+        let parsed = parse_azure_url(url);
+
+        let p =
+            parsed.unwrap_or_else(|| panic!("Azure URL without api-version should parse: {}", url));
+        assert_eq!(p.api_version, "2024-12-01-preview");
+    }
+}
