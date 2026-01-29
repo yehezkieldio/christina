@@ -95,7 +95,7 @@ impl Default for Config {
             max_input_tokens: TokenCount::new_saturating(4096),
             max_output_tokens: TokenCount::new_saturating(500),
             model_provider: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
+            model: ModelName::from("gpt-4.1-mini"),
             api_key: None,
             model_api_url: None,
             azure_api_version: None,
@@ -455,5 +455,582 @@ impl Config {
             azure_api_version: self.azure_api_version.clone(),
             azure_deployment_id: self.azure_deployment_id.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config() {
+        let config = Config::default();
+        assert_eq!(config.max_input_tokens.get(), 4096);
+        assert_eq!(config.max_output_tokens.get(), 500);
+        assert_eq!(config.model_provider, ProviderKind::OpenAI);
+        assert_eq!(config.model, ModelName::from("gpt-4.1-mini"));
+        assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn config_get_set() {
+        let mut config = Config::default();
+        config
+            .set("model", "gpt-4.1-mini")
+            .expect("setting config should succeed");
+        assert_eq!(config.get("model"), Some("gpt-4.1-mini".to_string()));
+    }
+
+    #[test]
+    fn set_max_input_tokens_valid() {
+        let mut config = Config::default();
+        config
+            .set("max_input_tokens", "8192")
+            .expect("should set valid token count");
+        assert_eq!(config.max_input_tokens.get(), 8192);
+    }
+
+    #[test]
+    fn set_max_input_tokens_clamping() {
+        let mut config = Config::default();
+        let over_limit = (MAX_INPUT + 1).to_string();
+        config
+            .set("max_input_tokens", &over_limit)
+            .expect("should accept but clamp");
+        assert_eq!(
+            config.max_input_tokens.get(),
+            MAX_INPUT,
+            "should clamp to hard limit"
+        );
+    }
+
+    #[test]
+    fn set_max_input_tokens_invalid() {
+        let mut config = Config::default();
+        assert!(
+            config.set("max_input_tokens", "not_a_number").is_err(),
+            "should reject invalid number"
+        );
+        assert!(
+            config.set("max_input_tokens", "-100").is_err(),
+            "should reject negative number"
+        );
+    }
+
+    #[test]
+    fn set_max_output_tokens_valid() {
+        let mut config = Config::default();
+        config
+            .set("max_output_tokens", "2048")
+            .expect("should set valid token count");
+        assert_eq!(config.max_output_tokens.get(), 2048);
+    }
+
+    #[test]
+    fn set_max_output_tokens_clamping() {
+        let mut config = Config::default();
+        let over_limit = (MAX_OUTPUT + 1).to_string();
+        config
+            .set("max_output_tokens", &over_limit)
+            .expect("should accept but clamp");
+        assert_eq!(
+            config.max_output_tokens.get(),
+            MAX_OUTPUT,
+            "should clamp to hard limit"
+        );
+    }
+
+    #[test]
+    fn set_max_output_tokens_invalid() {
+        let mut config = Config::default();
+        assert!(
+            config.set("max_output_tokens", "invalid").is_err(),
+            "should reject invalid number"
+        );
+    }
+
+    #[test]
+    fn set_model_provider_valid() {
+        let mut config = Config::default();
+        config
+            .set("model_provider", "openai")
+            .expect("should set openai provider");
+        assert_eq!(config.model_provider, ProviderKind::OpenAI);
+
+        config
+            .set("model_provider", "azure")
+            .expect("should set valid provider");
+        assert_eq!(config.model_provider, ProviderKind::Azure);
+    }
+
+    #[test]
+    fn set_model_provider_invalid() {
+        let mut config = Config::default();
+        assert!(
+            config.set("model_provider", "invalid_provider").is_err(),
+            "should reject unknown provider"
+        );
+    }
+
+    #[test]
+    fn set_model() {
+        let mut config = Config::default();
+        config
+            .set("model", "gpt-5-nano")
+            .expect("should set model name");
+        assert_eq!(config.model, ModelName::from("gpt-5-nano"));
+
+        config
+            .set("model", "claude-4.5-sonnet")
+            .expect("should set claude model");
+        assert_eq!(config.model, ModelName::from("claude-4.5-sonnet"));
+    }
+
+    #[test]
+    fn set_api_key() {
+        let mut config = Config::default();
+        config
+            .set("api_key", "sk-test123")
+            .expect("should set api_key");
+        assert_eq!(config.api_key, Some("sk-test123".to_string()));
+
+        config
+            .set("model_api_key", "sk-test456")
+            .expect("should set via model_api_key");
+        assert_eq!(config.api_key, Some("sk-test456".to_string()));
+    }
+
+    #[test]
+    fn set_model_api_url_valid() {
+        let mut config = Config::default();
+        config
+            .set("model_api_url", "https://api.example.com/v1")
+            .expect("should set valid URL");
+        assert_eq!(
+            config.model_api_url.unwrap().as_str(),
+            "https://api.example.com/v1"
+        );
+    }
+
+    #[test]
+    fn set_model_api_url_invalid() {
+        let mut config = Config::default();
+        assert!(
+            config.set("model_api_url", "not a url").is_err(),
+            "should reject malformed URL"
+        );
+    }
+
+    #[test]
+    fn set_azure_api_version() {
+        let mut config = Config::default();
+        config
+            .set("azure_api_version", "2024-02-15-preview")
+            .expect("should set azure api version");
+        assert_eq!(
+            config.azure_api_version,
+            Some("2024-02-15-preview".to_string())
+        );
+    }
+
+    #[test]
+    fn set_azure_deployment_id() {
+        let mut config = Config::default();
+        config
+            .set("azure_deployment_id", "my-deployment")
+            .expect("should set azure deployment id");
+        assert_eq!(
+            config.azure_deployment_id,
+            Some("my-deployment".to_string())
+        );
+    }
+
+    #[test]
+    fn set_ignore_files() {
+        let mut config = Config::default();
+        config
+            .set("ignore_files", "file1.txt,file2.lock,file3.bin")
+            .expect("should parse CSV");
+        assert_eq!(
+            config.ignore_files,
+            vec!["file1.txt", "file2.lock", "file3.bin"]
+        );
+    }
+
+    #[test]
+    fn set_ignore_files_with_spaces() {
+        let mut config = Config::default();
+        config
+            .set("ignore_files", "file1.txt, file2.lock , file3.bin")
+            .expect("should trim spaces");
+        assert_eq!(
+            config.ignore_files,
+            vec!["file1.txt", "file2.lock", "file3.bin"]
+        );
+    }
+
+    #[test]
+    fn set_ignore_files_empty() {
+        let mut config = Config::default();
+        config.ignore_files = vec!["test.txt".to_string()];
+        config
+            .set("ignore_files", "")
+            .expect("should accept empty string");
+        assert_eq!(config.ignore_files, vec![""]);
+    }
+
+    #[test]
+    fn set_commit_message_max_length() {
+        let mut config = Config::default();
+        config
+            .set("commit_message_max_length", "100")
+            .expect("should set max length");
+        assert_eq!(config.commit_message_max_length, Some(100));
+    }
+
+    #[test]
+    fn set_commit_message_max_length_empty() {
+        let mut config = Config::default();
+        config.commit_message_max_length = Some(100);
+        config
+            .set("commit_message_max_length", "")
+            .expect("should clear when empty");
+        assert_eq!(config.commit_message_max_length, None);
+    }
+
+    #[test]
+    fn set_commit_message_max_length_invalid() {
+        let mut config = Config::default();
+        assert!(
+            config
+                .set("commit_message_max_length", "not_a_number")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn set_commit_message_validation_mode() {
+        let mut config = Config::default();
+
+        config
+            .set("commit_message_validation_mode", "strict")
+            .expect("should set strict mode");
+        assert_eq!(
+            config.commit_message_validation_mode,
+            ValidationMode::Strict
+        );
+
+        config
+            .set("commit_message_validation_mode", "soft")
+            .expect("should set soft mode");
+        assert_eq!(config.commit_message_validation_mode, ValidationMode::Soft);
+
+        config
+            .set("commit_message_validation_mode", "disabled")
+            .expect("should set disabled mode");
+        assert_eq!(
+            config.commit_message_validation_mode,
+            ValidationMode::Disabled
+        );
+
+        config
+            .set("commit_message_validation_mode", "STRICT")
+            .expect("should be case insensitive");
+        assert_eq!(
+            config.commit_message_validation_mode,
+            ValidationMode::Strict
+        );
+    }
+
+    #[test]
+    fn set_commit_message_validation_mode_invalid() {
+        let mut config = Config::default();
+        assert!(
+            config
+                .set("commit_message_validation_mode", "invalid_mode")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn set_diff_tool() {
+        let mut config = Config::default();
+        config
+            .set("diff_tool", "delta")
+            .expect("should set diff tool");
+        assert_eq!(config.diff.tool.to_string(), "delta");
+    }
+
+    #[test]
+    fn set_diff_tool_invalid() {
+        let mut config = Config::default();
+        assert!(config.set("diff_tool", "unknown_tool").is_err());
+    }
+
+    #[test]
+    fn set_diff_show_preview() {
+        let mut config = Config::default();
+        config
+            .set("diff_show_preview", "true")
+            .expect("should set to true");
+        assert!(config.diff.show_preview);
+
+        config
+            .set("diff_show_preview", "false")
+            .expect("should set to false");
+        assert!(!config.diff.show_preview);
+    }
+
+    #[test]
+    fn set_diff_show_preview_invalid() {
+        let mut config = Config::default();
+        assert!(config.set("diff_show_preview", "not_bool").is_err());
+    }
+
+    #[test]
+    fn set_unknown_key() {
+        let mut config = Config::default();
+        let result = config.set("unknown_key", "value");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown configuration key")
+        );
+    }
+
+    #[test]
+    fn get_max_input_tokens() {
+        let config = Config::default();
+        assert_eq!(config.get("max_input_tokens"), Some("4096".to_string()));
+    }
+
+    #[test]
+    fn get_max_output_tokens() {
+        let config = Config::default();
+        assert_eq!(config.get("max_output_tokens"), Some("500".to_string()));
+    }
+
+    #[test]
+    fn env_var_parsing_max_input_tokens() {
+        let val = "16384";
+        let parsed: Result<TokenCount, _> = val.parse();
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap().get(), 16384);
+    }
+
+    #[test]
+    fn env_var_parsing_model_provider() {
+        let val = "azure";
+        let parsed: Result<ProviderKind, _> = val.parse();
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap(), ProviderKind::Azure);
+    }
+
+    #[test]
+    fn env_var_parsing_use_keyring() {
+        let val = "true";
+        let parsed: Result<bool, _> = val.parse();
+        assert!(parsed.is_ok());
+        assert!(parsed.unwrap());
+    }
+
+    #[test]
+    fn get_model() {
+        let config = Config::default();
+        assert_eq!(config.get("model"), Some("gpt-4.1-mini".to_string()));
+    }
+
+    #[test]
+    fn get_api_key_none() {
+        let config = Config::default();
+        assert_eq!(config.get("api_key"), None);
+        assert_eq!(config.get("model_api_key"), None);
+    }
+
+    #[test]
+    fn get_api_key_some() {
+        let mut config = Config::default();
+        config.api_key = Some("sk-test".to_string());
+        assert_eq!(config.get("api_key"), Some("sk-test".to_string()));
+        assert_eq!(config.get("model_api_key"), Some("sk-test".to_string()));
+    }
+
+    #[test]
+    fn get_model_api_url() {
+        let mut config = Config::default();
+        config.model_api_url = Some(Url::parse("https://api.example.com").unwrap());
+        assert_eq!(
+            config.get("model_api_url"),
+            Some("https://api.example.com/".to_string())
+        );
+    }
+
+    #[test]
+    fn get_azure_fields() {
+        let mut config = Config::default();
+        config.azure_api_version = Some("2024-02-15".to_string());
+        config.azure_deployment_id = Some("my-deployment".to_string());
+
+        assert_eq!(
+            config.get("azure_api_version"),
+            Some("2024-02-15".to_string())
+        );
+        assert_eq!(
+            config.get("azure_deployment_id"),
+            Some("my-deployment".to_string())
+        );
+    }
+
+    #[test]
+    fn get_ignore_files() {
+        let config = Config::default();
+        let ignore_files = config.get("ignore_files").unwrap();
+        assert!(ignore_files.contains("package-lock.json"));
+        assert!(ignore_files.contains("Cargo.lock"));
+    }
+
+    #[test]
+    fn get_commit_message_fields() {
+        let mut config = Config::default();
+        assert_eq!(config.get("commit_message_max_length"), None);
+
+        config.commit_message_max_length = Some(100);
+        assert_eq!(
+            config.get("commit_message_max_length"),
+            Some("100".to_string())
+        );
+
+        assert_eq!(
+            config.get("commit_message_validation_mode"),
+            Some("soft".to_string())
+        );
+    }
+
+    #[test]
+    fn get_diff_fields() {
+        let config = Config::default();
+        assert_eq!(config.get("diff_tool"), Some("auto".to_string()));
+        assert_eq!(config.get("diff_show_preview"), Some("true".to_string()));
+    }
+
+    #[test]
+    fn get_unknown_key() {
+        let config = Config::default();
+        assert_eq!(config.get("unknown_key"), None);
+    }
+
+    #[test]
+    fn validate_clamps_temperature() {
+        let mut config = Config::default();
+        config.model_temperature = 3.0;
+        config.validate();
+        assert_eq!(config.model_temperature, 2.0);
+
+        config.model_temperature = -1.0;
+        config.validate();
+        assert_eq!(config.model_temperature, 0.0);
+
+        config.model_temperature = 1.5;
+        config.validate();
+        assert_eq!(config.model_temperature, 1.5);
+    }
+
+    #[test]
+    fn validate_clamps_token_limits() {
+        let mut config = Config::default();
+
+        config.max_input_tokens = TokenCount::new_saturating(MAX_INPUT + 1000);
+        config.max_output_tokens = TokenCount::new_saturating(MAX_OUTPUT + 1000);
+
+        config.validate();
+
+        assert_eq!(
+            config.max_input_tokens.get(),
+            MAX_INPUT,
+            "should clamp input tokens to hard limit"
+        );
+        assert_eq!(
+            config.max_output_tokens.get(),
+            MAX_OUTPUT,
+            "should clamp output tokens to hard limit"
+        );
+    }
+
+    #[test]
+    fn config_serialize_deserialize() {
+        let config = Config::default();
+        let toml_str = toml::to_string(&config).expect("should serialize to TOML");
+
+        assert!(!toml_str.contains("max_input_tokens"));
+        assert!(!toml_str.contains("max_output_tokens"));
+        assert!(!toml_str.contains("api_key"));
+
+        let deserialized: Config = toml::from_str(&toml_str).expect("should deserialize from TOML");
+        assert_eq!(deserialized.ignore_files, config.ignore_files);
+    }
+
+    #[test]
+    fn config_deserialize_with_missing_fields() {
+        let minimal_toml = r#"
+        ignore_files = ["test.lock"]
+        "#;
+        let config: Config = toml::from_str(minimal_toml).expect("should use defaults");
+        assert_eq!(config.ignore_files, vec!["test.lock"]);
+        assert_eq!(config.max_input_tokens.get(), 4096);
+    }
+
+    #[test]
+    fn apply_profile() {
+        let mut config = Config::default();
+        let profile = ProviderProfile {
+            name: "test-profile".to_string(),
+            provider: ProviderKind::Azure,
+            model: ModelName::from("gpt-4.1-mini"),
+            api_url: Some(Url::parse("https://api.azure.com").unwrap()),
+            api_key: Some("sk-azure-test".to_string()),
+            max_input_tokens: TokenCount::new_saturating(8192),
+            max_output_tokens: TokenCount::new_saturating(4096),
+            azure_api_version: Some("test-version".to_string()),
+            azure_deployment_id: Some("test-deployment".to_string()),
+        };
+
+        config.apply_profile(&profile);
+
+        assert_eq!(config.model_provider, ProviderKind::Azure);
+        assert_eq!(config.model, ModelName::from("gpt-4.1-mini"));
+        assert_eq!(config.max_input_tokens.get(), 8192);
+        assert_eq!(config.max_output_tokens.get(), 4096);
+        assert_eq!(config.api_key, Some("sk-azure-test".to_string()));
+        assert_eq!(
+            config.model_api_url.unwrap().as_str(),
+            "https://api.azure.com/"
+        );
+        assert_eq!(config.azure_api_version, Some("test-version".to_string()));
+        assert_eq!(
+            config.azure_deployment_id,
+            Some("test-deployment".to_string())
+        );
+    }
+
+    #[test]
+    fn to_profile() {
+        let mut config = Config::default();
+        config.model_provider = ProviderKind::OpenAI;
+        config.model = ModelName::from("gpt-5.2");
+        config.api_key = Some("sk-openai-test".to_string());
+        config.max_input_tokens = TokenCount::new_saturating(16384);
+        config.max_output_tokens = TokenCount::new_saturating(2048);
+
+        let profile = config.to_profile("openai-profile".to_string());
+
+        assert_eq!(profile.name, "openai-profile");
+        assert_eq!(profile.provider, ProviderKind::OpenAI);
+        assert_eq!(profile.model, ModelName::from("gpt-5.2"));
+        assert_eq!(profile.api_key, Some("sk-openai-test".to_string()));
+        assert_eq!(profile.max_input_tokens.get(), 16384);
+        assert_eq!(profile.max_output_tokens.get(), 2048);
     }
 }
