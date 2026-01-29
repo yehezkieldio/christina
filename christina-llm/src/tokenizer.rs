@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn tokenizer_count_tokens() {
-        let tokenizer = TokenizerService::new().expect("tokenizer creation should succeed");
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
 
         // Simple text should have tokens
         let count = tokenizer.count_tokens("Hello, world!");
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn tokenizer_slice_to_limit() {
-        let tokenizer = TokenizerService::new().expect("tokenizer creation should succeed");
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
         let text = "Hello, world! This is a longer text that has many tokens.";
 
         // Slicing to 3 tokens should return less text
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn tokenizer_slice_empty() {
-        let tokenizer = TokenizerService::new().expect("tokenizer creation should succeed");
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
 
         // Zero limit should return empty string
         let slice = tokenizer.slice_to_token_limit("Hello", TokenCount::new_saturating(1));

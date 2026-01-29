@@ -372,7 +372,7 @@ impl Default for Provider {
         {
             Provider::Mock {
                 response: "feat(core): implement async TUI event loop".to_string(),
-                delay_ms: 100,
+                delay_ms: 0,
             }
         }
         #[cfg(not(test))]

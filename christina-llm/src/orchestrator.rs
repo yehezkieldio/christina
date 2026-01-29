@@ -352,7 +352,7 @@ impl AIOrchestrator {
         chunks: &[DiffChunk],
     ) -> Result<(Vec<ChunkSummary>, usize, Vec<FilePath>)> {
         let map_concurrency = self.map_concurrency(chunks.len());
-        let retry_policy = RetryPolicy::default();
+        let retry_policy = self.retry_policy.clone();
         let mut futures = stream::iter(chunks.iter().cloned().map(move |chunk| {
             let provider = Arc::clone(&self.provider);
             let limiter = self.limiter.clone();
@@ -837,4 +837,448 @@ fn try_extract_valid_commit(
     }
 
     earliest_match.map(|(_, msg)| msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use christina_core::git::DiffChunk;
+    use christina_core::types::TokenCount;
+
+    fn sample_chunk() -> DiffChunk {
+        DiffChunk::new(
+            Arc::from("diff --git a/file.txt b/file.txt\n+new line\n"),
+            vec![FilePath::from("file.txt")],
+            TokenCount::new_saturating(10),
+        )
+    }
+
+    #[test]
+    fn extract_json_from_markdown() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"
+```json
+{"themes": [{"title": "Test", "description": "Test desc", "fileCount": 1, "scope": "feature"}]}
+```
+"#;
+
+        let json = orchestrator.extract_json(response);
+        assert!(json.starts_with('{'));
+        assert!(json.contains("\"themes\""));
+    }
+
+    #[test]
+    fn extract_json_raw() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"{"themes": [{"title": "Test", "description": "Test desc", "fileCount": 1, "scope": "feature"}]}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, response);
+    }
+
+    #[test]
+    fn clean_response() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = "Here is the commit message:\nfeat(auth): add login flow\n\nSome extra text";
+        let cleaned = orchestrator.clean_response(response);
+        assert_eq!(cleaned, "feat(auth): add login flow");
+    }
+
+    #[test]
+    fn clean_response_with_code_block() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = "```\nfeat(auth): add login flow\n```";
+        let cleaned = orchestrator.clean_response(response);
+        assert_eq!(cleaned, "feat(auth): add login flow");
+    }
+
+    #[tokio::test]
+    async fn orchestrate_empty_chunks() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let result = orchestrator
+            .generate_commit_message(Vec::new(), None, ValidationMode::default(), None, None)
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn orchestrate_single_chunk() {
+        let provider = Arc::new(Provider::mock("feat(core): add pipeline"));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let result = orchestrator
+            .generate_commit_message(
+                vec![sample_chunk()],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("generation should succeed: {}", e));
+        assert_eq!(result.message.as_ref(), "feat(core): add pipeline");
+        assert_eq!(result.total_chunks, 1);
+    }
+
+    #[tokio::test]
+    async fn orchestrate_many_chunks_batching() {
+        let responses = vec![
+            Ok("summary 1".to_string()),
+            Ok("summary 2".to_string()),
+            Ok("feat(core): add batching".to_string()),
+        ];
+        let provider = Arc::new(Provider::mock_sequence_with_delay(responses, 200));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let chunk = sample_chunk();
+        let result = orchestrator
+            .generate_commit_message(
+                vec![chunk.clone(), chunk],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("generation should succeed: {}", e));
+        assert_eq!(result.total_chunks, 2);
+        assert_eq!(result.message.as_ref(), "feat(core): add batching");
+    }
+
+    #[tokio::test]
+    async fn orchestrate_rate_limit_respected() {
+        let responses = vec![
+            Ok("summary 1".to_string()),
+            Ok("summary 2".to_string()),
+            Ok("feat(core): rate limit".to_string()),
+        ];
+        let provider = Arc::new(Provider::mock_sequence_with_delay(responses, 200));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let chunk = sample_chunk();
+        let start = std::time::Instant::now();
+        let result = orchestrator
+            .generate_commit_message(
+                vec![chunk.clone(), chunk],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("generation should succeed: {}", e));
+
+        assert_eq!(result.total_chunks, 2);
+        assert_eq!(result.message.as_ref(), "feat(core): rate limit");
+        assert!(start.elapsed() >= std::time::Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn orchestrate_retry_on_failure() {
+        tokio::time::pause();
+
+        let responses = vec![
+            Err(CompletionError::Timeout),
+            Ok("feat(core): retry success".to_string()),
+        ];
+        let provider = Arc::new(Provider::mock_sequence(responses));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let start = tokio::time::Instant::now();
+
+        let result = orchestrator
+            .generate_commit_message(
+                vec![sample_chunk()],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("generation should succeed after retry: {}", e));
+        assert_eq!(result.message.as_ref(), "feat(core): retry success");
+        assert!(start.elapsed() >= std::time::Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn map_phase_systemic_failure_aborts_immediately() {
+        // Systemic error (Unauthorized) should abort immediately without retrying
+        let provider = Arc::new(Provider::mock_sequence(vec![Err(
+            CompletionError::Unauthorized("Invalid API key".to_string()),
+        )]));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let chunk = sample_chunk();
+        let result = orchestrator
+            .generate_commit_message(
+                vec![chunk.clone(), chunk],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+            )
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Systemic provider failure"));
+        assert!(err_msg.contains("authentication issues"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn map_phase_partial_failure_within_threshold() {
+        // 1 failure out of 10 chunks = 10% failure rate (exactly at threshold)
+        // With 3 retries, failed chunk needs 4 error responses
+        let mut responses = Vec::new();
+
+        // First chunk: fails initially, then succeeds on retry
+        responses.push(Err(CompletionError::Timeout));
+        responses.push(Ok("summary 1".to_string()));
+
+        // Next 9 chunks succeed immediately
+        for i in 2..=10 {
+            responses.push(Ok(format!("summary {}", i)));
+        }
+
+        // Intent extraction phase (for >2 summaries)
+        responses.push(Ok(r#"{"themes": [{"title": "Test", "description": "Test theme", "fileCount": 10, "scope": "feat"}]}"#.to_string()));
+
+        // Final reduce phase
+        responses.push(Ok("feat(core): partial success".to_string()));
+
+        let provider = Arc::new(Provider::mock_sequence(responses));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let chunks: Vec<_> = (0..10).map(|_| sample_chunk()).collect();
+        let result = orchestrator
+            .generate_commit_message(chunks, None, ValidationMode::default(), None, None)
+            .await
+            .unwrap_or_else(|e| panic!("should succeed with transient failures: {}", e));
+
+        // The retry succeeded, so no failed chunks reported
+        assert_eq!(result.failed_chunks, 0);
+        assert_eq!(result.total_chunks, 10);
+        assert_eq!(result.message.as_ref(), "feat(core): partial success");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn map_phase_partial_failure_exceeds_threshold() {
+        // 2 failures out of 10 chunks = 20% failure rate (exceeds 10% threshold)
+        let mut responses = Vec::new();
+        // First 2 chunks fail
+        responses.push(Err(CompletionError::Timeout));
+        responses.push(Err(CompletionError::NetworkError(
+            "connection reset".to_string(),
+        )));
+        // Next 8 succeed
+        for i in 1..=8 {
+            responses.push(Ok(format!("summary {}", i)));
+        }
+
+        let provider = Arc::new(Provider::mock_sequence(responses));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let chunks: Vec<_> = (0..10).map(|_| sample_chunk()).collect();
+        let result = orchestrator
+            .generate_commit_message(chunks, None, ValidationMode::default(), None, None)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Partial failure rate too high"));
+        assert!(err_msg.contains("20%"));
+        assert!(err_msg.contains("10%"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn map_phase_all_chunks_fail() {
+        // All chunks fail - should abort with clear message
+        let responses = vec![Err(CompletionError::Timeout), Err(CompletionError::Timeout)];
+        let provider = Arc::new(Provider::mock_sequence(responses));
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let chunk = sample_chunk();
+        let result = orchestrator
+            .generate_commit_message(
+                vec![chunk.clone(), chunk],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+            )
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("All") && err_msg.contains("chunks failed"));
+    }
+
+    #[test]
+    fn extract_json_malformed_json_inside_markers() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"
+```json
+{"themes": [{"title": "Test", "description": "Missing closing brace"
+```
+"#;
+
+        let json = orchestrator.extract_json(response);
+        // Should extract what's between markers even if malformed
+        assert!(json.contains("\"themes\""));
+        assert!(json.contains("Missing closing brace"));
+    }
+
+    #[test]
+    fn extract_json_missing_closing_marker() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"
+```json
+{"themes": [{"title": "Test"}]}
+"#;
+
+        // Missing closing ```, should fall back to brace extraction
+        let json = orchestrator.extract_json(response);
+        assert!(json.starts_with('{'));
+        assert!(json.ends_with('}'));
+        assert!(json.contains("\"themes\""));
+    }
+
+    #[test]
+    fn extract_json_multiple_blocks_first_used() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"
+```json
+{"themes": [{"title": "First", "description": "First block", "fileCount": 1, "scope": "feat"}]}
+```
+
+Some text in between
+
+```json
+{"themes": [{"title": "Second", "description": "Second block", "fileCount": 2, "scope": "fix"}]}
+```
+"#;
+
+        let json = orchestrator.extract_json(response);
+        // Should use the FIRST block
+        assert!(json.contains("First"));
+        assert!(json.contains("First block"));
+        assert!(!json.contains("Second"));
+    }
+
+    #[test]
+    fn extract_json_no_markers_raw_json() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"{"themes": [{"title": "Raw", "description": "No markers", "fileCount": 1, "scope": "test"}]}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, response);
+    }
+
+    #[test]
+    fn extract_json_empty_content() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = "";
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, "");
+    }
+
+    #[test]
+    fn extract_json_non_json_content_inside_markers() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"
+```json
+This is not JSON at all, just plain text
+```
+"#;
+
+        let json = orchestrator.extract_json(response);
+        // Should extract content even if it's not valid JSON
+        assert_eq!(json.trim(), "This is not JSON at all, just plain text");
+    }
+
+    #[test]
+    fn extract_json_generic_code_block_with_json() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"
+```
+{"themes": [{"title": "Generic", "description": "Generic block", "fileCount": 1, "scope": "feat"}]}
+```
+"#;
+
+        let json = orchestrator.extract_json(response);
+        assert!(json.starts_with('{'));
+        assert!(json.contains("\"themes\""));
+        assert!(json.contains("Generic"));
+    }
+
+    #[test]
+    fn extract_json_json_in_text_no_braces() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = "Here is some text without any JSON content at all";
+
+        let json = orchestrator.extract_json(response);
+        // Should return the original text when no JSON structure is found
+        assert_eq!(json, response);
+    }
+
+    #[test]
+    fn extract_json_nested_braces() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"Some preamble {"outer": {"inner": {"deep": "value"}}} some suffix"#;
+
+        let json = orchestrator.extract_json(response);
+        // Should extract from first { to last }
+        assert_eq!(json, r#"{"outer": {"inner": {"deep": "value"}}}"#);
+    }
+
+    #[test]
+    fn calculate_history_budget() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        // Test: 4096 tokens → ~4 commits (4096 * 0.15 / 150 ≈ 4)
+        let budget_4k = orchestrator.calculate_history_budget(4096);
+        assert_eq!(budget_4k, 4);
+
+        // Test: 16384 tokens → ~16 commits (16384 * 0.15 / 150 ≈ 16)
+        let budget_16k = orchestrator.calculate_history_budget(16384);
+        assert_eq!(budget_16k, 16);
+
+        // Test: 1000 tokens → 3 commits (1000 * 0.15 / 150 ≈ 1, clamped to minimum 3)
+        let budget_1k = orchestrator.calculate_history_budget(1000);
+        assert_eq!(budget_1k, 3);
+
+        // Test: Very low token count respects minimum
+        let budget_very_low = orchestrator.calculate_history_budget(100);
+        assert_eq!(budget_very_low, 3);
+    }
 }

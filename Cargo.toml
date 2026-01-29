@@ -53,3 +53,6 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "unwind"
+
+[profile.test]
+opt-level = 1
