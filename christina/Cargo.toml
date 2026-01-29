@@ -19,7 +19,7 @@ tui-textarea = { version = "0.7.0", default-features = false, features = ["ratat
 ansi-to-tui = "7.0.0"
 tokio = { workspace = true }
 serde = { workspace = true }
-toml = { version = "0.8.19", default-features = false, features = ["parse", "display"] }
+toml = { version = "0.9.11", default-features = false, features = ["parse", "display"] }
 config = { version = "0.15.19", default-features = false, features = ["toml"] }
 directories = "6.0.0"
 which = "8.0.0"
