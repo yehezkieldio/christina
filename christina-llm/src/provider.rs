@@ -266,4 +266,71 @@ impl Provider {
             }
         }
     }
+
+    pub async fn generate(&self, messages: &[ChatMessage]) -> Result<String, CompletionError> {
+        match self {
+            Provider::OpenAI {
+                model,
+                api_key,
+                base_url,
+                max_tokens,
+                temperature,
+            } => {
+                crate::providers::openai::generate(
+                    model,
+                    api_key.as_str(),
+                    base_url.as_ref(),
+                    *max_tokens,
+                    *temperature,
+                    messages,
+                )
+                .await
+            }
+
+            Provider::Azure {
+                model,
+                api_key,
+                endpoint,
+                api_version,
+                deployment_id,
+                max_tokens,
+                temperature,
+            } => {
+                crate::providers::azure::generate(crate::providers::azure::AzureGenRequest {
+                    model,
+                    api_key: api_key.as_str(),
+                    endpoint,
+                    api_version,
+                    deployment_id,
+                    max_tokens: *max_tokens,
+                    temperature: *temperature,
+                    messages,
+                })
+                .await
+            }
+
+            Provider::Mock { response, delay_ms } => {
+                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+                Ok(response.clone())
+            }
+            Provider::MockSequence {
+                responses,
+                delay_ms,
+            } => {
+                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+
+                {
+                    let mut guard = responses
+                        .lock()
+                        .map_err(|_| CompletionError::NetworkError("mock lock poisoned".into()))?;
+                    if guard.is_empty() {
+                        return Err(CompletionError::InvalidResponse(
+                            "mock sequence exhausted".into(),
+                        ));
+                    }
+                    guard.remove(0)
+                }
+            }
+        }
+    }
 }
