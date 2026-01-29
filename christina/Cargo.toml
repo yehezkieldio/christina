@@ -17,6 +17,7 @@ clap = { version = "4.5.55", default-features = false, features = ["std", "deriv
 ratatui = { version = "0.29.0", default-features = false, features = ["crossterm"] }
 tui-textarea = { version = "0.7.0", default-features = false, features = ["ratatui", "crossterm"] }
 ansi-to-tui = "7.0.0"
+git2 = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 toml = { version = "0.9.11", default-features = false, features = ["parse", "display"] }
@@ -25,17 +26,13 @@ directories = "6.0.0"
 which = "8.0.0"
 mimalloc = { version = "0.1.48", default-features = false }
 cap = { version = "0.1.2" }
-regex = { workspace = true }
 parking_lot = { workspace = true }
 compact_str = { workspace = true }
 url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
 
-[dev-dependencies]
-tempfile = { workspace = true }
-
 [lints]
 workspace = true
 
 [features]
-dhat-cap = ["dhat"]
+dhat-heap = ["dhat"]
