@@ -7,7 +7,7 @@ edition = "2024"
 [dependencies]
 christina-core = { path = "../christina-core" }
 thiserror = { workspace = true }
-git2 = { version = "0.20.3", default-features = false }
+git2 = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

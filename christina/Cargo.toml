@@ -1,6 +1,41 @@
 [package]
 name = "christina"
 version = "0.1.0"
+description = "AI-powered conventional commit message generator."
 edition = "2024"
 
+[[bin]]
+name = "christina"
+path = "src/main.rs"
+
 [dependencies]
+christina-core = { path = "../christina-core" }
+christina-git = { path = "../christina-git" }
+christina-llm = { path = "../christina-llm" }
+anyhow = { workspace = true }
+clap = { version = "4.5.55", default-features = false, features = ["std", "derive", "help", "usage"] }
+ratatui = { version = "0.29.0", default-features = false, features = ["crossterm"] }
+tui-textarea = { version = "0.7.0", default-features = false, features = ["ratatui", "crossterm"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+toml = { version = "0.9.11", default-features = false, features = ["parse", "display"] }
+config = { version = "0.15.19", default-features = false, features = ["toml"] }
+directories = "6.0.0"
+ansi-to-tui = "8.0.1"
+which = "8.0.0"
+mimalloc = { version = "0.1.48", default-features = false }
+cap = { version = "0.1.2" }
+regex = { workspace = true }
+parking_lot = { workspace = true }
+compact_str = { workspace = true }
+url = { workspace = true }
+dhat = { version = "0.3.3", optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+dhat-cap = ["dhat"]
