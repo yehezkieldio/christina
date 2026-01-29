@@ -1,5 +1,6 @@
 pub mod concurrency;
 pub mod provider;
+pub mod providers;
 pub mod retry;
 pub mod tokenizer;
 
