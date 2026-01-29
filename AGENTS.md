@@ -34,11 +34,13 @@ A task is not complete unless all of the following pass:
 - `just clippy` with zero warnings
 - `just test` with all tests passing
 
+If modifying existing or adding new functionality, ensure that all relevant existing tests cover the change. If coverage is insufficient, add new tests as needed to verify correctness and prevent regressions. Always account for possible edge cases and unintended side effects.
+
 Additional rules:
 - Format code with `just format`
 - Treat all warnings as errors
 - Do not use `cargo build` as a quality gate
 - Do not suppress output using `--quiet` flags
-- Do not leave placeholders, or "future work" comments
+- Do not leave placeholders, "future work", or "in reality" comments
 
 If quality gates fail, the task is incomplete by definition.
