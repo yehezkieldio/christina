@@ -223,6 +223,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "compact_str",
+ "git2",
  "regex",
  "serde",
  "thiserror 2.0.18",
@@ -252,7 +253,6 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
  "tiktoken-rs",
  "tokio",
  "url",

@@ -20,11 +20,8 @@ pub struct ConfigApp {
 }
 
 impl ConfigApp {
-    /// Default number of visible rows for the form
-    const DEFAULT_VISIBLE_ROWS: usize = 20;
-
     pub fn new(config: Config, _has_api_key: bool, _api_key_source: Option<&'static str>) -> Self {
-        let form_state = FormState::new(&config, Self::DEFAULT_VISIBLE_ROWS);
+        let form_state = FormState::new(&config);
 
         Self {
             config,

@@ -98,9 +98,6 @@ impl ProfileApp {
         self.status_message = None;
     }
 
-    /// Default number of visible rows for the form
-    const FORM_VISIBLE_ROWS: usize = 15;
-
     pub fn open_create_modal(&mut self) {
         let new_profile = ProviderProfile::new(
             String::new(),
@@ -108,7 +105,7 @@ impl ProfileApp {
             ModelName::from("gpt-4"),
         );
         self.modal = Some(ModalType::CreateProfile);
-        self.form_state = Some(CoreFormState::new(&new_profile, Self::FORM_VISIBLE_ROWS));
+        self.form_state = Some(CoreFormState::new(&new_profile));
         self.edit_profile = Some(new_profile);
         self.target_profile_idx = None;
     }
@@ -119,7 +116,7 @@ impl ProfileApp {
         {
             let profile = self.profiles[idx].profile.clone();
             self.modal = Some(ModalType::EditProfile);
-            self.form_state = Some(CoreFormState::new(&profile, Self::FORM_VISIBLE_ROWS));
+            self.form_state = Some(CoreFormState::new(&profile));
             self.edit_profile = Some(profile);
             self.target_profile_idx = Some(idx);
         }
@@ -132,7 +129,7 @@ impl ProfileApp {
             let mut profile = self.profiles[idx].profile.clone();
             profile.name = format!("{} (copy)", profile.name);
             self.modal = Some(ModalType::DuplicateProfile);
-            self.form_state = Some(CoreFormState::new(&profile, Self::FORM_VISIBLE_ROWS));
+            self.form_state = Some(CoreFormState::new(&profile));
             self.edit_profile = Some(profile);
             self.target_profile_idx = None;
         }

@@ -462,29 +462,12 @@ impl crate::tui::form::editable::Editable for Config {
     fn fields(&self) -> Vec<crate::tui::form::editable::FieldDef> {
         use crate::tui::form::editable::{FieldDef, FieldType};
 
-        // General section - core settings always visible
         let mut fields = vec![
-            FieldDef::new("model_provider", "Provider")
-                .help("AI provider (openai, azure, etc.)")
-                .section("general")
-                .required(),
-            FieldDef::new("model", "Model")
-                .help("Model name (e.g., gpt-4.1-mini, claude-4.5-sonnet)")
-                .section("general")
-                .required(),
-            FieldDef::new("api_key", "API Key")
-                .help("API key for the provider (prefer keyring)")
-                .section("general")
-                .field_type(FieldType::Secret),
-            FieldDef::new("model_api_url", "API URL")
-                .help("Custom API endpoint URL (optional)")
-                .section("general"),
             FieldDef::new("max_input_tokens", "Max Input Tokens")
                 .help(format!(
                     "Maximum input tokens (0-{})",
                     MAX_INPUT
                 ))
-                .section("general")
                 .field_type(FieldType::Number {
                     min: Some(1),
                     max: Some(MAX_INPUT as i64),
@@ -495,71 +478,55 @@ impl crate::tui::form::editable::Editable for Config {
                     "Maximum output tokens (0-{})",
                     MAX_OUTPUT
                 ))
-                .section("general")
                 .field_type(FieldType::Number {
                     min: Some(1),
                     max: Some(MAX_OUTPUT as i64),
                 })
                 .required(),
+            FieldDef::new("model_provider", "Provider")
+                .help("AI provider (openai, azure, etc.)")
+                .required(),
+            FieldDef::new("model", "Model")
+                .help("Model name (e.g., gpt-4.1-mini, claude-4.5-sonnet)")
+                .required(),
+            FieldDef::new("api_key", "API Key")
+                .help("API key for the provider (prefer keyring)")
+                .field_type(FieldType::Secret),
+            FieldDef::new("model_api_url", "API URL").help("Custom API endpoint URL (optional)"),
+            FieldDef::new("ignore_files", "Ignore Files")
+                .help("Comma-separated list of files to ignore")
+                .field_type(FieldType::Text),
             FieldDef::new("commit_message_max_length", "Commit Message Max Length")
-                .help("Maximum commit message length (default: 72)")
-                .section("general"),
-        ];
+                .help("Maximum commit message length (default: 72)"),
+            FieldDef::new("commit_message_validation_mode", "Commit Message Validation")
+                .help("Validation mode: strict, soft, or disabled (default: soft)"),
+            FieldDef::new("diff_tool", "Diff Tool")
+                .help("Diff tool: auto, delta, difftastic, diff-so-fancy, git, basic (default: auto)"),
+             FieldDef::new("diff_show_preview", "Show Diff Preview")
+                 .help("Show diff preview panel on dashboard (default: true)")
+                 .field_type(FieldType::Boolean),
+             FieldDef::new("use_commit_history", "Use Commit History")
+                 .help("Include commit history context in LLM prompts for style consistency (default: false)")
+                 .field_type(FieldType::Boolean),
+             FieldDef::new("commit_history_depth", "Commit History Depth")
+                 .help("Number of recent commits to analyze for style (5-20, default: 5)")
+                 .field_type(FieldType::Number {
+                     min: Some(5),
+                     max: Some(20),
+                 }),
+         ];
 
-        // Azure-specific fields (in general section when provider is Azure)
+        // Add Azure-specific fields if provider is azure
         if self.model_provider == ProviderKind::Azure {
             fields.push(
                 FieldDef::new("azure_api_version", "Azure API Version")
-                    .help("Azure OpenAI API version (e.g., 2024-02-15-preview)")
-                    .section("general"),
+                    .help("Azure OpenAI API version (e.g., 2024-02-15-preview)"),
             );
             fields.push(
                 FieldDef::new("azure_deployment_id", "Azure Deployment ID")
-                    .help("Azure deployment/model name")
-                    .section("general"),
+                    .help("Azure deployment/model name"),
             );
         }
-
-        // Advanced section - commit history, ignore files, diff tool
-        fields.push(
-            FieldDef::new("use_commit_history", "Use Commit History")
-                .help("Include commit history context in LLM prompts for style consistency (default: false)")
-                .section("advanced")
-                .field_type(FieldType::Boolean),
-        );
-        fields.push(
-            FieldDef::new("commit_history_depth", "Commit History Depth")
-                .help("Number of recent commits to analyze for style (5-20, default: 5)")
-                .section("advanced")
-                .field_type(FieldType::Number {
-                    min: Some(5),
-                    max: Some(20),
-                }),
-        );
-        fields.push(
-            FieldDef::new("ignore_files", "Ignore Files")
-                .help("Comma-separated list of files to ignore")
-                .section("advanced")
-                .field_type(FieldType::Text),
-        );
-        fields.push(
-            FieldDef::new("diff_tool", "Diff Tool")
-                .help("Diff tool: auto, delta, difftastic, diff-so-fancy, git, basic (default: auto)")
-                .section("advanced"),
-        );
-        fields.push(
-            FieldDef::new("diff_show_preview", "Show Diff Preview")
-                .help("Show diff preview panel on dashboard (default: true)")
-                .section("advanced")
-                .field_type(FieldType::Boolean),
-        );
-
-        // Experimental section - validation mode
-        fields.push(
-            FieldDef::new("commit_message_validation_mode", "Commit Message Validation")
-                .help("Validation mode: strict, soft, or disabled (default: soft)")
-                .section("experimental"),
-        );
 
         fields
     }

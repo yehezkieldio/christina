@@ -1,23 +1,23 @@
 use ratatui::style::Color;
 
-// Base colors
-pub const BASE: Color = Color::Rgb(30, 30, 46); // #1e1e2e
+// Base colors - using terminal defaults for adaptive theming
+pub const BASE: Color = Color::Reset;
 
-// Text colors
-pub const TEXT: Color = Color::Rgb(205, 214, 244); // #cdd6f4
-pub const SUBTEXT0: Color = Color::Rgb(166, 173, 200); // #a6adc8
-pub const SUBTEXT1: Color = Color::Rgb(186, 194, 222); // #bac2de
+// Text colors - standard terminal colors that adapt to user's theme
+pub const TEXT: Color = Color::Reset;
+pub const SUBTEXT0: Color = Color::DarkGray;
+pub const SUBTEXT1: Color = Color::Gray;
 
-// Surface colors
-pub const SURFACE0: Color = Color::Rgb(49, 50, 68); // #313244
-pub const SURFACE1: Color = Color::Rgb(69, 71, 90); // #45475a
-pub const OVERLAY0: Color = Color::Rgb(108, 112, 134); // #6c7086
+// Surface colors - using terminal color palette
+pub const SURFACE0: Color = Color::Black;
+pub const SURFACE1: Color = Color::DarkGray;
+pub const OVERLAY0: Color = Color::Gray;
 
-// Accent colors
-pub const ROSEWATER: Color = Color::Rgb(245, 224, 220); // #f5e0dc
-pub const RED: Color = Color::Rgb(243, 139, 168); // #f38ba8
-pub const GREEN: Color = Color::Rgb(166, 227, 161); // #a6e3a1
-pub const BLUE: Color = Color::Rgb(137, 180, 250); // #89b4fa
+// Accent colors - standard ANSI colors
+pub const ROSEWATER: Color = Color::LightMagenta;
+pub const RED: Color = Color::Red;
+pub const GREEN: Color = Color::Green;
+pub const BLUE: Color = Color::Blue;
 
 // Checkbox states
 pub const CHECKBOX_SELECTED: &str = " ●  ";

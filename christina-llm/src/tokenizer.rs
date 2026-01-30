@@ -1,17 +1,14 @@
 use std::{num::NonZeroUsize, sync::OnceLock};
 
-use christina_core::{Tokenizer, types::TokenCount};
+use christina_core::{
+    error::{TokenizerError, TokenizerResult},
+    types::TokenCount,
+    Tokenizer,
+};
 use parking_lot::Mutex;
-use thiserror::Error;
 use tiktoken_rs::CoreBPE;
 
-#[derive(Debug, Error)]
-pub enum TokenizerError {
-    #[error("Tokenizer error: {0}")]
-    Tokenizer(String),
-}
-
-pub type Result<T> = std::result::Result<T, TokenizerError>;
+pub type Result<T> = TokenizerResult<T>;
 
 static TOKENIZER: OnceLock<TokenizerService> = OnceLock::new();
 

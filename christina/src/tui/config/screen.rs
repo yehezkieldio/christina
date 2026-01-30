@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
 
 use super::super::theme::*;
@@ -11,29 +11,15 @@ use super::app::ConfigApp;
 use crate::tui::form::FormWidget;
 
 pub fn render(frame: &mut Frame, app: &mut ConfigApp) {
-    let area = frame.area();
-
-    // Calculate available space for form (accounting for header and footer)
-    let header_height = 3u16;
-    let footer_height = 3u16;
-    let form_height = area
-        .height
-        .saturating_sub(header_height + footer_height + 4); // 4 for margins
-
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Length(header_height), // Header
-            Constraint::Length(form_height),   // Form (scrollable)
-            Constraint::Length(footer_height), // Footer
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Form
+            Constraint::Length(3), // Footer
         ])
-        .split(area);
-
-    // Update visible rows in form state based on available space
-    // Account for: borders (2), title (1), help area (3) = ~6 lines overhead
-    let visible_field_rows = form_height.saturating_sub(10) as usize;
-    app.form_state.set_visible_rows(visible_field_rows.max(5));
+        .split(frame.area());
 
     // Header / breadcrumb
     let active_profile = app.config.profiles.active.as_deref().unwrap_or("none");
@@ -50,7 +36,7 @@ pub fn render(frame: &mut Frame, app: &mut ConfigApp) {
 
     frame.render_widget(header, chunks[0]);
 
-    // Form widget with sections
+    // Form widget
     let title = if app.has_changes {
         " Settings [modified] "
     } else {
@@ -65,7 +51,7 @@ pub fn render(frame: &mut Frame, app: &mut ConfigApp) {
         Line::from(vec![Span::styled(msg.as_str(), Style::default().fg(GREEN))])
     } else {
         Line::from(vec![Span::styled(
-            "Use ↑↓ to navigate fields, Tab for sections",
+            "Use ↑↓ to navigate, Enter to edit, Space for booleans",
             Style::default().fg(OVERLAY0).italic(),
         )])
     };
@@ -73,8 +59,6 @@ pub fn render(frame: &mut Frame, app: &mut ConfigApp) {
     let keybindings = Line::from(vec![
         Span::styled("↑↓", Style::default().fg(SUBTEXT0)),
         Span::styled(" navigate ", Style::default().fg(OVERLAY0)),
-        Span::styled("tab", Style::default().fg(SUBTEXT0)),
-        Span::styled(" sections ", Style::default().fg(OVERLAY0)),
         Span::styled("enter", Style::default().fg(ROSEWATER)),
         Span::styled(" edit ", Style::default().fg(OVERLAY0)),
         Span::styled("ctrl+s", Style::default().fg(GREEN)),

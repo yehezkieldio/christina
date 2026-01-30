@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 
 use git2::{Diff, DiffFormat, DiffOptions, Repository};
 
+use christina_core::error::{GitError, GitResult};
 use christina_core::git::GitFileStatus;
 use christina_core::types::{CommitMessage, FilePath};
 
@@ -17,20 +18,8 @@ pub struct CommitInfo {
     pub subject: String,
 }
 
-/// Error type for git operations
-#[derive(Debug, thiserror::Error)]
-pub enum GitError {
-    #[error("Git error: {0}")]
-    Git(String),
-    #[error("Git2 error: {0}")]
-    Git2(#[from] git2::Error),
-    #[error("GPG config invalid: {0}")]
-    GpgConfigInvalid(String),
-    #[error("GPG signing failed: {0}")]
-    GpgSigningFailed(String),
-}
-
-pub type Result<T> = std::result::Result<T, GitError>;
+/// Re-exported for backward compatibility. Use `christina_core::error::GitResult`.
+pub type Result<T> = GitResult<T>;
 
 pub struct GitRepository {
     inner: Repository,

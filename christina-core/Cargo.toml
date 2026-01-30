@@ -7,6 +7,7 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 compact_str = { workspace = true }
+git2 = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

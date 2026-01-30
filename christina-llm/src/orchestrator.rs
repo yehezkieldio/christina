@@ -6,8 +6,9 @@ use futures::stream::{self, StreamExt};
 use serde::Deserialize;
 
 use crate::concurrency::RequestLimiter;
-use crate::provider::{ChatMessage, CompletionError, Provider};
+use crate::provider::{ChatMessage, Provider};
 use crate::retry::{IsTransient, RetryPolicy};
+use christina_core::error::CompletionError;
 use christina_core::prompt::{PromptBuilder, Theme};
 
 use christina_core::git::DiffChunk;
@@ -840,6 +841,7 @@ fn try_extract_valid_commit(
 }
 
 #[cfg(test)]
+#[allow(clippy::panic, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use christina_core::git::DiffChunk;

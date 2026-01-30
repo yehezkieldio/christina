@@ -12,8 +12,8 @@ use crate::app::state::{AbortOnDrop, GenerationState};
 use crate::bootstrap::TerminalHandle;
 use crate::generate::generate_commit_message_with_progress;
 use crate::tui::render;
-use christina_core::AppState;
-use christina_git::{GitRepository, repository::GitError};
+use christina_core::{AppState, GitError};
+use christina_git::GitRepository;
 
 use handlers::{
     format_error_message, handle_generation_complete, handle_generation_error, handle_input,

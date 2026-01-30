@@ -16,7 +16,6 @@ pub struct FieldDef {
     pub field_type: FieldType,
     pub required: bool,
     pub read_only: bool,
-    pub section: Option<&'static str>,
 }
 
 impl FieldDef {
@@ -29,7 +28,6 @@ impl FieldDef {
             field_type: FieldType::Text,
             required: false,
             read_only: false,
-            section: None,
         }
     }
 
@@ -45,11 +43,6 @@ impl FieldDef {
 
     pub fn required(mut self) -> Self {
         self.required = true;
-        self
-    }
-
-    pub fn section(mut self, section: &'static str) -> Self {
-        self.section = Some(section);
         self
     }
 }

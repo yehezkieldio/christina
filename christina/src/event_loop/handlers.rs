@@ -1,11 +1,11 @@
+use christina_core::error::CompletionError;
 use christina_core::types::{CommitMessage, TokenCount};
 use compact_str::CompactString;
 
-use crate::app::App;
 use crate::app::state::GenerationState;
+use crate::app::App;
 use crate::tui::handle_key;
 use christina_core::{AppState, ReviewAction};
-use christina_llm::CompletionError;
 
 pub fn handle_input(app: &mut App, key: ratatui::crossterm::event::KeyEvent) {
     handle_key(app, key);
