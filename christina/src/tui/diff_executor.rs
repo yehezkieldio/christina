@@ -188,7 +188,6 @@ fn render_with_git(diff_content: &str) -> Result<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

@@ -160,16 +160,16 @@ pub struct AIOrchestrator {
 
 impl AIOrchestrator {
     pub fn new(provider: Arc<Provider>) -> Self {
-        // Use EnvConfig for centralized environment variable handling
-        let env_config = christina_core::EnvConfig::from_env();
-        
         // Clamp concurrency to sane range [1, 20] to prevent:
         //
         // - Deadlock if set to 0 (blocks forever)
         // - Resource exhaustion if set too high
-        let concurrency_limit = env_config
-            .concurrency_limit
-            .map(|limit| limit.clamp(1, 20) as usize)
+        let concurrency_limit = std::env::var("CHRISTINA_CONCURRENCY_LIMIT")
+            .ok() // missing env means default
+            .and_then(|s| {
+                let parsed: usize = s.parse().ok()?; // invalid value -> default
+                Some(parsed.clamp(1, 20))
+            })
             .unwrap_or(MAX_CONCURRENT_REQUESTS);
 
         Self {
@@ -736,7 +736,7 @@ impl AIOrchestrator {
 }
 
 fn debug_enabled() -> bool {
-    christina_core::EnvConfig::from_env().debug.unwrap_or(false)
+    std::env::var_os("CHRISTINA_DEBUG").is_some()
 }
 
 fn timeout_for_attempt(attempt: u32) -> Duration {

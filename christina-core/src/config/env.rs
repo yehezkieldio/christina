@@ -123,8 +123,6 @@ mod tests {
 
     #[test]
     fn test_parse_env_bool() {
-        // Note: We can't actually set env vars in tests without affecting other tests,
-        // so we just test the parsing logic indirectly
         assert_eq!(parse_env_bool("NONEXISTENT"), None);
     }
 

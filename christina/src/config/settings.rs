@@ -548,7 +548,13 @@ impl crate::tui::form::editable::Editable for Config {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used, clippy::field_reassign_with_default)]
+#[allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::field_reassign_with_default,
+    clippy::unwrap_err
+)]
 mod tests {
     use super::*;
 

@@ -1,10 +1,10 @@
 use ratatui::{
-    Frame,
     crossterm::event::KeyEvent,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
+    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -16,7 +16,7 @@ const HISTORY_CHAR_THRESHOLD: usize = 10;
 
 /// Validate that a message follows Conventional Commits format
 fn validate_conventional_commit(message: &str) -> bool {
-    CommitMessage::try_from(message.trim().to_string()).is_ok()
+    christina_core::validation::validate_commit_message(message, None).is_ok()
 }
 
 #[derive(Clone, Debug)]

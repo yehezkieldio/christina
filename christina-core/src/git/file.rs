@@ -10,8 +10,12 @@ pub const BINARY_EXTENSIONS: &[&str] = &[
     ".woff2", ".mp3", ".mp4", ".avi", ".mov", ".mkv", ".db", ".sqlite", ".bin",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GitFileStatus {
+/// Unified file status type representing the state of a file in git.
+///
+/// This is the canonical type used across all crates to represent file status,
+/// eliminating the previous duplication between `FileStatus` and `GitFileStatus`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FileStatus {
     Added,
     Modified,
     Deleted,
@@ -21,31 +25,34 @@ pub enum GitFileStatus {
     Unknown,
 }
 
-impl GitFileStatus {
+impl FileStatus {
+    /// Get the single-character representation used by git.
     pub fn as_char(&self) -> char {
         match self {
-            GitFileStatus::Added => 'A',
-            GitFileStatus::Modified => 'M',
-            GitFileStatus::Deleted => 'D',
-            GitFileStatus::Renamed => 'R',
-            GitFileStatus::Copied => 'C',
-            GitFileStatus::Untracked => '?',
-            GitFileStatus::Unknown => '?',
+            FileStatus::Added => 'A',
+            FileStatus::Modified => 'M',
+            FileStatus::Deleted => 'D',
+            FileStatus::Renamed => 'R',
+            FileStatus::Copied => 'C',
+            FileStatus::Untracked => '?',
+            FileStatus::Unknown => '?',
         }
     }
 
+    /// Create from a single character.
     pub fn from_char(c: char) -> Self {
         match c {
-            'A' => GitFileStatus::Added,
-            'M' => GitFileStatus::Modified,
-            'D' => GitFileStatus::Deleted,
-            'R' => GitFileStatus::Renamed,
-            'C' => GitFileStatus::Copied,
-            '?' => GitFileStatus::Untracked,
-            _ => GitFileStatus::Unknown,
+            'A' => FileStatus::Added,
+            'M' => FileStatus::Modified,
+            'D' => FileStatus::Deleted,
+            'R' => FileStatus::Renamed,
+            'C' => FileStatus::Copied,
+            '?' => FileStatus::Untracked,
+            _ => FileStatus::Unknown,
         }
     }
 
+    /// Parse from a string (single char or full word).
     pub fn parse(s: &str) -> Self {
         if s.len() == 1 {
             #[expect(
@@ -55,17 +62,18 @@ impl GitFileStatus {
             Self::from_char(s.chars().next().unwrap())
         } else {
             match s.to_uppercase().as_str() {
-                "ADDED" => GitFileStatus::Added,
-                "MODIFIED" => GitFileStatus::Modified,
-                "DELETED" => GitFileStatus::Deleted,
-                "RENAMED" => GitFileStatus::Renamed,
-                "COPIED" => GitFileStatus::Copied,
-                "UNTRACKED" => GitFileStatus::Untracked,
-                _ => GitFileStatus::Unknown,
+                "ADDED" => FileStatus::Added,
+                "MODIFIED" => FileStatus::Modified,
+                "DELETED" => FileStatus::Deleted,
+                "RENAMED" => FileStatus::Renamed,
+                "COPIED" => FileStatus::Copied,
+                "UNTRACKED" => FileStatus::Untracked,
+                _ => FileStatus::Unknown,
             }
         }
     }
 
+    /// Check if a file path might be binary based on extension.
     pub fn might_be_binary(&self, path: &str) -> bool {
         BINARY_EXTENSIONS
             .iter()
@@ -73,24 +81,29 @@ impl GitFileStatus {
     }
 }
 
-impl fmt::Display for GitFileStatus {
+impl fmt::Display for FileStatus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_char())
     }
 }
 
+/// Legacy alias for backward compatibility.
+///
+/// New code should use `FileStatus` directly.
+pub type GitFileStatus = FileStatus;
+
 #[derive(Debug, Clone)]
 pub struct GitFile {
     pub path: FilePath,
     pub status: CompactString,
-    pub status_enum: GitFileStatus,
+    pub status_enum: FileStatus,
     pub diff_content: String,
     pub is_binary: bool,
 }
 
 impl GitFile {
     pub fn new(path: String, status: String, diff_content: String) -> Self {
-        let status_enum = GitFileStatus::parse(&status);
+        let status_enum = FileStatus::parse(&status);
         let is_binary = status_enum.might_be_binary(&path)
             || diff_content.contains("Binary files")
             || diff_content.bytes().any(|b| b == 0);
@@ -118,36 +131,37 @@ impl fmt::Display for GitFile {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
     #[test]
-    fn git_file_status_parse_char() {
-        assert_eq!(GitFileStatus::parse("A"), GitFileStatus::Added);
-        assert_eq!(GitFileStatus::parse("M"), GitFileStatus::Modified);
-        assert_eq!(GitFileStatus::parse("D"), GitFileStatus::Deleted);
-        assert_eq!(GitFileStatus::parse("R"), GitFileStatus::Renamed);
-        assert_eq!(GitFileStatus::parse("C"), GitFileStatus::Copied);
-        assert_eq!(GitFileStatus::parse("?"), GitFileStatus::Untracked);
-        assert_eq!(GitFileStatus::parse("X"), GitFileStatus::Unknown);
+    fn file_status_parse_char() {
+        assert_eq!(FileStatus::parse("A"), FileStatus::Added);
+        assert_eq!(FileStatus::parse("M"), FileStatus::Modified);
+        assert_eq!(FileStatus::parse("D"), FileStatus::Deleted);
+        assert_eq!(FileStatus::parse("R"), FileStatus::Renamed);
+        assert_eq!(FileStatus::parse("C"), FileStatus::Copied);
+        assert_eq!(FileStatus::parse("?"), FileStatus::Untracked);
+        assert_eq!(FileStatus::parse("X"), FileStatus::Unknown);
     }
 
     #[test]
-    fn git_file_status_parse_words() {
-        assert_eq!(GitFileStatus::parse("added"), GitFileStatus::Added);
-        assert_eq!(GitFileStatus::parse("MODIFIED"), GitFileStatus::Modified);
-        assert_eq!(GitFileStatus::parse("deleted"), GitFileStatus::Deleted);
-        assert_eq!(GitFileStatus::parse("RENAMED"), GitFileStatus::Renamed);
-        assert_eq!(GitFileStatus::parse("copied"), GitFileStatus::Copied);
-        assert_eq!(GitFileStatus::parse("untracked"), GitFileStatus::Untracked);
-        assert_eq!(GitFileStatus::parse("unknown"), GitFileStatus::Unknown);
+    fn file_status_parse_words() {
+        assert_eq!(FileStatus::parse("added"), FileStatus::Added);
+        assert_eq!(FileStatus::parse("MODIFIED"), FileStatus::Modified);
+        assert_eq!(FileStatus::parse("deleted"), FileStatus::Deleted);
+        assert_eq!(FileStatus::parse("RENAMED"), FileStatus::Renamed);
+        assert_eq!(FileStatus::parse("copied"), FileStatus::Copied);
+        assert_eq!(FileStatus::parse("untracked"), FileStatus::Untracked);
+        assert_eq!(FileStatus::parse("unknown"), FileStatus::Unknown);
     }
 
     #[test]
-    fn git_file_status_binary_heuristic() {
-        assert!(GitFileStatus::Added.might_be_binary("image.PNG"));
-        assert!(GitFileStatus::Added.might_be_binary("archive.tar.gz"));
-        assert!(!GitFileStatus::Added.might_be_binary("src/main.rs"));
+    fn file_status_binary_heuristic() {
+        assert!(FileStatus::Added.might_be_binary("image.PNG"));
+        assert!(FileStatus::Added.might_be_binary("archive.tar.gz"));
+        assert!(!FileStatus::Added.might_be_binary("src/main.rs"));
     }
 
     #[test]
@@ -161,5 +175,13 @@ mod tests {
     fn git_file_extension() {
         let file = GitFile::new("src/lib.rs".to_string(), "A".to_string(), "".to_string());
         assert_eq!(file.extension(), Some("rs"));
+    }
+
+    // Legacy alias tests
+    #[test]
+    fn git_file_status_alias() {
+        // Ensure the alias works
+        let _: GitFileStatus = FileStatus::Added;
+        assert_eq!(FileStatus::Added, GitFileStatus::Added);
     }
 }
