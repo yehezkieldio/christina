@@ -27,7 +27,7 @@
 
 ### Issue 4: Library Had Direct stderr Output
 **Original Plan**: Orchestrator kept as-is with `eprintln!` debug statements  
-**Problem**: Library not hermetic. Web API mode impossible. Test output polluted.  
+**Problem**: Library not hermetic. Test output polluted.  
 **Fix**: Injected `Logger` trait. Library uses `&dyn Logger`, binary provides implementation.
 
 ### Issue 5: StateMachine Didn't Own Screen States
@@ -516,6 +516,13 @@ With continuous and autonomous AI coding agents, this should be done in few minu
 
 ### Phase 1: Library Hardening
 
+0. **Backup Current State**
+   - Move folders `christina`, `christina-core`, `christina-git`, `christina-llm` to `backup/`
+   - Create new empty `christina-core/` and `christina/` folders
+   - We are strarting fresh, not modifying existing code
+   - Do not cargo check or utilize LSP until code is migrated or rewritten
+   - Focus on code implementation only, with checking at the very end, as this is a large refactor/rewrite
+
 1. **Create Repository trait**
    - Define trait in `christina-core/src/git/mod.rs`
    - Move `GitRepository` to `christina-core/src/git/repo.rs`
@@ -580,7 +587,6 @@ All original test cases plus:
 - [ ] `Repository` is a trait, not concrete type in binary
 - [ ] No `eprintln!` in library crates
 - [ ] State mutations only through `StateMachine`
-- [ ] Web API can be built using library (compile check)
 
 ---
 
@@ -624,7 +630,7 @@ All original test cases plus:
 
 This hardened architecture ensures:
 
-1. **Library is truly hermetic** - Can be used by TUI, CLI, web API, or tests
+1. **Library is truly hermetic** - Can be used by TUI, CLI, or tests
 2. **Boundaries are enforced** - Type system prevents I/O in library
 3. **Single authority** - StateMachine prevents race conditions and drift
 4. **Future-proof** - Repository trait allows new VCS, Logger allows new outputs
