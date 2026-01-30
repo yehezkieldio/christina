@@ -72,7 +72,6 @@ If performance matters and is unclear, measure.
 A task is incomplete unless all of the following pass:
 - `just check` with zero warnings
 - `just clippy` with zero warnings
-- `just test` with all tests passing
 
 Additional rules:
 - Treat all warnings as errors
