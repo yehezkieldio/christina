@@ -1,4 +1,5 @@
 #![allow(unused_crate_dependencies)]
+#![allow(clippy::panic)]
 
 use christina_core::git::DiffChunk;
 use christina_core::types::TokenCount;

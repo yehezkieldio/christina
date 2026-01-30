@@ -1,3 +1,5 @@
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -9,7 +11,7 @@ pub struct RetryPolicy {
     pub max_retries: u32,
     /// Base delay in milliseconds for exponential backoff.
     pub base_delay_ms: u64,
-    /// Whether to add random jitter to avoid thundering herd.
+    /// Whether to use full jitter (0 to max) instead of additive jitter.
     pub with_jitter: bool,
 }
 
@@ -40,12 +42,30 @@ impl RetryPolicy {
     }
 
     /// Calculate delay for a given retry attempt (0-indexed).
+    ///
+    /// Uses full jitter (random delay between 0 and max) to prevent
+    /// thundering herd. Without jitter, returns deterministic exponential delay.
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
-        let base = self.base_delay_ms * 2_u64.pow(attempt);
+        let max_delay_ms = self.base_delay_ms * 2_u64.pow(attempt);
         let delay_ms = if self.with_jitter {
-            base + rand_jitter(base)
+            // Full jitter: random delay between 0 and max
+            rand_jitter(max_delay_ms)
         } else {
-            base
+            max_delay_ms
+        };
+        Duration::from_millis(delay_ms)
+    }
+
+    /// Calculate delay with a specific seed for deterministic jitter.
+    ///
+    /// This is useful when you want different delays for concurrent requests
+    /// that would otherwise retry at the same time.
+    pub fn calculate_delay_with_seed(&self, attempt: u32, seed: u64) -> Duration {
+        let max_delay_ms = self.base_delay_ms * 2_u64.pow(attempt);
+        let delay_ms = if self.with_jitter {
+            rand_jitter_with_seed(max_delay_ms, seed)
+        } else {
+            max_delay_ms
         };
         Duration::from_millis(delay_ms)
     }
@@ -101,12 +121,23 @@ where
     Err(last_error.expect("retry loop should have at least one error"))
 }
 
+/// Generate random jitter in range [0, max] using current time.
 fn rand_jitter(max: u64) -> u64 {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
+    rand_jitter_with_seed(max, 0)
+}
+
+/// Generate random jitter in range [0, max] using a seed for distribution.
+///
+/// Different seeds produce different jitter values even when called
+/// at the same time, preventing thundering herd for concurrent requests.
+fn rand_jitter_with_seed(max: u64, seed: u64) -> u64 {
+    if max == 0 {
+        return 0;
+    }
 
     let random_state = RandomState::new();
     let mut hasher = random_state.build_hasher();
+    hasher.write_u64(seed);
     hasher.write_u64(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -314,4 +345,55 @@ mod tests {
 
         assert!(start.elapsed() >= Duration::from_millis(5));
     }
+
+    #[test]
+    fn delay_with_seed_produces_different_values() {
+        let policy = RetryPolicy::default();
+        let base_seed = 12345u64;
+
+        // Different seeds should produce different delays
+        let delay1 = policy.calculate_delay_with_seed(1, base_seed);
+        let delay2 = policy.calculate_delay_with_seed(1, base_seed + 1);
+        let delay3 = policy.calculate_delay_with_seed(1, base_seed + 2);
+
+        // All should be within valid range (0 to 2000ms for attempt 1)
+        assert!(delay1 <= Duration::from_millis(2000));
+        assert!(delay2 <= Duration::from_millis(2000));
+        assert!(delay3 <= Duration::from_millis(2000));
+
+        // With full jitter and different seeds, delays should differ
+        // (not guaranteed but highly probable)
+        let delays = [delay1, delay2, delay3];
+        let unique_delays: std::collections::HashSet<_> = delays.iter().collect();
+        assert!(
+            unique_delays.len() > 1,
+            "Expected different delays for different seeds, got {:?}",
+            delays
+        );
+    }
+
+    #[test]
+    fn full_jitter_range() {
+        let policy = RetryPolicy::default();
+        let mut seen_values = std::collections::HashSet::new();
+
+        // Collect multiple samples to verify distribution
+        for i in 0..100 {
+            let delay = policy.calculate_delay_with_seed(0, i);
+            seen_values.insert(delay.as_millis() as u64);
+            assert!(
+                delay <= Duration::from_millis(1000),
+                "Delay {:?} exceeds max 1000ms",
+                delay
+            );
+        }
+
+        // Should have good distribution (at least 50 unique values)
+        assert!(
+            seen_values.len() >= 50,
+            "Expected good distribution, got {} unique values out of 100",
+            seen_values.len()
+        );
+    }
+
 }

@@ -88,10 +88,7 @@ impl CompletionError {
     pub fn is_provider_error(&self) -> bool {
         matches!(
             self,
-            CompletionError::Unauthorized(_)
-                | CompletionError::RateLimited
-                | CompletionError::ServerError(_)
-                | CompletionError::NetworkError(_)
+            CompletionError::ServerError(_) | CompletionError::NetworkError(_)
         )
     }
 

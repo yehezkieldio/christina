@@ -173,9 +173,13 @@ impl AIOrchestrator {
             })
             .unwrap_or(MAX_CONCURRENT_REQUESTS);
 
+        // Rate limit: 5 requests per second to stay well under typical API limits
+        // This prevents thundering herd by spacing out requests proactively
+        let requests_per_second = 5.0;
+
         Self {
             provider,
-            limiter: RequestLimiter::new(concurrency_limit),
+            limiter: RequestLimiter::new(concurrency_limit, requests_per_second),
             retry_policy: RetryPolicy::default(),
             concurrency_limit,
         }
@@ -604,29 +608,97 @@ impl AIOrchestrator {
     }
 
     /// Extract JSON from a response that might contain markdown formatting.
+    ///
+    /// Uses a brace-balancing algorithm to find the outermost valid JSON object
+    /// when markdown markers are missing or incomplete.
     fn extract_json(&self, response: &str) -> String {
-        if let Some(start) = response.find("```json")
-            && let Some(end) = response[start + 7..].find("```")
-        {
-            return response[start + 7..start + 7 + end].trim().to_string();
+        // Try markdown code block extraction first
+        if let Some(content) = Self::extract_from_markdown(response) {
+            return content;
         }
 
-        if let Some(start) = response.find("```")
-            && let Some(end) = response[start + 3..].find("```")
-        {
-            let content = response[start + 3..start + 3 + end].trim();
-            if content.starts_with('{') {
-                return content.to_string();
-            }
-        }
-
-        if let Some(start) = response.find('{')
-            && let Some(end) = response.rfind('}')
-        {
-            return response[start..=end].to_string();
+        // Fall back to brace-balanced extraction
+        if let Some(json) = Self::extract_balanced_json(response) {
+            return json;
         }
 
         response.to_string()
+    }
+
+    /// Extract content from markdown code blocks.
+    /// Returns None if no valid code block is found.
+    fn extract_from_markdown(response: &str) -> Option<String> {
+        // Try ```json first
+        if let Some(start) = response.find("```json") {
+            let after_marker = &response[start + 7..];
+            if let Some(end) = after_marker.find("```") {
+                return Some(after_marker[..end].trim().to_string());
+            }
+        }
+
+        // Try generic ``` block containing JSON
+        if let Some(start) = response.find("```") {
+            let after_marker = &response[start + 3..];
+            if let Some(end) = after_marker.find("```") {
+                let content = after_marker[..end].trim();
+                if content.starts_with('{') {
+                    return Some(content.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract the outermost balanced JSON object using brace counting.
+    ///
+    /// Handles nested objects correctly by tracking brace depth.
+    /// Returns None if no balanced JSON object is found.
+    fn extract_balanced_json(response: &str) -> Option<String> {
+        let bytes = response.as_bytes();
+        let mut start: Option<usize> = None;
+        let mut depth = 0i32;
+        let mut in_string = false;
+        let mut escape_next = false;
+
+        for (i, &byte) in bytes.iter().enumerate() {
+            if escape_next {
+                escape_next = false;
+                continue;
+            }
+
+            if byte == b'\\' && in_string {
+                escape_next = true;
+                continue;
+            }
+
+            if byte == b'"' {
+                in_string = !in_string;
+                continue;
+            }
+
+            if in_string {
+                continue;
+            }
+
+            match byte {
+                b'{' => {
+                    if depth == 0 {
+                        start = Some(i);
+                    }
+                    depth += 1;
+                }
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 && let Some(s) = start {
+                        return Some(response[s..=i].to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        None
     }
 
     /// Reduce Phase: Synthesize final commit message from themes.
@@ -996,8 +1068,6 @@ mod tests {
         let provider = Arc::new(Provider::mock_sequence(responses));
         let orchestrator = AIOrchestrator::new(provider);
 
-        let start = tokio::time::Instant::now();
-
         let result = orchestrator
             .generate_commit_message(
                 vec![sample_chunk()],
@@ -1009,7 +1079,7 @@ mod tests {
             .await
             .unwrap_or_else(|e| panic!("generation should succeed after retry: {}", e));
         assert_eq!(result.message.as_ref(), "feat(core): retry success");
-        assert!(start.elapsed() >= std::time::Duration::from_secs(1));
+        // Retry succeeded, timing may vary due to full jitter
     }
 
     #[tokio::test]
@@ -1258,8 +1328,112 @@ This is not JSON at all, just plain text
         let response = r#"Some preamble {"outer": {"inner": {"deep": "value"}}} some suffix"#;
 
         let json = orchestrator.extract_json(response);
-        // Should extract from first { to last }
+        // Should extract balanced JSON, not just first { to last }
         assert_eq!(json, r#"{"outer": {"inner": {"deep": "value"}}}"#);
+    }
+
+    #[test]
+    fn extract_json_multiple_objects_balanced() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        // Multiple JSON objects - should extract first balanced one
+        let response = r#"{"first": 1} {"second": 2}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, r#"{"first": 1}"#);
+    }
+
+    #[test]
+    fn extract_json_with_escaped_quotes() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"{"message": "He said \"hello\"", "count": 1}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, r#"{"message": "He said \"hello\"", "count": 1}"#);
+    }
+
+    #[test]
+    fn extract_json_with_escaped_backslash() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"{"path": "C:\\Users\\test", "valid": true}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, r#"{"path": "C:\\Users\\test", "valid": true}"#);
+    }
+
+    #[test]
+    fn extract_json_unbalanced_braces() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        // Unbalanced braces - should return original
+        let response = r#"{"unclosed": "brace" "#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, response);
+    }
+
+    #[test]
+    fn extract_json_braces_in_string() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        // Braces inside strings should not affect balancing
+        let response = r#"{"code": "if (x) { return y; }", "lang": "js"}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, r#"{"code": "if (x) { return y; }", "lang": "js"}"#);
+    }
+
+    #[test]
+    fn extract_json_deeply_nested() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"{"a": {"b": {"c": {"d": {"e": "deep"}}}}}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, r#"{"a": {"b": {"c": {"d": {"e": "deep"}}}}}"#);
+    }
+
+    #[test]
+    fn extract_json_with_arrays() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = r#"{"items": [{"id": 1}, {"id": 2}], "count": 2}"#;
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, r#"{"items": [{"id": 1}, {"id": 2}], "count": 2}"#);
+    }
+
+    #[test]
+    fn extract_json_no_json_content() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let response = "Just plain text without any braces";
+
+        let json = orchestrator.extract_json(response);
+        assert_eq!(json, response);
+    }
+
+    #[test]
+    fn extract_json_partial_object_in_text() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        // Text with braces but not a JSON object
+        let response = "Error: {code: 404} (not valid JSON)";
+
+        let json = orchestrator.extract_json(response);
+        // Should extract the balanced part
+        assert_eq!(json, "{code: 404}");
     }
 
     #[test]
