@@ -1,280 +1,311 @@
 # Christina Workspace Architectural Rewrite Plan
 
-## Executive Summary
+## Critical Corrections from Adversarial Review
 
-This document proposes a complete architectural consolidation of the Christina workspace from 4 fragmented crates into **exactly 2 crates** with clean, opinionated boundaries. The current structure exhibits classic signs of over-engineering: mechanical module splits, leaky abstractions, duplicated concepts, and AI-generated ceremony.
-
-IMPORTANT: This plan is designed for AI coding agents to do as a long-horizon task in matters of minutes to hours, with little to no human oversight, aside from keeping the machine alive. AI coding agents are given absolute freedom to choose how to implement the plan, as long as the end result matches the specifications herein.
-
-**Total Lines of Code**: ~5,500  
-**Current Crates**: 4 (christina, christina-core, christina-git, christina-llm)  
-**Proposed Crates**: 2 (christina, christina-core)  
-**Target**: Hermetic, normalized, aesthetically coherent architecture
+**Status**: Second draft after adversarial self-review  
+**Date**: January 2026  
+**Total Lines**: ~17,500 across 4 crates (using `tokei`)
+**Target**: 2 crates (christina binary, christina-core library)
 
 ---
 
-## 1. The Two Crates
+## Issues Found in First Draft
 
-### 1.1 `christina` - The Application Crate
+### 1. **EditHistory is ACTIVELY USED** ❌
+- **Location**: `christina/src/app/edit_history.rs` (171 lines)
+- **Usage**: `editing.rs` uses undo/redo (Ctrl+Z/Y) with 50-entry history
+- **Original plan**: Incorrectly stated "Not used in current UI"
+- **Correction**: Must preserve in binary crate as part of editing screen state
 
-**Responsibility**: All user-facing code. CLI parsing, TUI rendering, event handling, and the main entry point.
+### 2. **Elm Architecture is Substantial and Well-Designed** ❌
+- **Location**: `christina/src/tui/elm.rs` (77 lines), `components_elm.rs` (323 lines)
+- **Pattern**: Clean Component trait + AppMsg enum for side-effect routing
+- **Original plan**: Dismissed as "not needed" - WRONG
+- **Correction**: Preserve this pattern; it provides excellent separation of concerns
+- **Why**: 323-line routing system cleanly dispatches between 6 screens with state sync
+
+### 3. **DiffRenderer is Real Functionality** ❌
+- **Location**: `christina/src/tui/diff_renderer.rs`
+- **Usage**: Integrated into DashboardState for diff preview with tool detection
+- **Original plan**: Said "inline where used"
+- **Correction**: Keep as separate module; handles delta/diff-so-fancy/git/basic tool chain
+
+### 4. **GPG Signing Major Feature - Completely Missed** ❌❌❌
+- **Location**: `christina-git/src/repository.rs` lines 288-408 (120 lines)
+- **Functionality**: Full GPG commit signing with configurable program
+- **Original plan**: Not mentioned at all
+- **Correction**: Explicitly preserve; add to git module in library
+
+### 5. **Configuration TUI is Complex Multi-Screen Flow** ❌
+- **Location**: `christina/src/tui/config/` (4 files), `christina/src/tui/profiles/` (5 files)
+- **Original plan**: "Merge into single screens/config.rs"
+- **Reality**: Nested TUI flow with profile management integration
+- **Correction**: Keep as dedicated module structure but flatten slightly
+
+### 6. **Inconsistent Naming** ❌
+- **Issue**: Plan used `christina-lib` and `christina-core` interchangeably
+- **Correction**: Use `christina-core` consistently (renaming existing core)
+
+### 7. **StateMachine Has Async Correlation Logic** ❌
+- **Location**: `christina-core/src/state.rs` (520 lines with tests)
+- **Function**: Generation ID tracking for async operation correlation
+- **Original plan**: "Inline into app.rs"
+- **Correction**: Keep as dedicated type; critical for generation cancellation
+
+### 8. **Missing Systems** ❌
+- **Theme system**: `christina/src/tui/theme.rs` - extensive color constants
+- **Toast system**: `christina/src/tui/widgets/toast.rs` - ToastManager with queue
+- **Form system**: `christina/src/tui/form/` - Editable trait for config/profile TUI
+
+### 9. **Test Strategy Was Risky** ❌
+- **Original plan**: "Remove tests to focus on rewrite"
+- **Correction**: Keep and migrate tests incrementally; 1000+ lines of tests validate behavior
+
+### 10. **Config::load/save Has I/O - Wrong Location** ❌
+- **Issue**: Config has file I/O methods but plan put Config in library
+- **Correction**: 
+  - Library: `Config` struct definition, validation
+  - Binary: Config I/O functions (`load()`, `save()`)
+
+---
+
+## Corrected Architecture
+
+### Crate: `christina` (Binary)
+
+**Responsibility**: ALL user-facing code, I/O, rendering, event handling
+
+**Why binary has I/O**: Config loading, file operations, terminal interaction are inherently I/O-bound
 
 **Strict Ownership**:
-- CLI argument parsing and command dispatch
-- TUI screens, components, and event loop
-- Terminal initialization and cleanup
-- Configuration file I/O (loading/saving)
-- User interaction flows
+1. **CLI parsing** (`cli.rs`) - argument definitions and dispatch
+2. **TUI screens** (`tui/screens/`) - 6 screen implementations
+3. **TUI components** (`tui/components/`) - reusable widgets
+4. **Event loop** (`tui/event_loop.rs`) - async event coordination
+5. **App state** (`tui/app.rs`) - central state with Elm dispatch
+6. **Config I/O** (`config/io.rs`) - file loading/saving (NEW module)
+7. **CLI commands** (`cli_commands/`) - non-TUI command handlers
+8. **Terminal management** (`tui/terminal.rs`) - raw mode handling
 
 **Dependencies**:
-- `christina-core` (single library dependency)
-- External: `clap`, `ratatui`, `crossterm`, `tokio`, `anyhow`, `directories`, `toml`, `config`
+- `christina-core` (domain library)
+- `ratatui`, `crossterm`, `tui-textarea` (TUI)
+- `clap` (CLI)
+- `tokio` (async runtime)
+- `directories`, `toml`, `config` (config I/O)
+- `ansi-to-tui` (diff rendering)
 
-**Key Rule**: This crate contains **no business logic**. It only orchestrates calls to `christina-core` and renders results.
+### Crate: `christina-core` (Library)
 
-### 1.2 `christina-core` - The Domain Library
-
-**Responsibility**: All domain logic, git operations, LLM orchestration, and core types. Pure logic with no I/O except through explicit dependencies.
+**Responsibility**: Domain types, pure logic, NO I/O
 
 **Strict Ownership**:
-- Git repository operations (discovery, diff generation, staging, committing)
-- LLM provider abstraction and map-reduce orchestration
-- Prompt building and tokenization
-- Domain types (CommitMessage, ProviderKind, etc.)
-- Configuration data structures (NOT I/O)
-- Error types
+1. **Types** (`types/`) - CommitMessage, ProviderKind, TokenCount, FilePath
+2. **Config structures** (`config/`) - Config struct, Profiles, validation logic
+3. **Git operations** (`git/`) - Repository, staging, committing, GPG signing
+4. **LLM orchestration** (`llm/`) - Provider trait, OpenAI/Azure, orchestrator
+5. **Generation** (`generation/`) - GenerationService facade
+6. **Errors** (`error.rs`) - unified error types
 
 **Dependencies**:
-- External: `git2`, `llm`, `tiktoken-rs`, `tokio`, `serde`, `thiserror`, `anyhow`, `url`, `regex`, `compact_str`, `parking_lot`
-
-**Key Rule**: This crate knows **nothing about TUI, CLI, or terminal**. It operates on data structures and returns results.
-
----
-
-## 2. Architectural Rationale
-
-### 2.1 Separation of Concerns
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        christina                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │     CLI     │  │  TUI/App    │  │   Config I/O        │  │
-│  │   (clap)    │  │  (ratatui)  │  │  (load/save files)  │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            │ uses
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      christina-lib                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │    Git      │  │     LLM     │  │   Domain Types      │  │
-│  │ Operations  │  │Orchestration│  │  (business logic)   │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 2.2 Why Two Crates?
-
-1. **Clear Boundaries**: UI vs Logic separation prevents the current mixing
-2. **Compilation Speed**: Library changes don't require rebuilding the TUI
-3. **Reusability**: Library could theoretically be used by other tools
-4. **Mental Model**: Developers know immediately where code belongs
-
-### 2.3 What Was Wrong with Four Crates?
-
-- **christina-core**: Dumping ground for "shared" code. Contained types, errors, state machine, profiles - incoherent bundle.
-- **christina-git**: Artificial separation. Git operations need types from core, creating circular dependency risks.
-- **christina-llm**: Over-abstracted. Provider logic is ~300 lines, doesn't need its own crate.
-- **Boundary Erosion**: Binary crate reached into all three library crates, creating spaghetti dependencies.
+- `git2` (git operations)
+- `llm`, `tiktoken-rs` (AI/LLM)
+- `serde` (serialization)
+- `thiserror`, `anyhow` (errors)
+- `url`, `regex`, `compact_str` (utilities)
+- `tokio` (async traits)
 
 ---
 
-## 3. Proposed Directory Structure
+## Corrected Directory Structure
 
-Below is the proposed new directory structure with key files and modules. When working on the rewrite, files will be moved/merged according to this plan, make sure no files or functionality are lost. This is CRITICAL.
-
-### 3.1 `christina/` (Application)
+### `christina/` (Binary)
 
 ```
 christina/
 ├── Cargo.toml
 └── src/
-    ├── main.rs           # Entry point, allocator setup, panic handling
-    ├── cli.rs            # Clap argument definitions only
+    ├── main.rs                 # Entry point, allocator, panic handling
+    ├── cli.rs                  # Clap argument definitions
     ├── config/
-    │   ├── mod.rs        # Config loading/saving coordination
-    │   ├── file.rs       # TOML file I/O operations
-    │   └── env.rs        # Environment variable parsing
-    ├── tui/
-    │   ├── mod.rs        # TUI module exports
-    │   ├── app.rs        # App struct, state coordination (thin wrapper)
-    │   ├── event_loop.rs # Event loop implementation
-    │   ├── screens/
-    │   │   ├── mod.rs    # Screen trait, navigation
-    │   │   ├── dashboard.rs
-    │   │   ├── staging.rs
-    │   │   ├── generating.rs
-    │   │   ├── review.rs
-    │   │   └── editing.rs
-    │   ├── components/   # Reusable TUI widgets
-    │   │   ├── mod.rs
-    │   │   ├── file_list.rs
-    │   │   ├── commit_form.rs
-    │   │   └── toast.rs
-    │   └── theme.rs      # Colors, styles
-    └── cli_commands/     # Non-TUI command handlers
-        ├── mod.rs
-        ├── config.rs     # `christina config get/set`
-        └── profile.rs    # `christina profile create/edit`
+    │   ├── mod.rs              # Config module exports
+    │   └── io.rs               # FILE I/O: load(), save(), paths (MOVED from lib)
+    ├── cli_commands/
+    │   ├── mod.rs              # Command exports
+    │   ├── config.rs           # config get/set/list/path/tui
+    │   └── profile.rs          # profile create/edit/delete/switch
+    └── tui/
+        ├── mod.rs              # TUI exports (theme, widgets)
+        ├── app.rs              # App struct + AppMsg dispatch (was app/handlers.rs + app/mod.rs)
+        ├── event_loop.rs       # Event loop (was event_loop/mod.rs + handlers + producers)
+        ├── terminal.rs         # Terminal init/cleanup (was bootstrap/terminal.rs)
+        ├── theme.rs            # Color constants (PRESERVE)
+        ├── elm.rs              # Component trait + AppMsg (PRESERVE - well designed)
+        ├── screens/            # Screen implementations (6 screens)
+        │   ├── mod.rs          # Screen exports + key routing
+        │   ├── staging.rs      # Staging selection screen (735 lines)
+        │   ├── dashboard.rs    # Dashboard with diff preview
+        │   ├── generating.rs   # Generation progress
+        │   ├── review.rs       # Review generated message
+        │   ├── editing.rs      # Edit message with undo/redo
+        │   └── error.rs        # Error display (modal)
+        ├── components/         # Reusable widgets
+        │   ├── mod.rs          # Component exports
+        │   ├── file_list.rs    # File list widget
+        │   └── diff_renderer.rs # Diff preview with tool detection (PRESERVE)
+        ├── widgets/            # Low-level widgets
+        │   ├── mod.rs
+        │   └── toast.rs        # Toast notification system (PRESERVE)
+        ├── config_tui/         # Configuration TUI (PRESERVE complexity)
+        │   ├── mod.rs
+        │   ├── app.rs
+        │   ├── runner.rs
+        │   └── screen.rs
+        └── profiles_tui/       # Profile management TUI
+            ├── mod.rs
+            ├── app.rs
+            ├── runner.rs
+            ├── screen.rs
+            └── profile_editable.rs
 ```
 
-**Key Changes**:
-- Flattened TUI structure: removed `elm/`, `form/`, `profiles/`, `config/` submodules
-- Merged `event_loop/` into single file (was 4 files for simple loop)
-- Removed `bootstrap/` - terminal setup is 20 lines, doesn't need module
-- Removed `generate.rs` - moved to library as `GenerationService`
-
-### 3.2 `christina-core/` (Domain Library)
+### `christina-core/` (Library) - RENAMED from current core
 
 ```
 christina-core/
 ├── Cargo.toml
 └── src/
-    ├── lib.rs            # Public API exports
-    ├── error.rs          # Unified error types (GitError, LlmError, etc.)
+    ├── lib.rs                  # Public API exports
+    ├── error.rs                # Unified errors
     ├── types/
-    │   ├── mod.rs        # Type re-exports
-    │   ├── commit.rs     # CommitMessage newtype
-    │   ├── provider.rs   # ProviderKind enum
-    │   ├── model.rs      # ModelName newtype
-    │   ├── tokens.rs     # TokenCount newtype
-    │   └── file.rs       # FilePath newtype
+    │   ├── mod.rs              # Type re-exports
+    │   ├── commit.rs           # CommitMessage + ValidationMode
+    │   ├── provider.rs         # ProviderKind enum
+    │   ├── model.rs            # ModelName newtype
+    │   ├── tokens.rs           # TokenCount newtype
+    │   └── file.rs             # FilePath newtype
     ├── config/
-    │   ├── mod.rs        # Config struct definition (NO I/O)
-    │   ├── profile.rs    # ProviderProfile, Profiles
-    │   └── validation.rs # Config validation logic
+    │   ├── mod.rs              # Config struct DEFINITION (no I/O)
+    │   ├── profile.rs          # ProviderProfile, Profiles
+    │   └── validation.rs       # Validation logic (MOVED from settings.rs)
     ├── git/
-    │   ├── mod.rs        # Git operations exports
-    │   ├── repo.rs       # Repository struct, all git operations
-    │   ├── diff.rs       # Diff generation, StagedDiff
-    │   ├── status.rs     # File status types (GitFileStatus)
-    │   └── chunk.rs      # DiffChunk, diff splitting
+    │   ├── mod.rs              # Git exports
+    │   ├── repo.rs             # Repository struct (was repository.rs)
+    │   ├── operations.rs       # Stage/unstage/commit + GPG signing
+    │   ├── diff.rs             # Diff generation, StagedDiff
+    │   └── status.rs           # GitFile, GitFileStatus
     ├── llm/
-    │   ├── mod.rs        # LLM exports
-    │   ├── provider.rs   # Provider trait, OpenAI/Azure impls
-    │   ├── orchestrator.rs # Map-reduce generation logic
-    │   ├── prompt.rs     # Prompt templates, PromptBuilder
-    │   ├── tokenizer.rs  # Token counting
-    │   └── retry.rs      # Retry policies
+    │   ├── mod.rs              # LLM exports
+    │   ├── provider.rs         # Provider trait + impls (was provider.rs + providers/)
+    │   ├── orchestrator.rs     # Map-reduce generation (PRESERVE - 1287 lines)
+    │   ├── prompt.rs           # Prompt templates (was christina-core/src/prompt.rs)
+    │   ├── tokenizer.rs        # Token counting
+    │   └── retry.rs            # Retry policies
     └── generation/
-        ├── mod.rs        # Generation coordination
-        └── service.rs    # Main GenerationService facade
+        ├── mod.rs              # Generation exports
+        └── service.rs          # GenerationService facade
 ```
-
-**Key Changes**:
-- Consolidated all domain logic into single crate
-- Flattened module hierarchy (no more `types/commit_message.rs`, just `types/commit.rs`)
-- Removed `christina-git/` - merged into `git/` module
-- Removed `christina-llm/` - merged into `llm/` module
-- Unified error types in single file instead of scattered re-exports
 
 ---
 
-## 4. Module Consolidation Guide
+## Module Migration Map
 
-### 4.1 Modules to DELETE
+### PRESERVE (Don't Delete)
 
-| Current Location | Reason |
-|-----------------|--------|
-| `christina/src/app/context.rs` | Merged into `App` struct directly |
-| `christina/src/app/edit_history.rs` | Not used in current UI |
-| `christina/src/app/handlers.rs` | Inline into event_loop.rs |
-| `christina/src/app/init.rs` | Inline into `App::new()` |
-| `christina/src/app/state.rs` | Merged into `App` struct |
-| `christina/src/bootstrap/` | Inline terminal setup |
-| `christina/src/config/cli.rs` | Move to `cli_commands/config.rs` |
-| `christina/src/config/profile_cli.rs` | Move to `cli_commands/profile.rs` |
-| `christina/src/config/diff_tool.rs` | Merge into config/mod.rs |
-| `christina/src/config/settings.rs` | Rename to config/mod.rs in lib |
-| `christina/src/event_loop/events.rs` | Inline event types into mod.rs |
-| `christina/src/event_loop/handlers.rs` | Inline into event_loop.rs |
-| `christina/src/event_loop/producers.rs` | Inline into event_loop.rs |
-| `christina/src/generate.rs` | Move to `christina-lib/src/generation/` |
-| `christina/src/tui/components_elm.rs` | Merge into components/mod.rs |
-| `christina/src/tui/config/` | Merge into single `screens/config.rs` |
-| `christina/src/tui/context.rs` | Merge into app.rs |
-| `christina/src/tui/diff_executor.rs` | Inline where used |
-| `christina/src/tui/diff_renderer.rs` | Inline where used |
-| `christina/src/tui/elm.rs` | Not needed with simpler architecture |
-| `christina/src/tui/form/` | Simplify to single `components/commit_form.rs` |
-| `christina/src/tui/layout.rs` | Inline helper functions |
-| `christina/src/tui/profiles/` | Merge into single `screens/profiles.rs` |
-| `christina/src/tui/screens/error.rs` | Inline as modal in app.rs |
-| `christina-core/src/git/mod.rs` | Move to `christina-lib/src/git/` |
-| `christina-core/src/git/file.rs` | Merge into `git/status.rs` |
-| `christina-core/src/git/diff.rs` | Move to `christina-lib/src/git/chunk.rs` |
-| `christina-core/src/state.rs` | Inline `StateMachine` into app.rs |
-| `christina-core/src/tokenizer.rs` | Move to `christina-lib/src/llm/tokenizer.rs` |
-| `christina-git/src/buffer_pool.rs` | Delete - premature optimization |
-| `christina-git/src/chunking.rs` | Merge into `git/chunk.rs` |
-| `christina-git/src/diff_processor.rs` | Merge into `generation/service.rs` |
-| `christina-git/src/parsing.rs` | Merge into `git/diff.rs` |
-| `christina-git/src/repository.rs` | Rename to `git/repo.rs` |
-| `christina-llm/src/concurrency.rs` | Merge into `llm/orchestrator.rs` |
-| `christina-llm/src/provider.rs` | Rename to `llm/provider.rs` |
-| `christina-llm/src/providers/` | Flatten into `llm/provider.rs` |
-| `christina-llm/src/retry.rs` | Rename to `llm/retry.rs` |
-| `christina-llm/src/tokenizer.rs` | Rename to `llm/tokenizer.rs` |
+| Module | Lines | Reason |
+|--------|-------|--------|
+| `christina/src/app/edit_history.rs` | 171 | **CRITICAL**: Undo/redo for editing screen |
+| `christina/src/tui/elm.rs` | 77 | **WELL-DESIGNED**: Component trait + AppMsg |
+| `christina/src/tui/components_elm.rs` | 323 | **ROUTER**: Screen dispatch + state sync |
+| `christina/src/tui/diff_renderer.rs` | ~100 | **REAL**: Delta/diff-so-fancy tool chain |
+| `christina/src/tui/theme.rs` | ~80 | **STYLING**: Color palette constants |
+| `christina/src/tui/widgets/toast.rs` | ~150 | **UI**: Toast notification queue |
+| `christina/src/tui/form/` | ~200 | **FORMS**: Editable trait for config TUI |
+| `christina/src/tui/config_tui/` | ~400 | **COMPLEX**: Multi-screen config flow |
+| `christina/src/tui/profiles_tui/` | ~500 | **COMPLEX**: Profile management |
+| `christina-core/src/state.rs` | 520 | **ASYNC**: Generation ID correlation |
 
-### 4.2 Modules to RENAME
+### MERGE/CONSOLIDATE
 
-| From | To | Reason |
-|------|-----|--------|
-| `christina/src/config/settings.rs` | `christina-lib/src/config/mod.rs` | Config is a domain type, not app concern |
-| `christina-core/src/error.rs` | `christina-lib/src/error.rs` | Unified errors in lib |
-| `christina-core/src/profile.rs` | `christina-lib/src/config/profile.rs` | Profiles are config |
-| `christina-core/src/prompt.rs` | `christina-lib/src/llm/prompt.rs` | Prompts are LLM concern |
-| `christina-core/src/types/` | `christina-lib/src/types/` | Keep but flatten files |
-| `christina-git/src/repository.rs` | `christina-lib/src/git/repo.rs` | Consistent naming |
-| `christina-llm/src/orchestrator.rs` | `christina-lib/src/llm/orchestrator.rs` | Keep name, move location |
+| From | Into | Notes |
+|------|------|-------|
+| `christina/src/app/mod.rs` + `handlers.rs` | `christina/src/tui/app.rs` | Merge App struct with dispatch |
+| `christina/src/app/init.rs` | `christina/src/tui/app.rs` | `initialize_app()` function |
+| `christina/src/app/context.rs` | `christina/src/tui/app.rs` | Inline AppContext fields |
+| `christina/src/app/state.rs` | `christina/src/tui/app.rs` | Inline GenerationState enum |
+| `christina/src/event_loop/` (3 files) | `christina/src/tui/event_loop.rs` | ~250 lines total |
+| `christina/src/bootstrap/` | `christina/src/tui/terminal.rs` | Single terminal module |
+| `christina/src/config/settings.rs` | Split: `christina/src/config/io.rs` + `christina-core/src/config/mod.rs` | I/O in binary, struct in lib |
+| `christina/src/config/cli.rs` | `christina/src/cli_commands/config.rs` | CLI command handlers |
+| `christina/src/config/profile_cli.rs` | `christina/src/cli_commands/profile.rs` | CLI command handlers |
+| `christina-git/src/` (5 files) | `christina-core/src/git/` | Merge into library |
+| `christina-llm/src/` (8 files) | `christina-core/src/llm/` | Merge into library |
 
-### 4.3 Key Data Structures
+### DELETE
 
-**App State (christina/src/tui/app.rs)**:
+| Module | Reason |
+|--------|--------|
+| `christina-git/src/buffer_pool.rs` | Premature optimization, unused |
+| `christina-llm/src/providers/mod.rs` | Flatten into provider.rs |
+| `christina-llm/src/concurrency.rs` | Merge into orchestrator.rs |
+| `christina-llm/src/providers/http.rs` | Inline into provider.rs |
+
+---
+
+## Corrected Data Flow
+
+### Binary Crate (`christina`)
+
 ```rust
+// christina/src/tui/app.rs
 pub struct App {
-    pub state: Screen,           // Current screen enum
-    pub repo: Option<RepositoryInfo>, // Git repo path + branch
-    pub staged_files: Vec<GitFile>,
+    // Navigation
+    pub state: AppState,              // From christina_core
+    pub state_machine: StateMachine,  // From christina_core
+    
+    // Repository (I/O handles stay in binary)
+    pub repo: Option<GitRepository>,  // From christina_core
+    pub branch_name: Option<CompactString>,
+    
+    // Data
+    pub staged_files: Vec<GitFile>,   // From christina_core
     pub unstaged_files: Vec<GitFile>,
-    pub generated_message: Option<CommitMessage>,
-    pub error_message: Option<String>,
+    pub generated_message: CompactString,
+    pub user_context: Option<String>,
+    
+    // UI State
     pub should_quit: bool,
-    // Generation state
-    pub generation: GenerationState,
-    // UI state  
+    pub exit_message: Option<String>,
     pub spinner_frame: usize,
-    pub toast_manager: ToastManager,
+    pub should_redraw: bool,
+    pub textarea: TextArea<'static>,
+    
+    // Screen-specific states (lazy init)
+    pub dashboard_state: Option<DashboardState>,
+    pub staging_state: Option<StagingState>,
+    pub review_state: Option<ReviewState>,
+    pub editing_state: Option<EditingState>,
+    pub generating_state: Option<GeneratingState>,
+    pub error_state: Option<ErrorState>,
+    
+    // Async
+    pub generation: GenerationState,  // Running task handle
+    
+    // UI Components
+    pub toasts: ToastManager,
+    pub edit_history: EditHistory,    // **PRESERVED**
 }
 
-pub enum GenerationState {
-    Idle,
-    Running { task: AbortOnDrop, id: u64 },
-}
-
-pub enum Screen {
-    Staging,
-    Dashboard,
-    Generating(GeneratingScreen),
-    Review(ReviewScreen),
-    Editing(EditingScreen),
-}
+// Config I/O is in binary, not library
+// christina/src/config/io.rs
+pub fn load_config() -> Result<Config> { ... }
+pub fn save_config(config: &Config) -> Result<()> { ... }
 ```
 
-**Config (christina-core/src/config/mod.rs)**:
+### Library Crate (`christina-core`)
+
 ```rust
+// christina-core/src/config/mod.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub max_input_tokens: TokenCount,
@@ -286,280 +317,18 @@ pub struct Config {
     pub temperature: f32,
     pub ignore_files: Vec<String>,
     pub profiles: Profiles,
-    pub diff_tool: DiffTool,
+    pub diff: DiffConfig,
+    pub commit_message_max_length: Option<usize>,
+    pub commit_message_validation_mode: ValidationMode,
     pub use_commit_history: bool,
     pub commit_history_depth: usize,
-    // Azure-specific
     pub azure_api_version: Option<String>,
     pub azure_deployment_id: Option<String>,
 }
-```
 
-**GenerationService (christina-lib/src/generation/service.rs)**:
-```rust
-pub struct GenerationService {
-    provider: Arc<dyn Provider>,
-    config: Config,
-}
+// NO load() or save() methods - those are I/O
 
-impl GenerationService {
-    pub fn new(config: Config) -> Result<Self>;
-    
-    pub async fn generate(
-        &self,
-        diff: String,
-        user_context: Option<String>,
-        progress: mpsc::Sender<GenerationEvent>,
-    ) -> Result<GenerationResult>;
-}
-```
-
----
-
-## 5. Anti-Patterns Being Eliminated
-
-### 5.1 Over-Fragmentation
-
-**Before**: 4 crates, 40+ modules, 5,500 lines  
-**After**: 2 crates, 15 modules, ~4,500 lines (deletion of ceremony)
-
-**Examples**:
-- `event_loop/` was 3 files for a 100-line loop
-- `tui/form/` was 4 files for a simple editable form
-- `providers/` was 3 files for 200 lines of HTTP calls
-
-### 5.2 Duplicate State
-
-**Before**: 
-- `AppState` enum in core + screen-specific states in binary
-- `AppContextData` + `TuiSessionData` + `DataState` + `UiState`
-
-**After**:
-- Single `App` struct with flat field layout
-- Screen-specific data in enum variants (Generating, Review, etc.)
-
-### 5.3 Parallel Abstractions
-
-**Before**:
-- `ProviderProfile` (core) vs `Config` (binary) - same fields, different types
-- `GitFile` (core) vs `FilePatch` (git) - similar purpose, different structures
-- `TokenCount` newtype but other primitives bare
-
-**After**:
-- `Config` is the single source of truth
-- `GitFile` is the canonical file representation
-- Newtypes for all domain types (CommitMessage, ModelName, FilePath)
-
-### 5.4 "Context" Dumping Grounds
-
-**Before**:
-- `AppContextData` held repo, config, branch
-- `DataState` held file lists, toasts
-- `UiState` held spinner, redraw flag
-
-**After**:
-- All merged into single `App` struct with clear field names
-- No "context" types - explicit fields only
-
-### 5.5 Leaky Layers
-
-**Before**:
-- Binary crate imported `git2` directly for error handling
-- Event loop spawned git operations directly
-- TUI screens knew about `DiffChunk` structure
-
-**After**:
-- Binary only uses `christina_lib::git::Repository`
-- All git operations encapsulated in library
-- TUI only deals with `String` diffs and `CommitMessage` results
-
----
-
-## 6. Phased Migration Plan
-
-1. Backup current workspace to backup folder by moving all crates there.
-2. Remove or omit tests codes to focus on full rewrite (tests will be re-added later).
-
-### Phase 1: Create christina-core
-
-1. Create `christina-core/` directory
-2. Copy consolidated files from analysis:
-   - `src/error.rs` - unified errors
-   - `src/types/` - all domain types
-   - `src/config/` - Config, Profile, validation
-   - `src/git/` - Repository, diff operations
-   - `src/llm/` - Provider, orchestrator, prompts
-   - `src/generation/` - GenerationService
-3. Update `Cargo.toml` with all dependencies
-4. Make it compile standalone
-
-### Phase 2: Migrate christina Binary 
-
-1. Rewrite `christina/src/main.rs`:
-   - Simplified to just CLI parse + dispatch
-   - Remove direct git2 imports
-   
-2. Rewrite `christina/src/tui/app.rs`:
-   - Flatten state structure
-   - Use `christina_lib::` types exclusively
-   
-3. Rewrite `christina/src/tui/event_loop.rs`:
-   - Single file, ~150 lines
-   - Use `GenerationService` instead of inline generation
-   
-4. Rewrite screens:
-   - Simplify to 5 screen modules
-   - Remove elm architecture
-   
-5. Update `Cargo.toml`:
-   - Remove `christina-core`, `christina-git`, `christina-llm` deps
-   - Add `christina-lib` path dependency
-
-### Phase 3: Delete Old Crates (Week 2)
-
-1. Delete `christina-core/`
-2. Delete `christina-git/`
-3. Delete `christina-llm/`
-4. Update workspace `Cargo.toml`:
-   ```toml
-   [workspace]
-   members = ["christina", "christina-lib"]
-   ```
-
-### Phase 4: Quality Gates (Week 2)
-
-Run and fix until clean:
-```bash
-just check   # cargo check with zero warnings
-just clippy  # cargo clippy with zero warnings  
-```
-
-### Phase 5: Verification (Week 3)
-
-1. Manual testing:
-   - Config commands work
-   - Profile management works
-   - TUI launches and navigates
-   - Generation pipeline works
-   - Commits can be created
-   
-2. Regression testing:
-   - Large diffs handled correctly
-   - Binary files detected
-   - Error states displayed properly
-   - GPG signing still works
-
----
-
-## 7. Specific Code Transformations
-
-### 7.1 Error Handling Consolidation
-
-**Before** (`christina-core/src/error.rs`):
-```rust
-#[derive(Debug, Error)]
-pub enum GitError { ... }
-
-#[derive(Debug, Error)]
-pub enum CompletionError { ... }
-
-#[derive(Debug, Error)]
-pub enum ProviderError { ... }
-
-#[derive(Debug, Error)]
-pub enum AppError { ... }  // Wrapper enum
-```
-
-**After** (`christina-lib/src/error.rs`):
-```rust
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("git error: {0}")]
-    Git(#[from] git2::Error),
-    
-    #[error("LLM error: {0}")]
-    Llm(String),
-    
-    #[error("configuration error: {0}")]
-    Config(String),
-    
-    #[error("generation failed: {0}")]
-    Generation(String),
-    
-    #[error("{0}")]
-    Other(String),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-```
-
-### 7.2 Config Simplification
-
-**Before** (`christina/src/config/settings.rs` - 1,125 lines):
-- Custom get/set by string key
-- Profile synchronization logic
-- Editable trait implementation
-- Extensive test boilerplate
-
-**After** (`christina-lib/src/config/mod.rs` - ~300 lines):
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config { ... }
-
-impl Config {
-    pub fn load() -> Result<Self> { ... }
-    pub fn save(&self) -> Result<()> { ... }
-    pub fn active_profile(&self) -> Option<&ProviderProfile> { ... }
-    pub fn apply_profile(&mut self, name: &str) -> Result<()> { ... }
-}
-
-// Validation in separate module
-pub fn validate(config: &Config) -> Result<()> { ... }
-```
-
-### 7.3 Generation Pipeline Simplification
-
-**Before** (spread across `generate.rs`, `orchestrator.rs`, `diff_processor.rs`):
-- Event loop spawned async task
-- Direct git operations in background
-- Complex progress reporting
-
-**After** (`christina-lib/src/generation/service.rs`):
-```rust
-pub struct GenerationService { ... }
-
-pub struct GenerationResult {
-    pub message: CommitMessage,
-    pub warnings: Vec<String>,
-    pub truncated: bool,
-}
-
-impl GenerationService {
-    pub async fn generate(
-        &self,
-        repo_path: &Path,
-        user_context: Option<&str>,
-    ) -> Result<GenerationResult> { ... }
-}
-```
-
-Called from event loop:
-```rust
-// In christina/src/tui/event_loop.rs
-let service = GenerationService::new(config)?;
-let result = service.generate(&repo_path, user_context.as_deref()).await?;
-app.generated_message = Some(result.message);
-```
-
-### 7.4 Git Operations Consolidation
-
-**Before** (scattered across `christina-core/src/git/`, `christina-git/src/`):
-- Types in core, operations in git crate
-- Re-exports and wrapper types
-- `StagedDiff` in git crate, `DiffChunk` in core
-
-**After** (`christina-lib/src/git/repo.rs`):
-```rust
+// christina-core/src/git/repo.rs
 pub struct Repository {
     inner: git2::Repository,
 }
@@ -567,42 +336,253 @@ pub struct Repository {
 impl Repository {
     pub fn discover() -> Result<Self>;
     pub fn open(path: &Path) -> Result<Self>;
-    pub fn staged_diff(&self) -> Result<Diff>;
+    pub fn staged_files(&self) -> Result<Vec<GitFile>>;
     pub fn unstaged_files(&self) -> Result<Vec<GitFile>>;
-    pub fn stage_files(&self, files: &[PathBuf]) -> Result<()>;
-    pub fn unstage_files(&self, files: &[PathBuf]) -> Result<()>;
-    pub fn commit(&self, message: &CommitMessage) -> Result<Oid>;
+    pub fn stage_files(&self, files: &[(PathBuf, GitFileStatus)]) -> Result<()>;
+    pub fn unstage_files(&self, paths: &[PathBuf]) -> Result<()>;
+    pub fn create_commit(&self, message: &CommitMessage) -> Result<Oid>; // **INCLUDES GPG**
     pub fn commit_history(&self, limit: usize) -> Result<Vec<CommitInfo>>;
+    pub fn has_staged_changes(&self) -> Result<bool>;
+    pub fn validate_for_commit(&self) -> Result<()>;
 }
 
-pub struct Diff {
-    content: String,
-    files: Vec<FilePath>,
+// christina-core/src/generation/service.rs
+pub struct GenerationService {
+    config: Config,
+    provider: Arc<dyn Provider>,
 }
 
-pub struct GitFile {
-    pub path: FilePath,
-    pub status: FileStatus,
-    pub content: String,
+pub struct GenerationResult {
+    pub message: CommitMessage,
+    pub warnings: Vec<String>,
+    pub truncated: bool,
+    pub salvaged: bool,
+}
+
+impl GenerationService {
+    pub fn new(config: Config) -> Result<Self>;
+    
+    pub async fn generate(
+        &self,
+        repo_path: &Path,
+        user_context: Option<&str>,
+        progress: mpsc::Sender<GenerationProgress>,
+    ) -> Result<GenerationResult>;
+}
+
+// christina-core/src/state.rs
+pub struct StateMachine {
+    generation_id: u64,
+}
+
+impl StateMachine {
+    pub fn new() -> Self;
+    pub fn next_generation_id(&mut self) -> u64;
+    pub fn can_transition(&self, from: &AppState, to: &AppState) -> Result<(), TransitionError>;
 }
 ```
 
 ---
 
-## 8. Success Criteria
+## Anti-Patterns Being Eliminated (Corrected)
 
-The rewrite is complete when:
+### 1. **Over-Fragmentation** ✅
+**Before**: 4 crates, 40+ modules, some 50-line modules  
+**After**: 2 crates, ~25 modules, minimum 100 lines per module
 
-1. **Exactly 2 crates** exist in the workspace
-2. **Zero compiler warnings** (`just check` passes)
-3. **Zero clippy warnings** (`just clippy` passes)
-5. **No circular dependencies** between modules
-6. **Binary crate has zero direct git2/llm imports** - all through library
-7. **Library crate has zero terminal/UI imports**
-8. **All functionality preserved** (manual QA checklist)
+**Deletions justified**:
+- `buffer_pool.rs` - 0 usages, premature optimization
+- `bootstrap/` module - 20 lines of terminal setup
+- `event_loop/` directory - 3 files for 250 lines
+
+### 2. **Leaky Abstractions** ✅
+**Before**: Binary imported `git2` directly for error handling  
+**After**: Binary only uses `christina_core::git::Repository`
+
+### 3. **Misplaced I/O** ✅
+**Before**: `Config::load()` and `Config::save()` in library crate  
+**After**: Config struct in library, I/O functions in binary
+
+### 4. **Duplicate State Representations** ✅
+**Before**: `AppState` (enum) + `Screen` (conceptual) + multiple "context" types  
+**After**: Single `AppState` enum from library used throughout
 
 ---
 
-## 9. Risk Management
+## Hard Trade-offs Explicitly Acknowledged
 
-- Breaking Changes: You are allowed to do radical refactors or rewrites of functions as long as the end-user functionality remains the same.
+### 1. **Config I/O Split**
+- **Trade-off**: Config struct definition in library, I/O in binary
+- **Why**: Library should be hermetic, but loading needs directories/filesystem
+- **Risk**: Two imports needed (`christina_core::Config` + `christina::config::load`)
+- **Mitigation**: Re-export in binary: `pub use christina::config::{Config, load_config}`
+
+### 2. **EditHistory Location**
+- **Trade-off**: EditHistory is pure logic but only used by editing screen
+- **Decision**: Keep in binary crate as part of TUI state
+- **Rationale**: Not reusable domain logic; tightly coupled to text editing UX
+
+### 3. **StateMachine in Library**
+- **Trade-off**: StateMachine validates transitions but needs AppState from library
+- **Decision**: Keep in library; binary calls `can_transition()` before state changes
+- **Rationale**: Transition rules are domain logic, not UI logic
+
+### 4. **GPG Signing in Library**
+- **Trade-off**: GPG requires spawning external process (gpg binary)
+- **Decision**: Keep in library's `git::Repository::create_commit()`
+- **Rationale**: Signing is part of git commit operation; caller shouldn't care how
+
+### 5. **Elm Architecture Preservation**
+- **Trade-off**: Adds ~400 lines vs direct event handling
+- **Decision**: Preserve Component trait + AppMsg pattern
+- **Rationale**: Clean separation of pure state updates from side effects; easy to test
+
+---
+
+## Migration Phases (Revised)
+
+### Phase 1: Consolidate Library (Week 1)
+
+**Goal**: Create unified `christina-core` library
+
+1. Merge `christina-git/` into `christina-core/src/git/`
+   - Move `repository.rs` → `git/repo.rs`
+   - Move chunking logic → `git/chunk.rs`
+   - **Preserve GPG signing logic**
+   
+2. Merge `christina-llm/` into `christina-core/src/llm/`
+   - Flatten `providers/` into `provider.rs`
+   - **Preserve orchestrator.rs (1,287 lines)**
+   - Move retry.rs, tokenizer.rs
+   
+3. Move types to `christina-core/src/types/`
+   - Flatten `types/` files (commit.rs not commit_message.rs)
+   
+4. Create `christina-core/src/generation/service.rs`
+   - Facade combining diff processing + LLM orchestration
+   
+5. Update `christina-core/Cargo.toml`
+   - Add `git2`, `llm`, `tiktoken-rs` deps
+   - Remove circular deps
+
+**Quality gate**: `cd christina-core && cargo check` passes
+
+### Phase 2: Refactor Binary (Week 1-2)
+
+**Goal**: Simplify binary crate, use unified library
+
+1. Create `christina/src/config/io.rs`
+   - Move `Config::load()` from settings.rs
+   - Move `Config::save_to_global()` from settings.rs
+   - Move path resolution logic
+   
+2. Create `christina/src/tui/app.rs`
+   - Merge `app/mod.rs` + `handlers.rs` + `init.rs`
+   - Flatten `AppContextData` into App struct fields
+   - **Preserve EditHistory usage**
+   
+3. Create `christina/src/tui/event_loop.rs`
+   - Merge `event_loop/` directory
+   - Replace inline generation with `GenerationService`
+   
+4. Update screens
+   - Keep all 6 screens (staging, dashboard, generating, review, editing, error)
+   - **Preserve Elm Component implementations**
+   - **Preserve diff_renderer usage in dashboard**
+   
+5. Update `Cargo.toml`
+   - Remove `christina-git`, `christina-llm` deps
+   - Keep `christina-core` path dep
+   - Add `ansi-to-tui` for diff rendering
+
+**Quality gate**: `cd christina && cargo check` passes
+
+### Phase 3: Delete Old Crates (Week 2)
+
+1. Delete `christina-git/` directory
+2. Delete `christina-llm/` directory  
+3. Remove old `christina-core/` (if created new one)
+4. Update workspace `Cargo.toml`:
+   ```toml
+   members = ["christina", "christina-core"]
+   ```
+
+### Phase 4: Quality Gates (Week 2)
+
+```bash
+# Run until clean
+just check    # cargo check with zero warnings
+just clippy   # cargo clippy with zero warnings
+```
+
+### Phase 5: Verification (Week 3)
+
+**Functional testing**:
+- [ ] Config commands: get, set, list, path, tui
+- [ ] Profile commands: create, edit, delete, switch, list
+- [ ] TUI launches from git repo
+- [ ] Staging screen: navigate, select, stage files
+- [ ] Dashboard: view files, diff preview, user context
+- [ ] Generation: trigger, progress display, cancellation
+- [ ] Review: accept, edit, regenerate
+- [ ] Editing: type, undo (Ctrl+Z), redo (Ctrl+Y), save
+- [ ] Commit: creates commit with proper message
+- [ ] GPG signing: works if commit.gpgsign=true
+- [ ] Error handling: displays errors properly
+
+**Regression testing**:
+- [ ] Large diffs (>100KB) handled
+- [ ] Binary files detected and excluded
+- [ ] Delta/diff-so-fancy rendering works
+- [ ] Toast notifications display
+- [ ] Multi-select mode in dashboard
+
+---
+
+## Success Criteria (Revised)
+
+1. ✅ Exactly 2 crates: `christina` (binary), `christina-core` (library)
+2. ✅ Zero compiler warnings (`just check` passes)
+3. ✅ Zero clippy warnings (`just clippy` passes)
+4. ✅ **All existing tests pass** (not removed!)
+5. ✅ Binary uses library for ALL domain logic
+6. ✅ Library has zero terminal/UI dependencies
+7. ✅ **EditHistory preserved and functional**
+8. ✅ **GPG signing preserved and functional**
+9. ✅ **Elm architecture preserved (Component trait, AppMsg)**
+10. ✅ **Diff rendering with tool detection preserved**
+11. ✅ All 6 TUI screens functional
+12. ✅ Config I/O works (load/save)
+13. ✅ Profile management works
+14. ✅ Generation pipeline works end-to-end
+
+---
+
+## Risk Areas
+
+### High Risk
+- **GPG signing**: Complex external process interaction; test thoroughly
+- **Generation cancellation**: Async task abortion; ensure no resource leaks
+- **Config migration**: Existing user configs must still load
+
+### Medium Risk  
+- **Diff tool chain**: Delta/diff-so-fancy detection; verify on systems without tools
+- **State synchronization**: Screen state <-> App data sync; check for stale data
+
+### Low Risk
+- **Theme changes**: Pure visual updates; easy to verify
+- **Module moves**: Compiler will catch most issues
+
+---
+
+## Conclusion
+
+This corrected plan acknowledges the actual complexity of the codebase:
+
+- **Preserves well-designed systems**: Elm architecture, EditHistory, diff rendering
+- **Correctly identifies I/O boundaries**: Config I/O in binary, structs in library  
+- **Explicitly handles GPG**: Major feature not mentioned in first draft
+- **Maintains test coverage**: No "remove tests" suggestion
+- **Uses consistent naming**: `christina-core` throughout
+
+The consolidation is still valuable - 4 crates → 2 crates - but done with accurate understanding of what must be preserved.
