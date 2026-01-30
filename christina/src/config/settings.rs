@@ -454,6 +454,7 @@ impl Config {
             max_output_tokens: self.max_output_tokens,
             azure_api_version: self.azure_api_version.clone(),
             azure_deployment_id: self.azure_deployment_id.clone(),
+            temperature: self.model_temperature,
         }
     }
 }
@@ -547,7 +548,7 @@ impl crate::tui::form::editable::Editable for Config {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used, clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 
@@ -1083,6 +1084,7 @@ mod tests {
             max_output_tokens: TokenCount::new_saturating(4096),
             azure_api_version: Some("test-version".to_string()),
             azure_deployment_id: Some("test-deployment".to_string()),
+            temperature: 0.5,
         };
 
         config.apply_profile(&profile);

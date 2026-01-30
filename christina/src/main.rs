@@ -1,16 +1,6 @@
-#[cfg(not(feature = "dhat-heap"))]
-use mimalloc::MiMalloc;
-
-#[cfg(not(feature = "dhat-heap"))]
-use cap::Cap;
-
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
-
-#[cfg(not(feature = "dhat-heap"))]
-#[global_allocator]
-static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
 
 use anyhow::Result;
 use clap::Parser;

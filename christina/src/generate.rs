@@ -23,6 +23,7 @@ fn config_to_profile(config: &Config) -> ProviderProfile {
         max_output_tokens: config.max_output_tokens,
         azure_api_version: config.azure_api_version.clone(),
         azure_deployment_id: config.azure_deployment_id.clone(),
+        temperature: config.model_temperature,
     }
 }
 
