@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 
 use git2::{Diff, DiffFormat, DiffOptions, Repository};
 
-use christina_core::git::FileStatus;
+use christina_core::git::GitFileStatus;
 use christina_core::types::{CommitMessage, FilePath};
 
 /// Information about a commit for historical context.
@@ -186,14 +186,14 @@ impl GitRepository {
 
     /// Stage multiple files atomically.
     /// If any file fails validation, no changes are made to the index.
-    pub fn stage_files(&self, files: &[(std::path::PathBuf, FileStatus)]) -> Result<()> {
+    pub fn stage_files(&self, files: &[(std::path::PathBuf, GitFileStatus)]) -> Result<()> {
         // Phase 1: Validate all operations before modifying index
         for (path, status) in files {
             match status {
-                FileStatus::Deleted => {
+                GitFileStatus::Deleted => {
                     // No validation needed - remove_path will fail gracefully if not in index
                 }
-                FileStatus::Added | FileStatus::Modified | FileStatus::Untracked => {
+                GitFileStatus::Added | GitFileStatus::Modified | GitFileStatus::Untracked => {
                     if !path.exists() {
                         return Err(GitError::Git(format!(
                             "Cannot stage '{}': file does not exist",
@@ -201,10 +201,10 @@ impl GitRepository {
                         )));
                     }
                 }
-                FileStatus::Renamed | FileStatus::Copied => {
+                GitFileStatus::Renamed | GitFileStatus::Copied => {
                     // These are conditional operations - validation done during application
                 }
-                FileStatus::Unknown => {
+                GitFileStatus::Unknown => {
                     // Conditional operation - no validation needed
                 }
             }
@@ -215,19 +215,23 @@ impl GitRepository {
 
         for (path, status) in files {
             match status {
-                FileStatus::Deleted => {
+                GitFileStatus::Deleted => {
                     index.remove_path(path)?;
                 }
-                FileStatus::Added | FileStatus::Modified | FileStatus::Untracked => {
+                GitFileStatus::Added | GitFileStatus::Modified | GitFileStatus::Untracked => {
                     index.add_path(path)?;
                 }
-                FileStatus::Renamed | FileStatus::Copied => {
+                GitFileStatus::Renamed | GitFileStatus::Copied => {
                     if path.exists() {
                         index.add_path(path)?;
                     }
                 }
-                FileStatus::Unknown => {
-                    // No action for unknown status
+                GitFileStatus::Unknown => {
+                    if path.exists() {
+                        index.add_path(path)?;
+                    } else {
+                        index.remove_path(path)?;
+                    }
                 }
             }
         }
@@ -623,7 +627,7 @@ impl<'repo> StagedDiff<'repo> {
                 git2::Delta::Modified => FileStatus::Modified,
                 git2::Delta::Renamed => FileStatus::Renamed,
                 git2::Delta::Copied => FileStatus::Copied,
-                _ => FileStatus::Unknown,
+                _ => FileStatus::Other,
             };
 
             FilePatch {
@@ -652,7 +656,64 @@ pub struct FilePatch {
     pub status: FileStatus,
 }
 
-// FileStatus is imported from christina_core for consistency
+/// Status of a file in the diff.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileStatus {
+    Added,
+    Deleted,
+    Modified,
+    Renamed,
+    Copied,
+    Other,
+}
+
+impl FileStatus {
+    /// Get a single-character representation of the status.
+    pub fn as_char(&self) -> char {
+        match self {
+            FileStatus::Added => 'A',
+            FileStatus::Deleted => 'D',
+            FileStatus::Modified => 'M',
+            FileStatus::Renamed => 'R',
+            FileStatus::Copied => 'C',
+            FileStatus::Other => '?',
+        }
+    }
+}
+
+impl std::fmt::Display for FileStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_char())
+    }
+}
+
+// Bidirectional conversion between FileStatus and christina_core::GitFileStatus
+impl From<FileStatus> for christina_core::GitFileStatus {
+    fn from(status: FileStatus) -> Self {
+        match status {
+            FileStatus::Added => christina_core::GitFileStatus::Added,
+            FileStatus::Deleted => christina_core::GitFileStatus::Deleted,
+            FileStatus::Modified => christina_core::GitFileStatus::Modified,
+            FileStatus::Renamed => christina_core::GitFileStatus::Renamed,
+            FileStatus::Copied => christina_core::GitFileStatus::Copied,
+            FileStatus::Other => christina_core::GitFileStatus::Unknown,
+        }
+    }
+}
+
+impl From<christina_core::GitFileStatus> for FileStatus {
+    fn from(status: christina_core::GitFileStatus) -> Self {
+        match status {
+            christina_core::GitFileStatus::Added => FileStatus::Added,
+            christina_core::GitFileStatus::Deleted => FileStatus::Deleted,
+            christina_core::GitFileStatus::Modified => FileStatus::Modified,
+            christina_core::GitFileStatus::Renamed => FileStatus::Renamed,
+            christina_core::GitFileStatus::Copied => FileStatus::Copied,
+            christina_core::GitFileStatus::Untracked => FileStatus::Other,
+            christina_core::GitFileStatus::Unknown => FileStatus::Other,
+        }
+    }
+}
 
 #[cfg(test)]
 #[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
@@ -720,7 +781,7 @@ mod tests {
         assert_eq!(FileStatus::Modified.as_char(), 'M');
         assert_eq!(FileStatus::Renamed.as_char(), 'R');
         assert_eq!(FileStatus::Copied.as_char(), 'C');
-        assert_eq!(FileStatus::Unknown.as_char(), '?');
+        assert_eq!(FileStatus::Other.as_char(), '?');
     }
 
     #[test]
@@ -796,8 +857,8 @@ mod tests {
 
         let git_repo = GitRepository::open(Some(repo_path))?;
         let files = vec![
-            (std::path::PathBuf::from("a.txt"), FileStatus::Added),
-            (std::path::PathBuf::from("b.txt"), FileStatus::Added),
+            (std::path::PathBuf::from("a.txt"), GitFileStatus::Added),
+            (std::path::PathBuf::from("b.txt"), GitFileStatus::Added),
         ];
         git_repo.stage_files(&files)?;
 

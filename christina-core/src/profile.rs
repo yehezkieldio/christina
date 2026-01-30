@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 use crate::types::{
-    token_count::{MAX_INPUT, MAX_OUTPUT},
     ModelName, ProviderKind, TokenCount,
+    token_count::{MAX_INPUT, MAX_OUTPUT},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -19,7 +19,6 @@ pub struct ProviderProfile {
     pub max_output_tokens: TokenCount,
     pub azure_api_version: Option<String>,
     pub azure_deployment_id: Option<String>,
-    pub temperature: f32,
 }
 
 impl ProviderProfile {
@@ -34,7 +33,6 @@ impl ProviderProfile {
             max_output_tokens: TokenCount::new_saturating(2048),
             azure_api_version: Some("2024-12-01-preview".to_string()),
             azure_deployment_id: None,
-            temperature: 0.7,
         }
     }
 
@@ -51,15 +49,11 @@ impl ProviderProfile {
             return Err(anyhow!("Max output tokens cannot exceed {}", MAX_OUTPUT));
         }
 
-        if !(0.0..=2.0).contains(&self.temperature) {
-            return Err(anyhow!("Temperature must be between 0.0 and 2.0"));
-        }
-
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Profiles {
     pub active: Option<String>,

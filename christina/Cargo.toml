@@ -26,10 +26,16 @@ toml = { version = "0.9.11", default-features = false, features = ["parse", "dis
 config = { version = "0.15.19", default-features = false, features = ["toml"] }
 directories = "6.0.0"
 which = "8.0.0"
+mimalloc = { version = "0.1.48", default-features = false }
+cap = { version = "0.1.2" }
 parking_lot = { workspace = true }
 compact_str = { workspace = true }
 url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
+inquire = { version = "0.7.5", default-features = false, features = ["termion"] }
+indicatif = "0.17.9"
+tempfile = "3.14.0"
+crossterm = "0.28.1"
 
 [lints]
 workspace = true

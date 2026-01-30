@@ -1,6 +1,16 @@
+#[cfg(not(feature = "dhat-heap"))]
+use mimalloc::MiMalloc;
+
+#[cfg(not(feature = "dhat-heap"))]
+use cap::Cap;
+
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
+
+#[cfg(not(feature = "dhat-heap"))]
+#[global_allocator]
+static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
 
 use anyhow::Result;
 use clap::Parser;
@@ -10,6 +20,7 @@ use tokio::sync::mpsc;
 mod app;
 mod bootstrap;
 mod cli;
+mod cli_generate;
 mod config;
 mod event_loop;
 mod generate;
@@ -29,6 +40,10 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Config) => config::cli::handle_config_command(),
+        Some(Commands::Generate { context }) => {
+            let config = config::Config::load()?;
+            cli_generate::run_cli_generate(&config, context).await
+        }
         None => run_tui().await,
     }
 }

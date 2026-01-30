@@ -12,7 +12,7 @@ use christina_llm::Provider;
 use christina_llm::{AIOrchestrator, GenerationResult};
 use christina_llm::{TokenBudget, get_tokenizer};
 
-fn config_to_profile(config: &Config) -> ProviderProfile {
+pub(crate) fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),
         provider: config.model_provider,
@@ -23,7 +23,6 @@ fn config_to_profile(config: &Config) -> ProviderProfile {
         max_output_tokens: config.max_output_tokens,
         azure_api_version: config.azure_api_version.clone(),
         azure_deployment_id: config.azure_deployment_id.clone(),
-        temperature: config.model_temperature,
     }
 }
 

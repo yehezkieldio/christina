@@ -87,6 +87,14 @@ pub struct Config {
     /// Number of recent commits to include for style analysis
     #[serde(default)]
     pub commit_history_depth: usize,
+
+    /// CLI editor preference: "inline" or "editor" (uses $EDITOR)
+    #[serde(default)]
+    pub cli_editor: String,
+
+    /// Whether to prompt for user context in CLI mode
+    #[serde(default)]
+    pub cli_prompt_context: bool,
 }
 
 impl Default for Config {
@@ -116,6 +124,8 @@ impl Default for Config {
             commit_message_validation_mode: ValidationMode::default(),
             use_commit_history: true,
             commit_history_depth: 5,
+            cli_editor: "inline".to_string(),
+            cli_prompt_context: false,
         }
     }
 }
@@ -454,7 +464,6 @@ impl Config {
             max_output_tokens: self.max_output_tokens,
             azure_api_version: self.azure_api_version.clone(),
             azure_deployment_id: self.azure_deployment_id.clone(),
-            temperature: self.model_temperature,
         }
     }
 }
@@ -548,13 +557,7 @@ impl crate::tui::form::editable::Editable for Config {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::panic,
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::field_reassign_with_default,
-    clippy::unwrap_err
-)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1090,7 +1093,6 @@ mod tests {
             max_output_tokens: TokenCount::new_saturating(4096),
             azure_api_version: Some("test-version".to_string()),
             azure_deployment_id: Some("test-deployment".to_string()),
-            temperature: 0.5,
         };
 
         config.apply_profile(&profile);
