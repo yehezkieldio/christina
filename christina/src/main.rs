@@ -20,7 +20,6 @@ use tokio::sync::mpsc;
 mod app;
 mod bootstrap;
 mod cli;
-mod cli_generate;
 mod config;
 mod event_loop;
 mod generate;
@@ -40,10 +39,6 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Config) => config::cli::handle_config_command(),
-        Some(Commands::Generate { context }) => {
-            let config = config::Config::load()?;
-            cli_generate::run_cli_generate(&config, context).await
-        }
         None => run_tui().await,
     }
 }

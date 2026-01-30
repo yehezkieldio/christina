@@ -40,6 +40,34 @@ pub fn handle_key(app: &mut ConfigApp, key: KeyEvent, on_save: &mut SaveCallback
             app.form_state.next_field();
             app.status_message = None;
         }
+        KeyCode::PageUp => {
+            app.form_state.scroll_up();
+            app.status_message = None;
+        }
+        KeyCode::PageDown => {
+            app.form_state.scroll_down();
+            app.status_message = None;
+        }
+        KeyCode::Tab | KeyCode::Right => {
+            app.form_state.next_section();
+            app.status_message = None;
+        }
+        KeyCode::Left => {
+            app.form_state.prev_section();
+            app.status_message = None;
+        }
+        KeyCode::Char('1') => {
+            app.form_state.set_section(0);
+            app.status_message = None;
+        }
+        KeyCode::Char('2') => {
+            app.form_state.set_section(1);
+            app.status_message = None;
+        }
+        KeyCode::Char('3') => {
+            app.form_state.set_section(2);
+            app.status_message = None;
+        }
         KeyCode::Enter => {
             app.form_state.start_editing(&app.config);
         }

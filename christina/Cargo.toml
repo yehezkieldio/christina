@@ -32,10 +32,6 @@ parking_lot = { workspace = true }
 compact_str = { workspace = true }
 url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
-inquire = { version = "0.7.5", default-features = false, features = ["termion"] }
-indicatif = "0.17.9"
-tempfile = "3.14.0"
-crossterm = "0.28.1"
 
 [lints]
 workspace = true

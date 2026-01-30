@@ -7,7 +7,7 @@ pub enum FormMode {
 }
 
 pub struct FormState {
-    /// Current field index
+    /// Current field index within the current section
     pub cursor: usize,
     /// Current mode
     pub mode: FormMode,
@@ -19,10 +19,23 @@ pub struct FormState {
     pub error: Option<String>,
     /// Cached field definitions
     fields: Vec<FieldDef>,
+    /// Current section index
+    current_section: usize,
+    /// Scroll offset for the current section's field list
+    scroll_offset: usize,
+    /// Number of visible rows for the field list
+    visible_rows: usize,
 }
 
+/// Section definitions for configuration
+pub const SECTIONS: &[(&str, &'static str)] = &[
+    ("general", "General"),
+    ("advanced", "Advanced"),
+    ("experimental", "Experimental"),
+];
+
 impl FormState {
-    pub fn new<T: Editable>(editable: &T) -> Self {
+    pub fn new<T: Editable>(editable: &T, visible_rows: usize) -> Self {
         Self {
             cursor: 0,
             mode: FormMode::Navigation,
@@ -30,25 +43,112 @@ impl FormState {
             edit_cursor: 0,
             error: None,
             fields: editable.fields(),
+            current_section: 0,
+            scroll_offset: 0,
+            visible_rows,
         }
     }
 
-    pub fn current_field(&self) -> Option<&FieldDef> {
-        self.fields.get(self.cursor)
+    pub fn current_section_key(&self) -> &'static str {
+        SECTIONS[self.current_section].0
     }
 
-    pub fn fields(&self) -> &[FieldDef] {
+    pub fn current_section_name(&self) -> &'static str {
+        SECTIONS[self.current_section].1
+    }
+
+    pub fn current_section_index(&self) -> usize {
+        self.current_section
+    }
+
+    pub fn set_section(&mut self, index: usize) {
+        if index < SECTIONS.len() {
+            self.current_section = index;
+            self.cursor = 0;
+            self.scroll_offset = 0;
+        }
+    }
+
+    pub fn next_section(&mut self) {
+        self.current_section = (self.current_section + 1) % SECTIONS.len();
+        self.cursor = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub fn prev_section(&mut self) {
+        self.current_section = self.current_section.saturating_sub(1);
+        self.cursor = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub fn visible_rows(&self) -> usize {
+        self.visible_rows
+    }
+
+    pub fn set_visible_rows(&mut self, rows: usize) {
+        self.visible_rows = rows;
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Get fields filtered to current section
+    pub fn current_section_fields(&self) -> Vec<&FieldDef> {
+        let current_key = self.current_section_key();
+        self.fields
+            .iter()
+            .filter(|f| f.section == Some(current_key))
+            .collect()
+    }
+
+    /// Get the currently selected field from the current section
+    pub fn current_field(&self) -> Option<&FieldDef> {
+        let section_fields = self.current_section_fields();
+        section_fields.get(self.cursor).copied()
+    }
+
+
+
+    pub fn all_fields(&self) -> &[FieldDef] {
         &self.fields
     }
 
+    /// Navigate to next field within current section
     pub fn next_field(&mut self) {
-        if self.cursor < self.fields.len().saturating_sub(1) {
+        let section_count = self.current_section_fields().len();
+        if self.cursor < section_count.saturating_sub(1) {
             self.cursor += 1;
+            // Adjust scroll if needed
+            if self.cursor >= self.scroll_offset + self.visible_rows {
+                self.scroll_offset = self.cursor.saturating_sub(self.visible_rows.saturating_sub(1));
+            }
         }
     }
 
+    /// Navigate to previous field within current section
     pub fn prev_field(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            // Adjust scroll if needed
+            if self.cursor < self.scroll_offset {
+                self.scroll_offset = self.cursor;
+            }
+        }
+    }
+
+    /// Scroll down in current section
+    pub fn scroll_down(&mut self) {
+        let section_count = self.current_section_fields().len();
+        let max_offset = section_count.saturating_sub(self.visible_rows);
+        if self.scroll_offset < max_offset {
+            self.scroll_offset += 1;
+        }
+    }
+
+    /// Scroll up in current section
+    pub fn scroll_up(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(1);
     }
 
     pub fn start_editing<T: Editable>(&mut self, editable: &T) {
@@ -163,6 +263,9 @@ impl FormState {
             } else {
                 self.error = None;
             }
+
+            // Refresh field definitions in case they changed
+            self.fields = editable.fields();
         }
     }
 }

@@ -12,7 +12,7 @@ use christina_llm::Provider;
 use christina_llm::{AIOrchestrator, GenerationResult};
 use christina_llm::{TokenBudget, get_tokenizer};
 
-pub(crate) fn config_to_profile(config: &Config) -> ProviderProfile {
+fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),
         provider: config.model_provider,
