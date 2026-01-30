@@ -1,12 +1,140 @@
 use anyhow::Result;
 
+use crate::cli::ConfigCommands;
 use crate::config::Config;
 use crate::tui::{
-    ConfigTuiOptions, ConfigTuiResult, ProfileTuiOptions, run_config_tui, run_profile_tui,
+    run_config_tui, run_profile_tui, ConfigTuiOptions, ConfigTuiResult, ProfileTuiOptions,
 };
 
-/// Handle config command - opens the config TUI.
-pub fn handle_config_command() -> Result<()> {
+/// Handle config commands - routes between CLI and TUI based on subcommand.
+pub fn handle_config_command(command: ConfigCommands) -> Result<()> {
+    match command {
+        ConfigCommands::Get { key } => handle_get(&key),
+        ConfigCommands::Set { key, value } => handle_set(&key, &value),
+        ConfigCommands::List => handle_list(),
+        ConfigCommands::Path => handle_path(),
+        ConfigCommands::Tui => handle_tui(),
+    }
+}
+
+fn handle_get(key: &str) -> Result<()> {
+    let config = Config::load()?;
+
+    match config.get(key) {
+        Some(value) => {
+            if key.contains("api_key") || key.contains("key") {
+                println!("{}: <hidden>", key);
+            } else {
+                println!("{}: {}", key, value);
+            }
+        }
+        None => {
+            eprintln!("Error: Unknown configuration key '{}'", key);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_set(key: &str, value: &str) -> Result<()> {
+    let mut config = Config::load()?;
+
+    config.set(key, value)?;
+    config.save_to_global()?;
+
+    println!("Set {} = {}", key, value);
+
+    Ok(())
+}
+
+fn handle_list() -> Result<()> {
+    let config = Config::load()?;
+
+    println!("Configuration values:");
+    println!("  max_input_tokens: {}", config.max_input_tokens.get());
+    println!("  max_output_tokens: {}", config.max_output_tokens.get());
+    println!("  model_provider: {}", config.model_provider);
+    println!("  model: {}", config.model);
+    println!(
+        "  api_key: {}",
+        config
+            .api_key
+            .as_ref()
+            .map(|_| "<set>".to_string())
+            .unwrap_or_else(|| "<not set>".to_string())
+    );
+    println!(
+        "  model_api_url: {}",
+        config
+            .model_api_url
+            .as_ref()
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| "<not set>".to_string())
+    );
+    println!(
+        "  azure_api_version: {}",
+        config
+            .azure_api_version
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| "<not set>".to_string())
+    );
+    println!(
+        "  azure_deployment_id: {}",
+        config
+            .azure_deployment_id
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| "<not set>".to_string())
+    );
+    println!("  ignore_files: {}", config.ignore_files.join(", "));
+    println!(
+        "  commit_message_max_length: {}",
+        config
+            .commit_message_max_length
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "<default (72)>".to_string())
+    );
+    println!(
+        "  commit_message_validation_mode: {}",
+        match config.commit_message_validation_mode {
+            christina_core::types::commit_message::ValidationMode::Strict => "strict",
+            christina_core::types::commit_message::ValidationMode::Soft => "soft",
+            christina_core::types::commit_message::ValidationMode::Disabled => "disabled",
+        }
+    );
+    println!("  diff_tool: {}", config.diff.tool);
+    println!("  diff_show_preview: {}", config.diff.show_preview);
+    println!("  use_commit_history: {}", config.use_commit_history);
+    println!("  commit_history_depth: {}", config.commit_history_depth);
+    println!();
+    println!(
+        "  Active profile: {}",
+        config
+            .profiles
+            .active
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| "<none>".to_string())
+    );
+
+    Ok(())
+}
+
+fn handle_path() -> Result<()> {
+    match Config::global_config_path() {
+        Some(path) => println!("{}", path.display()),
+        None => {
+            eprintln!("Error: Could not determine config directory");
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_tui() -> Result<()> {
     // Load config once before entering the loop
     let mut config = Config::load().unwrap_or_default();
 

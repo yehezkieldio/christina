@@ -38,7 +38,14 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Config) => config::cli::handle_config_command(),
+        Some(Commands::Config(cmd)) => {
+            config::cli::handle_config_command(cmd)?;
+            Ok(())
+        }
+        Some(Commands::Profile(cmd)) => {
+            config::profile_cli::handle_profile_command(cmd)?;
+            Ok(())
+        }
         None => run_tui().await,
     }
 }
