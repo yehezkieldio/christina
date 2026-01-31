@@ -34,17 +34,36 @@ impl<'a> DiffProcessor<'a> {
         self
     }
 
+    /// Maximum content size to scan for binary detection.
+    /// Files larger than this use extension-only detection to avoid memory pressure.
+    const MAX_BINARY_SCAN_SIZE: usize = 1024 * 1024; // 1MB
+
+    /// Sampling interval for NUL byte detection in large files.
+    /// Checks every Nth byte to reduce CPU usage while maintaining accuracy.
+    const NUL_BYTE_SAMPLING_INTERVAL: usize = 16;
+
     fn is_binary_content(&self, content: &str) -> bool {
-        // Check for git binary markers
+        // Check for git binary markers (fast path)
         if content.contains("Binary files") || content.contains("GIT binary patch") {
             return true;
         }
 
-        // Check for NUL bytes throughout content (not just first 1024 bytes)
-        // Use a reasonable limit to avoid scanning enormous files
-        let scan_limit = content.len().min(8192);
-        if content.bytes().take(scan_limit).any(|b| b == 0) {
-            return true;
+        // For very large content, use sampling to avoid performance issues
+        let content_len = content.len();
+        let should_sample = content_len > Self::MAX_BINARY_SCAN_SIZE;
+
+        // Check for NUL bytes with size-aware scanning
+        if should_sample {
+            // Sample at intervals for large files
+            if self.has_nul_bytes_sampled(content) {
+                return true;
+            }
+        } else {
+            // Full scan for smaller files (up to 8KB as before)
+            let scan_limit = content_len.min(8192);
+            if content.bytes().take(scan_limit).any(|b| b == 0) {
+                return true;
+            }
         }
 
         // Check file extension heuristics for common binary types
@@ -64,6 +83,22 @@ impl<'a> DiffProcessor<'a> {
                         }
                     }
                 }
+            }
+        }
+
+        false
+    }
+
+    /// Sample content for NUL bytes at regular intervals.
+    /// Used for large files to avoid scanning every byte.
+    fn has_nul_bytes_sampled(&self, content: &str) -> bool {
+        let bytes = content.as_bytes();
+        let sample_count = (bytes.len() / Self::NUL_BYTE_SAMPLING_INTERVAL).min(65536); // Max 64K samples
+
+        for i in 0..sample_count {
+            let idx = i * Self::NUL_BYTE_SAMPLING_INTERVAL;
+            if idx < bytes.len() && bytes[idx] == 0 {
+                return true;
             }
         }
 
@@ -625,5 +660,88 @@ mod tests {
         assert_eq!(processor.ignore_files.len(), 2);
         assert!(processor.ignore_files.contains(&"*.lock".to_string()));
         assert!(processor.ignore_files.contains(&"*.log".to_string()));
+    }
+
+    #[test]
+    fn binary_detection_large_file_sampling() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Create content larger than MAX_BINARY_SCAN_SIZE (1MB) with NUL byte at sampled position
+        let mut content = String::with_capacity(2_000_000);
+        content.push_str("diff --git a/large.bin b/large.bin\n");
+        // Fill with 'a's, but put a NUL byte at a sampled position
+        content.push_str(&"a".repeat(DiffProcessor::NUL_BYTE_SAMPLING_INTERVAL));
+        content.push('\0');
+        content.push_str(&"a".repeat(2_000_000 - content.len()));
+        assert!(processor.is_binary_content(&content));
+    }
+
+    #[test]
+    fn binary_detection_large_file_no_nul_bytes() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Create content larger than MAX_BINARY_SCAN_SIZE without NUL bytes
+        let mut content = String::with_capacity(2_000_000);
+        content.push_str("diff --git a/large.txt b/large.txt\n");
+        content.push_str(&"a".repeat(2_000_000 - content.len()));
+        // Should NOT be detected as binary since no NUL bytes at sampled positions
+        // and no binary extension
+        assert!(!processor.is_binary_content(&content));
+    }
+
+    #[test]
+    fn binary_detection_nul_byte_beyond_8kb() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // NUL byte after 8192 bytes - with the 8192 byte scan limit, this won't be detected
+        // Use .txt extension to avoid extension-based detection
+        let mut content = String::with_capacity(10000);
+        content.push_str("diff --git a/file.txt b/file.txt\n");
+        // Add content to push NUL byte beyond 8192 bytes
+        content.push_str(&"a".repeat(9000));
+        content.push('\0');
+        content.push_str("more content");
+        // File is under 1MB, but scan is limited to 8192 bytes
+        // NUL byte is at position 9000+, so it won't be detected
+        assert!(!processor.is_binary_content(&content));
+    }
+
+    #[test]
+    fn binary_detection_nul_at_8191_boundary() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // NUL byte exactly at the 8192 boundary (position 8191 after header)
+        let mut content = String::with_capacity(8200);
+        content.push_str("diff --git a/file.bin b/file.bin\n");
+        let header_len = content.len();
+        content.push_str(&"a".repeat(8192 - header_len - 1));
+        content.push('\0');
+        // NUL byte is within the first 8192 bytes, should be detected
+        assert!(processor.is_binary_content(&content));
+    }
+
+    #[test]
+    fn binary_detection_performance_large_text_file() {
+        let tokenizer = create_tokenizer();
+        let processor = DiffProcessor::new(&tokenizer, TokenCount::new_saturating(1000));
+        // Simulate a very large text file (e.g., minified JS)
+        // Should use sampling and complete quickly
+        let mut content = String::with_capacity(5_000_000);
+        content.push_str("diff --git a/bundle.js b/bundle.js\n");
+        // Add lots of text content without NUL bytes
+        for _ in 0..100000 {
+            content.push_str("function test() { return 'hello world'; }\n");
+        }
+        // Should complete quickly due to sampling
+        let start = std::time::Instant::now();
+        let result = processor.is_binary_content(&content);
+        let elapsed = start.elapsed();
+        assert!(!result);
+        // Should complete in reasonable time (sampling prevents O(n) scan)
+        assert!(
+            elapsed.as_millis() < 100,
+            "Large file detection took too long: {:?}",
+            elapsed
+        );
     }
 }

@@ -1,3 +1,5 @@
+#![allow(unused_crate_dependencies)]
+
 pub mod chunking;
 pub mod diff_processor;
 pub mod parsing;

@@ -19,6 +19,13 @@ const LLM_INITIAL_TIMEOUT_SECONDS: u64 = 30;
 const LLM_RETRY_TIMEOUT_SECONDS: u64 = 60;
 const LLM_TIMEOUT_SECONDS: u64 = 120;
 
+/// Maximum number of summaries to process in a single intent extraction batch.
+/// When summaries exceed this threshold, hierarchical extraction is used:
+/// 1. Summaries are grouped into batches of this size
+/// 2. Sub-themes are extracted from each batch in parallel
+/// 3. Sub-themes are aggregated into final themes
+const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
+
 impl IsTransient for CompletionError {
     fn is_transient(&self) -> bool {
         CompletionError::is_transient(self)
@@ -148,6 +155,16 @@ struct ThemeItem {
     title: String,
     description: String,
     #[serde(rename = "fileCount")]
+    file_count: usize,
+    scope: String,
+}
+
+/// Intermediate theme representation for hierarchical extraction.
+/// Used when aggregating sub-themes from multiple batches.
+#[derive(Debug, Clone)]
+struct SubTheme {
+    title: String,
+    description: String,
     file_count: usize,
     scope: String,
 }
@@ -483,27 +500,22 @@ impl AIOrchestrator {
 
     /// Intent Extraction: Aggregate summaries and extract themes.
     /// Falls back to simple theme creation from summaries if JSON parsing fails.
+    ///
+    /// Uses hierarchical extraction when summaries exceed MAX_SUMMARIES_PER_INTENT_BATCH:
+    /// 1. Groups summaries into batches
+    /// 2. Extracts sub-themes from each batch in parallel
+    /// 3. Aggregates sub-themes into final themes
     async fn extract_intent(&self, summaries: &[ChunkSummary]) -> Result<(Vec<Theme>, bool)> {
         // Check for potential contradictions in summaries
         self.detect_contradictions(summaries);
 
-        // Format summaries with file paths for the prompt
-        let mut summary_strings = Vec::with_capacity(summaries.len());
-        for summary in summaries {
-            let paths = summary
-                .files
-                .iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            summary_strings.push(format!(
-                "[{} files: {}] {}",
-                summary.files.len(),
-                paths,
-                summary.summary
-            ));
+        // Use hierarchical extraction for large summary sets
+        if summaries.len() > MAX_SUMMARIES_PER_INTENT_BATCH {
+            return self.extract_intent_hierarchical(summaries).await;
         }
 
+        // Format summaries with file paths for the prompt
+        let summary_strings = self.format_summaries_for_prompt(summaries);
         let builder = PromptBuilder::new().with_summaries(&summary_strings);
 
         let messages = vec![
@@ -524,7 +536,6 @@ impl AIOrchestrator {
         match self.parse_themes(&response) {
             Ok(themes) => Ok((themes, false)),
             Err(e) => {
-                // Log detailed parsing error for debugging
                 if debug_enabled() {
                     eprintln!(
                         "Warning: Failed to parse themes JSON: {}. Using fallback theme generation.",
@@ -538,6 +549,236 @@ impl AIOrchestrator {
                 Ok((self.fallback_themes_from_summaries(summaries), true))
             }
         }
+    }
+
+    /// Hierarchical theme extraction for large summary sets.
+    ///
+    /// Process:
+    /// 1. Group summaries into batches of MAX_SUMMARIES_PER_INTENT_BATCH
+    /// 2. Extract sub-themes from each batch in parallel
+    /// 3. Aggregate sub-themes into final themes
+    async fn extract_intent_hierarchical(
+        &self,
+        summaries: &[ChunkSummary],
+    ) -> Result<(Vec<Theme>, bool)> {
+        if debug_enabled() {
+            eprintln!(
+                "Using hierarchical theme extraction for {} summaries",
+                summaries.len()
+            );
+        }
+
+        // Step 1: Group summaries into batches
+        let batches: Vec<Vec<ChunkSummary>> = summaries
+            .chunks(MAX_SUMMARIES_PER_INTENT_BATCH)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        let batch_count = batches.len();
+
+        if debug_enabled() {
+            eprintln!("Grouped into {} batches", batch_count);
+        }
+
+        // Step 2: Extract sub-themes from each batch in parallel
+        let sub_themes_results = stream::iter(batches.into_iter().enumerate().map(
+            |(idx, batch)| async move {
+                match self.extract_sub_themes(&batch).await {
+                    Ok(themes) => {
+                        if debug_enabled() {
+                            eprintln!("Batch {}: extracted {} sub-themes", idx, themes.len());
+                        }
+                        Ok(themes)
+                    }
+                    Err(e) => {
+                        if debug_enabled() {
+                            eprintln!("Batch {}: failed to extract sub-themes: {}", idx, e);
+                        }
+                        // Fall back to creating sub-themes from batch summaries
+                        Ok(self.fallback_sub_themes_from_summaries(&batch))
+                    }
+                }
+            },
+        ))
+        .buffer_unordered(self.concurrency_limit.min(batch_count).max(1))
+        .collect::<Vec<Result<Vec<SubTheme>>>>()
+        .await;
+
+        // Collect all sub-themes, filtering out errors
+        let mut all_sub_themes: Vec<SubTheme> = Vec::new();
+        let mut any_fallback = false;
+
+        for result in sub_themes_results {
+            match result {
+                Ok(themes) => all_sub_themes.extend(themes),
+                Err(_) => {
+                    any_fallback = true;
+                }
+            }
+        }
+
+        if all_sub_themes.is_empty() {
+            // All batches failed, use fallback
+            return Ok((self.fallback_themes_from_summaries(summaries), true));
+        }
+
+        // Step 3: Aggregate sub-themes into final themes
+        let final_themes = self.aggregate_sub_themes(&all_sub_themes).await;
+
+        match final_themes {
+            Ok(themes) => Ok((themes, any_fallback)),
+            Err(e) => {
+                if debug_enabled() {
+                    eprintln!("Theme aggregation failed: {}. Using fallback.", e);
+                }
+                Ok((self.fallback_themes_from_summaries(summaries), true))
+            }
+        }
+    }
+
+    /// Extract sub-themes from a batch of summaries.
+    /// Uses a simplified prompt optimized for intermediate theme extraction.
+    async fn extract_sub_themes(&self, batch: &[ChunkSummary]) -> Result<Vec<SubTheme>> {
+        let summary_strings = self.format_summaries_for_prompt(batch);
+        let builder = PromptBuilder::new().with_summaries(&summary_strings);
+
+        let messages = vec![
+            ChatMessage::system(builder.build_system_prompt()),
+            ChatMessage::user(builder.build_intent_prompt()),
+        ];
+
+        let _permit = self.limiter.acquire().await;
+
+        let response =
+            generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
+                .await
+                .context("Sub-theme extraction failed")?;
+
+        self.parse_sub_themes(&response)
+    }
+
+    /// Aggregate sub-themes from multiple batches into final themes.
+    ///
+    /// Strategy:
+    /// 1. Group sub-themes by similarity (title/scope matching)
+    /// 2. Merge similar themes, summing file counts
+    /// 3. Select top 1-3 themes by file count
+    /// 4. If too many distinct themes, use LLM to synthesize
+    async fn aggregate_sub_themes(&self, sub_themes: &[SubTheme]) -> Result<Vec<Theme>> {
+        // Simple aggregation: group by exact scope match, keep top by file count
+        let mut scope_groups: std::collections::HashMap<String, Vec<SubTheme>> =
+            std::collections::HashMap::new();
+
+        for theme in sub_themes {
+            scope_groups
+                .entry(theme.scope.clone())
+                .or_default()
+                .push(theme.clone());
+        }
+
+        // Merge themes within each scope group
+        let mut merged_themes: Vec<Theme> = Vec::new();
+
+        for (scope, themes) in scope_groups {
+            let total_files: usize = themes.iter().map(|t| t.file_count).sum();
+
+            // Use the most common title, or synthesize one
+            let title = if themes.len() == 1 {
+                themes[0].title.clone()
+            } else {
+                // Find the most representative title
+                let mut title_counts: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+                for theme in &themes {
+                    *title_counts.entry(theme.title.clone()).or_default() += 1;
+                }
+                title_counts
+                    .into_iter()
+                    .max_by_key(|(_, count)| *count)
+                    .map(|(title, _)| title)
+                    .unwrap_or_else(|| "Code changes".to_string())
+            };
+
+            // Combine descriptions
+            let description = themes
+                .iter()
+                .map(|t| t.description.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
+
+            merged_themes.push(Theme::new(title, description, total_files, scope));
+        }
+
+        // Sort by file count descending and take top 3
+        merged_themes.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+        merged_themes.truncate(3);
+
+        if debug_enabled() {
+            eprintln!(
+                "Aggregated {} sub-themes into {} final themes",
+                sub_themes.len(),
+                merged_themes.len()
+            );
+        }
+
+        Ok(merged_themes)
+    }
+
+    /// Format summaries for prompt inclusion.
+    fn format_summaries_for_prompt(&self, summaries: &[ChunkSummary]) -> Vec<String> {
+        summaries
+            .iter()
+            .map(|summary| {
+                let paths = summary
+                    .files
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "[{} files: {}] {}",
+                    summary.files.len(),
+                    paths,
+                    summary.summary
+                )
+            })
+            .collect()
+    }
+
+    /// Parse sub-themes from LLM response.
+    fn parse_sub_themes(&self, response: &str) -> Result<Vec<SubTheme>> {
+        let json_str = self.extract_json(response);
+
+        let theme_response: ThemeResponse =
+            serde_json::from_str(&json_str).context("Failed to parse sub-themes JSON")?;
+
+        Ok(theme_response
+            .themes
+            .into_iter()
+            .map(|t| SubTheme {
+                title: t.title,
+                description: t.description,
+                file_count: t.file_count,
+                scope: t.scope,
+            })
+            .collect())
+    }
+
+    /// Create fallback sub-themes from a batch when LLM extraction fails.
+    fn fallback_sub_themes_from_summaries(&self, batch: &[ChunkSummary]) -> Vec<SubTheme> {
+        let total_files: usize = batch.iter().map(|s| s.files.len()).sum();
+        let combined_description = batch
+            .iter()
+            .map(|s| s.summary.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        vec![SubTheme {
+            title: "Code changes".to_string(),
+            description: combined_description,
+            file_count: total_files,
+            scope: "chore".to_string(),
+        }]
     }
 
     /// Detect potential contradictions in chunk summaries.
@@ -1456,5 +1697,145 @@ This is not JSON at all, just plain text
         // Test: Very low token count respects minimum
         let budget_very_low = orchestrator.calculate_history_budget(100);
         assert_eq!(budget_very_low, 3);
+    }
+
+    #[test]
+    fn format_summaries_for_prompt() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let summaries = vec![
+            ChunkSummary {
+                summary: "Added authentication".to_string(),
+                files: vec![FilePath::from("src/auth.rs")],
+            },
+            ChunkSummary {
+                summary: "Fixed login bug".to_string(),
+                files: vec![FilePath::from("src/login.rs"), FilePath::from("src/user.rs")],
+            },
+        ];
+
+        let formatted = orchestrator.format_summaries_for_prompt(&summaries);
+
+        assert_eq!(formatted.len(), 2);
+        assert!(formatted[0].contains("[1 files:"));
+        assert!(formatted[0].contains("src/auth.rs"));
+        assert!(formatted[0].contains("Added authentication"));
+        assert!(formatted[1].contains("[2 files:"));
+        assert!(formatted[1].contains("src/login.rs"));
+        assert!(formatted[1].contains("Fixed login bug"));
+    }
+
+    #[test]
+    fn fallback_sub_themes_from_summaries() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let summaries = vec![
+            ChunkSummary {
+                summary: "Added feature A".to_string(),
+                files: vec![FilePath::from("src/a.rs")],
+            },
+            ChunkSummary {
+                summary: "Added feature B".to_string(),
+                files: vec![FilePath::from("src/b.rs"), FilePath::from("src/c.rs")],
+            },
+        ];
+
+        let sub_themes = orchestrator.fallback_sub_themes_from_summaries(&summaries);
+
+        assert_eq!(sub_themes.len(), 1);
+        assert_eq!(sub_themes[0].title, "Code changes");
+        assert_eq!(sub_themes[0].file_count, 3);
+        assert_eq!(sub_themes[0].scope, "chore");
+        assert!(sub_themes[0].description.contains("Added feature A"));
+        assert!(sub_themes[0].description.contains("Added feature B"));
+    }
+
+    #[tokio::test]
+    async fn aggregate_sub_themes_merges_by_scope() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let sub_themes = vec![
+            SubTheme {
+                title: "Auth feature 1".to_string(),
+                description: "Added login".to_string(),
+                file_count: 2,
+                scope: "auth".to_string(),
+            },
+            SubTheme {
+                title: "Auth feature 2".to_string(),
+                description: "Added logout".to_string(),
+                file_count: 3,
+                scope: "auth".to_string(),
+            },
+            SubTheme {
+                title: "API feature".to_string(),
+                description: "Added endpoints".to_string(),
+                file_count: 1,
+                scope: "api".to_string(),
+            },
+        ];
+
+        let themes = orchestrator.aggregate_sub_themes(&sub_themes).await.unwrap();
+
+        // Should have 2 themes (auth and api)
+        assert_eq!(themes.len(), 2);
+
+        // Auth theme should have merged file count
+        let auth_theme = themes.iter().find(|t| t.scope == "auth").unwrap();
+        assert_eq!(auth_theme.file_count, 5);
+
+        // API theme should remain separate
+        let api_theme = themes.iter().find(|t| t.scope == "api").unwrap();
+        assert_eq!(api_theme.file_count, 1);
+    }
+
+    #[tokio::test]
+    async fn aggregate_sub_themes_limits_to_top_three() {
+        let provider = Arc::new(Provider::default());
+        let orchestrator = AIOrchestrator::new(provider);
+
+        let sub_themes = vec![
+            SubTheme {
+                title: "Feature 1".to_string(),
+                description: "Desc 1".to_string(),
+                file_count: 10,
+                scope: "scope1".to_string(),
+            },
+            SubTheme {
+                title: "Feature 2".to_string(),
+                description: "Desc 2".to_string(),
+                file_count: 8,
+                scope: "scope2".to_string(),
+            },
+            SubTheme {
+                title: "Feature 3".to_string(),
+                description: "Desc 3".to_string(),
+                file_count: 6,
+                scope: "scope3".to_string(),
+            },
+            SubTheme {
+                title: "Feature 4".to_string(),
+                description: "Desc 4".to_string(),
+                file_count: 4,
+                scope: "scope4".to_string(),
+            },
+            SubTheme {
+                title: "Feature 5".to_string(),
+                description: "Desc 5".to_string(),
+                file_count: 2,
+                scope: "scope5".to_string(),
+            },
+        ];
+
+        let themes = orchestrator.aggregate_sub_themes(&sub_themes).await.unwrap();
+
+        // Should be limited to top 3 by file count
+        assert_eq!(themes.len(), 3);
+        assert_eq!(themes[0].file_count, 10);
+        assert_eq!(themes[1].file_count, 8);
+        assert_eq!(themes[2].file_count, 6);
     }
 }

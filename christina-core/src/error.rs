@@ -88,7 +88,9 @@ impl CompletionError {
     pub fn is_provider_error(&self) -> bool {
         matches!(
             self,
-            CompletionError::ServerError(_) | CompletionError::NetworkError(_)
+            CompletionError::Unauthorized(_)
+                | CompletionError::RateLimited
+                | CompletionError::ServerError(_)
         )
     }
 
@@ -101,16 +103,26 @@ impl CompletionError {
             || msg_lower.contains("invalid api key")
         {
             CompletionError::Unauthorized(msg.to_string())
-        } else if msg_lower.contains("429") || msg_lower.contains("rate limit") {
+        } else if msg_lower.contains("429")
+            || msg_lower.contains("rate limit")
+            || msg_lower.contains("quota")
+        {
             CompletionError::RateLimited
         } else if msg_lower.contains("timeout") || msg_lower.contains("timed out") {
             CompletionError::Timeout
-        } else if msg_lower.contains("5") || msg_lower.contains("server error") {
+        } else if msg_lower.contains("5")
+            || msg_lower.contains("server error")
+            || msg_lower.contains("overloaded")
+        {
             CompletionError::ServerError(msg.to_string())
-        } else if msg_lower.contains("network") || msg_lower.contains("connection") {
+        } else if msg_lower.contains("network")
+            || msg_lower.contains("connection")
+            || msg_lower.contains("dns")
+            || msg_lower.contains("resolve")
+        {
             CompletionError::NetworkError(msg.to_string())
         } else {
-            CompletionError::InvalidResponse(msg.to_string())
+            CompletionError::ServerError(msg.to_string())
         }
     }
 }
