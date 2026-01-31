@@ -1,3 +1,4 @@
+use std::io::{IsTerminal, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -25,6 +26,14 @@ const LLM_TIMEOUT_SECONDS: u64 = 120;
 /// 2. Sub-themes are extracted from each batch in parallel
 /// 3. Sub-themes are aggregated into final themes
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
+
+/// Default maximum partial failure rate (10%) before aborting the pipeline.
+/// Can be overridden via CHRISTINA_MAX_FAILURE_RATE environment variable.
+const DEFAULT_MAX_PARTIAL_FAILURE_RATE: f64 = 0.10;
+
+/// Threshold at which to prompt the user for confirmation before proceeding
+/// with partial failures. Below this threshold, processing continues automatically.
+const PROMPT_FAILURE_RATE_THRESHOLD: f64 = 0.05; // 5%
 
 impl IsTransient for CompletionError {
     fn is_transient(&self) -> bool {
@@ -460,9 +469,9 @@ impl AIOrchestrator {
         // Higher failure rates risk generating misleading messages that omit significant changes.
         let total_chunks = successes.len() + failed_count;
         let failure_rate = failed_count as f64 / total_chunks as f64;
-        const MAX_PARTIAL_FAILURE_RATE: f64 = 0.10; // 10%
+        let max_failure_rate = self.max_failure_rate();
 
-        if failure_rate > MAX_PARTIAL_FAILURE_RATE {
+        if failure_rate > max_failure_rate {
             anyhow::bail!(
                 "Partial failure rate too high: {}/{} chunks failed ({:.0}%). \
                  This exceeds the {:.0}% threshold for acceptable degradation. \
@@ -470,13 +479,38 @@ impl AIOrchestrator {
                 failed_count,
                 total_chunks,
                 failure_rate * 100.0,
-                MAX_PARTIAL_FAILURE_RATE * 100.0,
+                max_failure_rate * 100.0,
                 failed_files
                     .iter()
                     .map(|path| path.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
+        }
+
+        // Prompt user for confirmation when failure rate exceeds prompt threshold
+        if failure_rate > PROMPT_FAILURE_RATE_THRESHOLD && failed_count > 0 {
+            let should_proceed = self.prompt_partial_failure_confirmation(
+                failed_count,
+                total_chunks,
+                failure_rate,
+                &failed_files,
+            )?;
+
+            if !should_proceed {
+                anyhow::bail!(
+                    "User declined to proceed with partial failures. \
+                     {}/{} chunks failed ({:.0}%). Files affected: {}",
+                    failed_count,
+                    total_chunks,
+                    failure_rate * 100.0,
+                    failed_files
+                        .iter()
+                        .map(|path| path.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
         }
 
         // Log warning if there were any partial failures (even below threshold)
@@ -1046,6 +1080,91 @@ impl AIOrchestrator {
         max_length: Option<usize>,
     ) -> Option<String> {
         try_extract_valid_commit(message, mode, max_length)
+    }
+
+    /// Get the maximum partial failure rate from environment or use default.
+    ///
+    /// Reads CHRISTINA_MAX_FAILURE_RATE environment variable. Valid range is 0.0 to 1.0.
+    /// Invalid values fall back to DEFAULT_MAX_PARTIAL_FAILURE_RATE (10%).
+    fn max_failure_rate(&self) -> f64 {
+        std::env::var("CHRISTINA_MAX_FAILURE_RATE")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .map(|rate| rate.clamp(0.0, 1.0))
+            .unwrap_or(DEFAULT_MAX_PARTIAL_FAILURE_RATE)
+    }
+
+    /// Prompt the user for confirmation when partial failures exceed the prompt threshold.
+    ///
+    /// Returns true if the user confirms they want to proceed, false otherwise.
+    /// In non-interactive environments (CI, pipes), returns true to avoid blocking.
+    fn prompt_partial_failure_confirmation(
+        &self,
+        failed_count: usize,
+        total_chunks: usize,
+        failure_rate: f64,
+        failed_files: &[FilePath],
+    ) -> Result<bool> {
+        // Check if we're in an interactive terminal
+        let is_interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+
+        if !is_interactive {
+            // In non-interactive mode, log warning and proceed
+            eprintln!(
+                "Warning: {}/{} chunks failed ({:.0}%) in non-interactive mode. Proceeding...",
+                failed_count, total_chunks, failure_rate * 100.0
+            );
+            return Ok(true);
+        }
+
+        // Format the list of failed files
+        let failed_files_str = if failed_files.len() <= 5 {
+            failed_files
+                .iter()
+                .map(|path| path.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            format!(
+                "{} and {} more",
+                failed_files[..5]
+                    .iter()
+                    .map(|path| path.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                failed_files.len() - 5
+            )
+        };
+
+        // Print the prompt to stderr
+        eprintln!();
+        eprintln!("⚠️  Partial Failure Warning");
+        eprintln!("   {}/{} chunks failed to process ({:.0}%)",
+            failed_count, total_chunks, failure_rate * 100.0
+        );
+        eprintln!("   Failed files: {}", failed_files_str);
+        eprintln!();
+        eprintln!("The generated commit message may not reflect all changes.");
+        eprintln!();
+        eprint!("Do you want to proceed anyway? [y/N]: ");
+
+        // Ensure the prompt is displayed immediately
+        std::io::stderr().flush()?;
+
+        // Read user response
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+
+        let input = input.trim().to_lowercase();
+        let confirmed = matches!(input.as_str(), "y" | "yes");
+
+        if confirmed {
+            eprintln!("Proceeding with partial results...");
+        } else {
+            eprintln!("Aborting.");
+        }
+
+        Ok(confirmed)
     }
 }
 
