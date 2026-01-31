@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
+use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::event_loop::Event;
@@ -139,7 +140,7 @@ pub async fn generate_commit_message_with_progress(
                         commits.truncate(budget_limit);
 
                         if commits.len() < original_count {
-                            eprintln!(
+                            info!(
                                 "Truncated commit history from {} to {} commits to fit token budget",
                                 original_count,
                                 commits.len()
@@ -155,12 +156,12 @@ pub async fn generate_commit_message_with_progress(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to retrieve commit history: {}", e);
+                    warn!("Failed to retrieve commit history: {}", e);
                     None
                 }
             },
             Err(e) => {
-                eprintln!("Warning: Failed to discover git repository: {}", e);
+                warn!("Failed to discover git repository: {}", e);
                 None
             }
         }

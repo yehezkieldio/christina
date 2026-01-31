@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
+use tracing::{debug, warn};
 
 use crate::concurrency::RequestLimiter;
 use crate::provider::{ChatMessage, Provider};
@@ -255,7 +256,7 @@ impl AIOrchestrator {
                 )
                 .await?;
             if let Some(start) = direct_start {
-                eprintln!("direct generation completed in {:?}", start.elapsed());
+                debug!("direct generation completed in {:?}", start.elapsed());
             }
             return Ok(GenerationResult {
                 message,
@@ -277,7 +278,7 @@ impl AIOrchestrator {
         };
         let (summaries, failed_chunks, failed_files) = self.map_phase(&chunks).await?;
         if let Some(start) = map_start {
-            eprintln!("map phase completed in {:?}", start.elapsed());
+            debug!("map phase completed in {:?}", start.elapsed());
         }
 
         // Intent Extraction: Get high-level themes
@@ -293,7 +294,7 @@ impl AIOrchestrator {
             self.extract_intent(&summaries).await?
         };
         if let Some(start) = intent_start {
-            eprintln!("intent phase completed in {:?}", start.elapsed());
+            debug!("intent phase completed in {:?}", start.elapsed());
         }
 
         // Reduce Phase: Synthesize final commit message
@@ -312,7 +313,7 @@ impl AIOrchestrator {
             )
             .await?;
         if let Some(start) = reduce_start {
-            eprintln!("reduce phase completed in {:?}", start.elapsed());
+            debug!("reduce phase completed in {:?}", start.elapsed());
         }
         Ok(GenerationResult {
             message,
@@ -369,9 +370,7 @@ impl AIOrchestrator {
             )
         };
         let debug_future = async {
-            if debug_enabled() {
-                eprintln!("validation input length: {}", cleaned.len());
-            }
+            debug!("validation input length: {}", cleaned.len());
         };
         let (validation_result, _) = tokio::join!(validation_future, debug_future);
         validation_result
@@ -514,10 +513,9 @@ impl AIOrchestrator {
         }
 
         // Log warning if there were any partial failures (even below threshold)
-        if failed_count > 0 && debug_enabled() {
-            eprintln!(
-                "Warning: {}/{} chunks failed ({:.0}%). Generated message may not reflect all changes. \
-                 Files with failed analysis: {}",
+        if failed_count > 0 {
+            warn!(
+                "{}/{} chunks failed ({:.0}%). Generated message may not reflect all changes. Files with failed analysis: {}",
                 failed_count,
                 total_chunks,
                 failure_rate * 100.0,
@@ -570,16 +568,8 @@ impl AIOrchestrator {
         match self.parse_themes(&response) {
             Ok(themes) => Ok((themes, false)),
             Err(e) => {
-                if debug_enabled() {
-                    eprintln!(
-                        "Warning: Failed to parse themes JSON: {}. Using fallback theme generation.",
-                        e
-                    );
-                    eprintln!(
-                        "LLM response excerpt: {}",
-                        &response.chars().take(200).collect::<String>()
-                    );
-                }
+                debug!("Failed to parse themes JSON: {}. Using fallback theme generation.", e);
+                debug!("LLM response excerpt: {}", &response.chars().take(200).collect::<String>());
                 Ok((self.fallback_themes_from_summaries(summaries), true))
             }
         }
@@ -595,12 +585,7 @@ impl AIOrchestrator {
         &self,
         summaries: &[ChunkSummary],
     ) -> Result<(Vec<Theme>, bool)> {
-        if debug_enabled() {
-            eprintln!(
-                "Using hierarchical theme extraction for {} summaries",
-                summaries.len()
-            );
-        }
+        debug!("Using hierarchical theme extraction for {} summaries", summaries.len());
 
         // Step 1: Group summaries into batches
         let batches: Vec<Vec<ChunkSummary>> = summaries
@@ -610,24 +595,18 @@ impl AIOrchestrator {
 
         let batch_count = batches.len();
 
-        if debug_enabled() {
-            eprintln!("Grouped into {} batches", batch_count);
-        }
+        debug!("Grouped into {} batches", batch_count);
 
         // Step 2: Extract sub-themes from each batch in parallel
         let sub_themes_results = stream::iter(batches.into_iter().enumerate().map(
             |(idx, batch)| async move {
                 match self.extract_sub_themes(&batch).await {
                     Ok(themes) => {
-                        if debug_enabled() {
-                            eprintln!("Batch {}: extracted {} sub-themes", idx, themes.len());
-                        }
+                        debug!("Batch {}: extracted {} sub-themes", idx, themes.len());
                         Ok(themes)
                     }
                     Err(e) => {
-                        if debug_enabled() {
-                            eprintln!("Batch {}: failed to extract sub-themes: {}", idx, e);
-                        }
+                        debug!("Batch {}: failed to extract sub-themes: {}", idx, e);
                         // Fall back to creating sub-themes from batch summaries
                         Ok(self.fallback_sub_themes_from_summaries(&batch))
                     }
@@ -662,9 +641,7 @@ impl AIOrchestrator {
         match final_themes {
             Ok(themes) => Ok((themes, any_fallback)),
             Err(e) => {
-                if debug_enabled() {
-                    eprintln!("Theme aggregation failed: {}. Using fallback.", e);
-                }
+                debug!("Theme aggregation failed: {}. Using fallback.", e);
                 Ok((self.fallback_themes_from_summaries(summaries), true))
             }
         }
@@ -747,13 +724,7 @@ impl AIOrchestrator {
         merged_themes.sort_by(|a, b| b.file_count.cmp(&a.file_count));
         merged_themes.truncate(3);
 
-        if debug_enabled() {
-            eprintln!(
-                "Aggregated {} sub-themes into {} final themes",
-                sub_themes.len(),
-                merged_themes.len()
-            );
-        }
+        debug!("Aggregated {} sub-themes into {} final themes", sub_themes.len(), merged_themes.len());
 
         Ok(merged_themes)
     }
@@ -836,13 +807,7 @@ impl AIOrchestrator {
             let has_counteraction = summary_text.iter().any(|s| s.contains(counteraction));
 
             if has_action && has_counteraction {
-                if debug_enabled() {
-                    eprintln!(
-                        "Warning: Potential contradiction detected - summaries contain both '{}' and '{}' operations",
-                        action, counteraction
-                    );
-                    eprintln!("This may indicate conflicting changes or complex refactoring");
-                }
+                warn!("Potential contradiction detected - summaries contain both '{}' and '{}' operations", action, counteraction);
                 return;
             }
         }
@@ -1019,9 +984,7 @@ impl AIOrchestrator {
             )
         };
         let debug_future = async {
-            if debug_enabled() {
-                eprintln!("validation input length: {}", cleaned.len());
-            }
+            debug!("validation input length: {}", cleaned.len());
         };
         let (validation_result, _) = tokio::join!(validation_future, debug_future);
         validation_result

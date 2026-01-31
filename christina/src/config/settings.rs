@@ -166,8 +166,7 @@ impl Config {
             // Persist the default profile to global config to prevent recreation on next run
             // This ensures user's API key and settings are not lost
             if let Err(e) = config.save_to_global() {
-                eprintln!("Warning: Failed to persist default profile: {}", e);
-                // Continue execution - profile will be recreated on next run
+                return Err(anyhow::anyhow!("Failed to persist default profile: {}", e));
             }
         }
 
