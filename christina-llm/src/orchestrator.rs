@@ -470,7 +470,7 @@ impl AIOrchestrator {
         let failure_rate = failed_count as f64 / total_chunks as f64;
         let max_failure_rate = self.max_failure_rate();
 
-        if failure_rate > max_failure_rate {
+        if failed_count > 1 && failure_rate > max_failure_rate {
             anyhow::bail!(
                 "Partial failure rate too high: {}/{} chunks failed ({:.0}%). \
                  This exceeds the {:.0}% threshold for acceptable degradation. \
@@ -847,22 +847,34 @@ impl AIOrchestrator {
             .collect())
     }
 
-    /// Extract JSON from a response that might contain markdown formatting.
-    ///
-    /// Uses a brace-balancing algorithm to find the outermost valid JSON object
-    /// when markdown markers are missing or incomplete.
     fn extract_json(&self, response: &str) -> String {
-        // Try markdown code block extraction first
         if let Some(content) = Self::extract_from_markdown(response) {
             return content;
         }
 
-        // Fall back to brace-balanced extraction
+        if let Some(json) = Self::extract_json_simplified(response) {
+            return json;
+        }
+
         if let Some(json) = Self::extract_balanced_json(response) {
             return json;
         }
 
         response.to_string()
+    }
+
+    fn extract_json_simplified(response: &str) -> Option<String> {
+        let start = response.find('{')?;
+        let end = response.rfind('}')?;
+
+        if start >= end {
+            return None;
+        }
+
+        let candidate = &response[start..=end];
+        serde_json::from_str::<serde_json::Value>(candidate).ok()?;
+
+        Some(candidate.to_string())
     }
 
     /// Extract content from markdown code blocks.

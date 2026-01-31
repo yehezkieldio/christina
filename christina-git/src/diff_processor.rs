@@ -116,11 +116,9 @@ impl<'a> DiffProcessor<'a> {
         // Truncate deletion-only diffs to save tokens
         // The LLM doesn't need to see all deleted content to generate "delete file" messages
         if parsing::is_all_file_deletions(diff) {
-            // All files are being deleted - heavily truncate
-            return self.process_owned(parsing::truncate_deletion_diff(diff, 3));
+            return self.process_owned(parsing::truncate_deletion_diff(diff, 50));
         } else if parsing::is_deletion_only(diff) {
-            // Only deletions (no additions) - moderately truncate
-            return self.process_owned(parsing::truncate_deletion_diff(diff, 10));
+            return self.process_owned(parsing::truncate_deletion_diff(diff, 100));
         }
 
         // Normal processing path for non-deletion-only diffs
