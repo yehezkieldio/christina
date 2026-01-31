@@ -12,7 +12,10 @@ pub fn handle_config_command(command: ConfigCommands) -> Result<()> {
         ConfigCommands::Get { key } => handle_get(&key),
         ConfigCommands::Set { key, value } => handle_set(&key, &value),
         ConfigCommands::List => handle_list(),
-        ConfigCommands::Path => handle_path(),
+        ConfigCommands::Path => {
+            handle_path();
+            Ok(())
+        }
         ConfigCommands::Tui => handle_tui(),
     }
 }
@@ -122,7 +125,7 @@ fn handle_list() -> Result<()> {
     Ok(())
 }
 
-fn handle_path() -> Result<()> {
+fn handle_path() {
     match Config::global_config_path() {
         Some(path) => println!("{}", path.display()),
         None => {
@@ -130,8 +133,6 @@ fn handle_path() -> Result<()> {
             std::process::exit(1);
         }
     }
-
-    Ok(())
 }
 
 fn handle_tui() -> Result<()> {

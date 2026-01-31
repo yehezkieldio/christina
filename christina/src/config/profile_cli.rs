@@ -335,7 +335,11 @@ fn handle_duplicate(source: &str, new_name: &str) -> Result<()> {
         std::process::exit(1);
     }
 
-    let source_profile = config.profiles.get(source).cloned().unwrap();
+    let source_profile = config
+        .profiles
+        .get(source)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Source profile '{}' not found", source))?;
     let mut new_profile = source_profile;
     new_profile.name = new_name.to_string();
 

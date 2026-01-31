@@ -4,6 +4,12 @@ use mimalloc::MiMalloc;
 #[cfg(not(feature = "dhat-heap"))]
 use cap::Cap;
 
+// Satisfy unused_crate_dependencies lint - these are used via global_allocator
+#[cfg(feature = "dhat-heap")]
+use cap as _;
+#[cfg(feature = "dhat-heap")]
+use mimalloc as _;
+
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;

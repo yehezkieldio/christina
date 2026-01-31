@@ -547,7 +547,7 @@ impl crate::tui::form::editable::Editable for Config {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 
@@ -696,7 +696,7 @@ mod tests {
             .set("model_api_url", "https://api.example.com/v1")
             .expect("should set valid URL");
         assert_eq!(
-            config.model_api_url.unwrap().as_str(),
+            config.model_api_url.expect("model_api_url should be set").as_str(),
             "https://api.example.com/v1"
         );
     }
@@ -760,8 +760,10 @@ mod tests {
 
     #[test]
     fn set_ignore_files_empty() {
-        let mut config = Config::default();
-        config.ignore_files = vec!["test.txt".to_string()];
+        let mut config = Config {
+            ignore_files: vec!["test.txt".to_string()],
+            ..Config::default()
+        };
         config
             .set("ignore_files", "")
             .expect("should accept empty string");
@@ -779,8 +781,10 @@ mod tests {
 
     #[test]
     fn set_commit_message_max_length_empty() {
-        let mut config = Config::default();
-        config.commit_message_max_length = Some(100);
+        let mut config = Config {
+            commit_message_max_length: Some(100),
+            ..Config::default()
+        };
         config
             .set("commit_message_max_length", "")
             .expect("should clear when empty");
