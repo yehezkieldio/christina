@@ -5,7 +5,7 @@ description = "Git integration for Christina."
 edition = "2024"
 
 [dependencies]
-christina-core = { path = "../christina-core" }
+christina-core = { path = "../christina-core", features = ["git2-support"] }
 git2 = { workspace = true }
 
 [dev-dependencies]

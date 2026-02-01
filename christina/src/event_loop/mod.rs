@@ -170,22 +170,20 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
             Ok(Err(e)) => {
                 // Downcast and preserve specific error variants
                 let error_msg = match &e {
-                    GitError::Git2(git_err) => match git_err.code() {
-                        git2::ErrorCode::UnbornBranch => {
-                            "No commits yet - initial commit in progress".to_string()
-                        }
-                        git2::ErrorCode::Locked => {
-                            "Repository is locked (git operation in progress). Wait and try again."
-                                .to_string()
-                        }
-                        git2::ErrorCode::NotFound => {
-                            format!(
-                                "Repository no longer accessible at {:?}. It may have been moved or deleted.",
-                                repo_path_display
-                            )
-                        }
-                        _ => format!("Git error: {}", git_err),
-                    },
+                    GitError::NotFound => {
+                        format!(
+                            "Repository no longer accessible at {:?}. It may have been moved or deleted.",
+                            repo_path_display
+                        )
+                    }
+                    GitError::Locked => {
+                        "Repository is locked (git operation in progress). Wait and try again."
+                            .to_string()
+                    }
+                    GitError::AuthFailed => {
+                        "Authentication failed - check your Git credentials.".to_string()
+                    }
+                    GitError::Other(msg) => msg.clone(),
                     GitError::Git(msg) => msg.clone(),
                     GitError::GpgConfigInvalid(msg) => msg.clone(),
                     GitError::GpgSigningFailed(msg) => msg.clone(),
