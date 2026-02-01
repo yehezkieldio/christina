@@ -4,7 +4,6 @@ use ratatui::{
     style::Style,
     widgets::{Block, BorderType, Borders},
 };
-use std::path::PathBuf;
 use tui_textarea::TextArea;
 
 use crate::tui::elm::{AppMsg, ToastLevel};

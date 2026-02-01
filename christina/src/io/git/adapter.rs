@@ -88,10 +88,6 @@ fn convert_status(status: git2::Status) -> GitFileStatus {
         GitFileStatus::Renamed
     } else if status.contains(Status::WT_TYPECHANGE) || status.contains(Status::INDEX_TYPECHANGE) {
         GitFileStatus::Modified
-    } else if status.contains(Status::IGNORED) {
-        GitFileStatus::Unknown
-    } else if status.contains(Status::CONFLICTED) {
-        GitFileStatus::Unknown
     } else {
         GitFileStatus::Unknown
     }

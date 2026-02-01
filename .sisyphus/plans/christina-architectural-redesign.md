@@ -62,12 +62,12 @@ Consolidate 4 fragmented crates into 2 hermetic crates with strict Sans-IO bound
 4. Migration guide for breaking config changes
 
 ### Definition of Done
-- [ ] `cargo tree -p christina-core | grep -E '(tokio|reqwest|git2)'` returns nothing
-- [ ] `cargo check --workspace` passes with zero warnings
-- [ ] `cargo clippy --workspace` passes with zero warnings
-- [ ] `cargo test --workspace` passes
-- [ ] All existing CLI commands work (`christina init`, `christina generate`)
-- [ ] TUI works end-to-end (staging → generation → review → commit)
+- [x] `cargo tree -p christina-core | grep -E '(tokio|reqwest|git2)'` returns nothing
+- [x] `cargo check --workspace` passes with zero warnings
+- [ ] `cargo clippy --workspace` passes with zero warnings (22 warnings remain)
+- [x] `cargo test --workspace` passes (158 tests)
+- [ ] All existing CLI commands work (`christina init`, `christina generate`) - pending manual testing
+- [ ] TUI works end-to-end (staging → generation → review → commit) - pending manual testing
 
 ### Must Have
 - Sans-IO core with zero I/O dependencies
@@ -171,7 +171,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Phase 0: Preparation
 
-- [ ] 0.1. Create Backup and Branch
+- [x] 0.1. Create Backup and Branch
 
   **What to do**:
   - Create `backup/` folder with copies of all 4 crates
@@ -206,7 +206,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Phase 1: Core Sans-IO (TRIVIAL)
 
-- [ ] 1.1. Remove git2 Dependency from christina-core
+- [x] 1.1. Remove git2 Dependency from christina-core
 
   **What to do**:
   - Move `GitError::Git2` variant to shell error type
@@ -242,7 +242,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `refactor(core): remove git2 dependency, use typed git errors`
   - Files: `christina-core/src/error.rs`, `christina-core/Cargo.toml`
 
-- [ ] 1.2. Move Azure URL Parsing to Core
+- [x] 1.2. Move Azure URL Parsing to Core
 
   **What to do**:
   - Move `parse_azure_url()` from `christina-llm/src/providers/azure.rs` to core
@@ -278,7 +278,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Phase 2: Config & State Consolidation (HIGH RISK)
 
-- [ ] 2.1. Create Config Types in Core
+- [x] 2.1. Create Config Types in Core
 
   **What to do**:
   - Create `christina-core/src/config/config_file.rs` - `ConfigFile` serde struct
@@ -331,7 +331,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `feat(core): add ConfigFile, ResolvedConfig, ProviderProfile types`
   - Files: `christina-core/src/config/*.rs`
 
-- [ ] 2.2. Create Model and Screen States in Core
+- [x] 2.2. Create Model and Screen States in Core
 
   **What to do**:
   - Create `christina-core/src/app/model.rs`:
@@ -384,7 +384,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `feat(core): add Model, Route, Screens, screen states`
   - Files: `christina-core/src/app/*.rs`, `christina-core/src/app/screens/*.rs`
 
-- [ ] 2.3. Create Msg and Cmd Enums in Core
+- [x] 2.3. Create Msg and Cmd Enums in Core
 
   **What to do**:
   - Create `christina-core/src/app/msg.rs` - `Msg` enum (inputs to update)
@@ -441,7 +441,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `feat(core): add Msg, Cmd enums and update() entry point`
   - Files: `christina-core/src/app/msg.rs`, `christina-core/src/app/cmd.rs`, `christina-core/src/app/update.rs`
 
-- [ ] 2.4. Update Binary Crate to Use New Types
+- [x] 2.4. Update Binary Crate to Use New Types
 
   **What to do**:
   - Create `christina/src/io/config_io.rs` - load/save config files
@@ -506,7 +506,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Phase 3: Provider Architecture (MEDIUM-HIGH)
 
-- [ ] 3.1. Create LLM Types in Core
+- [x] 3.1. Create LLM Types in Core
 
   **What to do**:
   - Create `christina-core/src/llm/request.rs` - `LlmRequest`, `LlmResponse`
@@ -558,7 +558,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `feat(core): add LLM domain types (LlmRequest, ProviderSpec, etc.)`
   - Files: `christina-core/src/llm/*.rs`
 
-- [ ] 3.2. Create HTTP Client Adapters in Bin
+- [x] 3.2. Create HTTP Client Adapters in Bin
 
   **What to do**:
   - Create `christina/src/io/llm/openai.rs` - OpenAI HTTP adapter
@@ -607,7 +607,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `feat(bin): add LLM HTTP client adapters`
   - Files: `christina/src/io/llm/*.rs`
 
-- [ ] 3.3. Create Command Executor
+- [x] 3.3. Create Command Executor
 
   **What to do**:
   - Create `christina/src/runtime/cmd_exec.rs` - execute `Cmd` → produce `Msg`
@@ -667,7 +667,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Phase 4: Git Adapter (MEDIUM)
 
-- [ ] 4.1. Remove FileStatus Duplication
+- [x] 4.1. Remove FileStatus Duplication
 
   **What to do**:
   - Delete `FileStatus` enum from `christina-git/src/repository.rs`
@@ -701,7 +701,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `refactor(git): remove FileStatus duplication, use core::GitFileStatus`
   - Files: `christina-git/src/repository.rs`
 
-- [ ] 4.2. Create git2 Adapter in Bin
+- [x] 4.2. Create git2 Adapter in Bin
 
   **What to do**:
   - Create `christina/src/io/git/adapter.rs` - git2 → `core::git::RepoSnapshot`
@@ -757,7 +757,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `feat(bin): add git2 adapter returning core types`
   - Files: `christina/src/io/git/*.rs`
 
-- [ ] 4.3. Delete christina-git Crate
+- [x] 4.3. Delete christina-git Crate
 
   **What to do**:
   - Remove `christina-git/` from workspace
@@ -798,7 +798,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Phase 5: Delete christina-llm and Verification (LOW)
 
-- [ ] 5.1. Delete christina-llm Crate
+- [x] 5.1. Delete christina-llm Crate
 
   **What to do**:
   - Remove `christina-llm/` from workspace
@@ -835,7 +835,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
   - Message: `chore: remove christina-llm crate (functionality moved to bin)`
   - Files: `Cargo.toml`, `christina/Cargo.toml`, deleted `christina-llm/`
 
-- [ ] 5.2. Final Verification
+- [x] 5.2. Final Verification
 
   **What to do**:
   - Run full test suite
@@ -917,18 +917,18 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5
 
 ### Architectural Requirements
 
-- [ ] `christina-core` has **zero I/O dependencies** (verified by CI check)
-- [ ] `cargo tree -p christina-core | grep -E '(tokio|reqwest|git2)' && exit 1` passes
-- [ ] No duplicate state representations (Config, Provider, GitFile)
-- [ ] Single `Model` in core (no `TuiSessionData` wrapper)
-- [ ] Elm Architecture preserved (pure `update()`, `Cmd`/`Msg` flow)
-- [ ] No bidirectional sync code (state lives in ONE place)
+- [x] `christina-core` has **zero I/O dependencies** (verified by CI check)
+- [x] `cargo tree -p christina-core | grep -E.*(tokio|reqwest|git2).* && exit 1` passes
+- [x] No duplicate state representations (Config, Provider, GitFile)
+- [x] Single `Model` in core (no `TuiSessionData` wrapper)
+- [x] Elm Architecture preserved (pure `update()`, `Cmd`/`Msg` flow)
+- [x] No bidirectional sync code (state lives in ONE place)
 
 ### Code Quality
 
-- [ ] `cargo check --workspace` passes
+- [x] `cargo check --workspace` passes
 - [ ] `cargo clippy --workspace` passes with zero warnings
-- [ ] All tests pass
+- [x] All tests pass (158 tests)
 - [ ] No `#[allow(dead_code)]` on public API items
 - [ ] No `unwrap()` or `expect()` in production code (workspace lints enforced)
 

@@ -50,18 +50,17 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
         Msg::GenerationCompleted { id, message } => {
-            if let GenerationStatus::Running { id: current_id } = model.generation {
-                if current_id == id {
+            if let GenerationStatus::Running { id: current_id } = model.generation
+                && current_id == id {
                     model.generation = GenerationStatus::Completed { id, message };
                     model.route = Route::Review;
                 }
-            }
             vec![]
         }
 
         Msg::GenerationFailed { id, error } => {
-            if let GenerationStatus::Running { id: current_id } = model.generation {
-                if current_id == id {
+            if let GenerationStatus::Running { id: current_id } = model.generation
+                && current_id == id {
                     model.generation = GenerationStatus::Failed {
                         id,
                         error: error.clone(),
@@ -72,17 +71,15 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                         severity: ToastSeverity::Error,
                     }];
                 }
-            }
             vec![]
         }
 
         Msg::GenerationCancelled { id } => {
-            if let GenerationStatus::Running { id: current_id } = model.generation {
-                if current_id == id {
+            if let GenerationStatus::Running { id: current_id } = model.generation
+                && current_id == id {
                     model.generation = GenerationStatus::Idle;
                     model.route = Route::Dashboard;
                 }
-            }
             vec![]
         }
 
