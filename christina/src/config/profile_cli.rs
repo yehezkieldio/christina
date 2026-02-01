@@ -9,9 +9,7 @@ use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};
 
 trait ConfigStore {
-    #[allow(dead_code)]
     fn load(&mut self) -> Result<Config>;
-    #[allow(dead_code)]
     fn save(&mut self, config: &Config) -> Result<()>;
 }
 
