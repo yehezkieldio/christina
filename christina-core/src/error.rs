@@ -6,6 +6,12 @@
 use std::fmt;
 use thiserror::Error;
 
+/// Trait for errors that can be retried
+pub trait IsTransient {
+    /// Returns true if this error is transient and may succeed on retry
+    fn is_transient(&self) -> bool;
+}
+
 /// Primary error type for git operations
 #[derive(Debug, Error)]
 pub enum GitError {
@@ -45,6 +51,12 @@ impl GitError {
             self,
             GitError::GpgConfigInvalid(_) | GitError::GpgSigningFailed(_)
         )
+    }
+}
+
+impl IsTransient for GitError {
+    fn is_transient(&self) -> bool {
+        matches!(self, GitError::Locked)
     }
 }
 
@@ -146,6 +158,18 @@ impl CompletionError {
     }
 }
 
+impl IsTransient for CompletionError {
+    fn is_transient(&self) -> bool {
+        matches!(
+            self,
+            CompletionError::RateLimited
+                | CompletionError::Timeout
+                | CompletionError::ServerError(_)
+                | CompletionError::NetworkError(_)
+        )
+    }
+}
+
 /// Error type for LLM provider configuration
 #[derive(Debug, Error)]
 pub enum ProviderError {
@@ -188,6 +212,12 @@ impl TokenizerError {
     /// Check if this is a model loading error
     pub fn is_model_error(&self) -> bool {
         matches!(self, TokenizerError::ModelLoadFailed(_))
+    }
+}
+
+impl IsTransient for TokenizerError {
+    fn is_transient(&self) -> bool {
+        false
     }
 }
 
@@ -235,6 +265,16 @@ impl AppError {
             AppError::Completion(_) | AppError::Provider(_) => ErrorCategory::Llm,
             AppError::Tokenizer(_) => ErrorCategory::Tokenizer,
             AppError::Other(_) => ErrorCategory::General,
+        }
+    }
+}
+
+impl IsTransient for AppError {
+    fn is_transient(&self) -> bool {
+        match self {
+            AppError::Completion(e) => e.is_transient(),
+            AppError::Git(e) => e.is_transient(),
+            _ => false,
         }
     }
 }

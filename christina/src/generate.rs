@@ -134,6 +134,10 @@ pub async fn generate_commit_message_with_progress(
             )
             .await?
         }
+        ProviderKind::Groq => {
+            crate::io::llm::groq::execute_groq_request(&request, api_key, api_url_str, model_str)
+                .await?
+        }
     };
 
     progress_tx

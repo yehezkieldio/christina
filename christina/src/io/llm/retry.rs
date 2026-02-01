@@ -7,6 +7,7 @@ use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use christina_core::error::IsTransient;
 use tokio::time::sleep;
 
 /// Retry policy configuration.
@@ -71,10 +72,6 @@ impl RetryPolicy {
         };
         Duration::from_millis(delay_ms)
     }
-}
-
-pub trait IsTransient {
-    fn is_transient(&self) -> bool;
 }
 
 /// Retry a fallible operation with exponential backoff.

@@ -1,8 +1,10 @@
+#![allow(dead_code, reason = "Diff processor is exercised in tests only")]
+
 use std::sync::Arc;
 
 use christina_core::{
-    git::{DiffChunk, FileDiff, MAX_DIFF_SIZE},
-    types::{FilePath, TokenCount},
+    git::{DiffChunk, MAX_DIFF_SIZE},
+    types::TokenCount,
     Tokenizer,
 };
 
@@ -95,32 +97,36 @@ impl DiffProcessor {
     }
 
     /// Process a diff string into chunks that fit within the token budget.
+    #[allow(
+        clippy::unnecessary_wraps,
+        reason = "Result wrapper preserved for future error handling"
+    )]
     pub fn process(&self, diff: &str) -> Result<Vec<DiffChunk>, String> {
         if diff.is_empty() {
             return Ok(Vec::new());
         }
 
-        if parsing::is_all_file_deletions(diff) && parsing::is_deletion_only(diff) {
+        if parsing::is_all_file_deletions(diff) || parsing::is_deletion_only(diff) {
             let limit = if diff.len() >= 500 * 1024 { 100 } else { 50 };
-            return self.process_owned(parsing::truncate_deletion_diff(diff, limit));
+            return Ok(self.process_owned(parsing::truncate_deletion_diff(diff, limit)));
         }
 
-        self.process_borrowed(diff)
+        Ok(self.process_borrowed(diff))
     }
 
-    fn process_borrowed(&self, diff: &str) -> Result<Vec<DiffChunk>, String> {
+    fn process_borrowed(&self, diff: &str) -> Vec<DiffChunk> {
         if diff.len() > self.max_diff_size {
             let file_diffs = parsing::split_by_files(diff, self.tokenizer.as_ref());
 
             if file_diffs.is_empty() {
                 let truncated = safe_truncate(diff, self.max_diff_size);
                 let files = parsing::extract_file_paths(truncated);
-                let token_count = self.tokenizer.count_tokens(truncated);
                 let content = format!(
                     "{}\n\n[... diff truncated: exceeded {} byte limit ...]",
                     truncated, self.max_diff_size
                 );
-                return Ok(vec![DiffChunk::new(Arc::from(content), files, token_count)]);
+                let token_count = self.tokenizer.count_tokens(&content);
+                return vec![DiffChunk::new(Arc::from(content), files, token_count)];
             }
 
             let mut accumulated_size = 0usize;
@@ -164,26 +170,26 @@ impl DiffProcessor {
                 ));
             }
 
-            return Ok(chunks);
+            return chunks;
         }
 
         let total_tokens = self.tokenizer.count_tokens(diff);
 
         if total_tokens <= self.token_limit {
             let files = parsing::extract_file_paths(diff);
-            return Ok(vec![DiffChunk::new(Arc::from(diff), files, total_tokens)]);
+            return vec![DiffChunk::new(Arc::from(diff), files, total_tokens)];
         }
 
         let file_diffs = parsing::split_by_files(diff, self.tokenizer.as_ref());
-        Ok(chunking::split_recursive(
+        chunking::split_recursive(
             file_diffs,
             self.token_limit,
             &self.ignore_files,
             self.tokenizer.as_ref(),
-        ))
+        )
     }
 
-    fn process_owned(&self, diff: String) -> Result<Vec<DiffChunk>, String> {
+    fn process_owned(&self, diff: String) -> Vec<DiffChunk> {
         if diff.len() > self.max_diff_size {
             let file_diffs = parsing::split_by_files(&diff, self.tokenizer.as_ref());
             let mut chunks = Vec::new();
@@ -195,22 +201,22 @@ impl DiffProcessor {
                     token_count,
                 ));
             }
-            return Ok(chunks);
+            return chunks;
         }
 
         let total_tokens = self.tokenizer.count_tokens(&diff);
         if total_tokens <= self.token_limit {
             let files = parsing::extract_file_paths(&diff);
-            return Ok(vec![DiffChunk::new(Arc::from(diff), files, total_tokens)]);
+            return vec![DiffChunk::new(Arc::from(diff), files, total_tokens)];
         }
 
         let file_diffs = parsing::split_by_files(&diff, self.tokenizer.as_ref());
-        Ok(chunking::split_recursive(
+        chunking::split_recursive(
             file_diffs,
             self.token_limit,
             &self.ignore_files,
             self.tokenizer.as_ref(),
-        ))
+        )
     }
 
     pub fn process_safe(&self, diff: &str) -> Result<Vec<DiffChunk>, String> {
@@ -653,8 +659,15 @@ mod tests {
     #[test]
     fn deletion_only_truncation_uses_small_limit() {
         let processor = create_processor(10_000);
-        let diff = "diff --git a/file.txt b/file.txt\ndeleted file mode 100644\n--- a/file.txt\n+++ /dev/null\n@@ -1,6 +0,0 @@\n-line 1\n-line 2\n-line 3\n-line 4\n-line 5\n-line 6\n";
-        let chunks = processor.process(diff).expect("should process");
+        let mut diff = String::from(
+            "diff --git a/file.txt b/file.txt\n\
+deleted file mode 100644\n\
+--- a/file.txt\n\
++++ /dev/null\n\
+@@ -1,120 +0,0 @@\n",
+        );
+        diff.push_str(&"-line\n".repeat(120));
+        let chunks = processor.process(&diff).expect("should process");
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].content.contains("deleted content truncated"));
     }
@@ -662,11 +675,14 @@ mod tests {
     #[test]
     fn deletion_only_truncation_uses_large_limit_for_big_diff() {
         let processor = create_processor(10_000);
-        let mut diff = String::new();
-        diff.push_str("diff --git a/file.txt b/file.txt\n");
-        diff.push_str("deleted file mode 100644\n");
-        diff.push_str("--- a/file.txt\n+++ /dev/null\n@@ -1,0 +0,0 @@\n");
-        diff.push_str(&"-line\n".repeat(20_000));
+        let mut diff = String::from(
+            "diff --git a/file.txt b/file.txt\n\
+deleted file mode 100644\n\
+--- a/file.txt\n\
++++ /dev/null\n\
+@@ -1,8000 +0,0 @@\n",
+        );
+        diff.push_str(&"-line\n".repeat(200_000));
         assert!(diff.len() >= 500 * 1024);
         let chunks = processor.process(&diff).expect("should process");
         assert_eq!(chunks.len(), 1);

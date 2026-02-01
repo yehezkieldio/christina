@@ -1,5 +1,3 @@
-#![allow(dead_code, reason = "Chunking stub until implementation lands")]
-
 use christina_core::{
     git::{DiffChunk, FileDiff},
     types::TokenCount,
@@ -13,5 +11,5 @@ pub(crate) fn split_recursive(
     tokenizer: &dyn Tokenizer,
 ) -> Vec<DiffChunk> {
     let _ = (files, token_limit, ignore_patterns, tokenizer);
-    unimplemented!("Will be implemented in chunking.rs")
+    todo!("Will be implemented in next task")
 }

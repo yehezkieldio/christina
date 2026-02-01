@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderKind {
     OpenAI,
     Azure,
+    Groq,
 }
 
 impl FromStr for ProviderKind {
@@ -16,6 +17,7 @@ impl FromStr for ProviderKind {
         match s.to_lowercase().as_str() {
             "openai" => Ok(ProviderKind::OpenAI),
             "azure" => Ok(ProviderKind::Azure),
+            "groq" => Ok(ProviderKind::Groq),
             _ => Err(format!("Unknown provider kind: {}", s)),
         }
     }
@@ -26,6 +28,7 @@ impl fmt::Display for ProviderKind {
         let s = match self {
             ProviderKind::OpenAI => "openai",
             ProviderKind::Azure => "azure",
+            ProviderKind::Groq => "groq",
         };
         write!(f, "{}", s)
     }
@@ -71,5 +74,18 @@ mod tests {
     fn provider_kind_display() {
         assert_eq!(ProviderKind::OpenAI.to_string(), "openai");
         assert_eq!(ProviderKind::Azure.to_string(), "azure");
+        assert_eq!(ProviderKind::Groq.to_string(), "groq");
+    }
+
+    #[test]
+    fn provider_kind_groq_from_str() {
+        match ProviderKind::from_str("groq") {
+            Ok(kind) => assert_eq!(kind, ProviderKind::Groq),
+            Err(err) => panic!("unexpected error: {}", err),
+        }
+        match ProviderKind::from_str("GROQ") {
+            Ok(kind) => assert_eq!(kind, ProviderKind::Groq),
+            Err(err) => panic!("unexpected error: {}", err),
+        }
     }
 }
