@@ -4,7 +4,6 @@ resolver = "3"
 members = [
     "christina",
     "christina-core",
-    "christina-llm",
 ]
 
 [workspace.package]
