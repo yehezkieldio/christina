@@ -68,6 +68,16 @@ pub fn handle_generation_complete(
         app.data.base.review_action = ReviewAction::Accept;
         app.generation_state = GenerationState::Idle;
 
+        let mut state = crate::app::persistence::PersistentState::new();
+        state.pending_message = Some(message.as_ref().to_string());
+        state.timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if let Err(e) = state.save() {
+            tracing::warn!("Failed to save persistent state: {}", e);
+        }
+
         // Display warning toast if there were any issues during generation
         if let Some(warning) = warning_summary {
             app.data.base.toasts.warning(warning);

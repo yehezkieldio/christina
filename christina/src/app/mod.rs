@@ -2,6 +2,7 @@ pub mod context;
 pub mod edit_history;
 pub mod handlers;
 pub mod init;
+pub mod persistence;
 pub mod state;
 
 use std::path::Path;
@@ -24,13 +25,12 @@ impl App {
     pub fn new() -> Self {
         let init_result = init::initialize_app();
 
-        // Surface initialization warnings as toasts
         let toasts = &init_result.data.base.toasts;
         for warning in init_result.warnings {
             toasts.warning(&warning);
         }
 
-        Self {
+        let mut app = Self {
             app_context: init_result.context,
             ui: init_result.ui,
             data: init_result.data,
@@ -38,6 +38,29 @@ impl App {
             should_quit: false,
             exit_message: None,
             generation_state: GenerationState::Idle,
+        };
+
+        app.check_for_recovery();
+
+        app
+    }
+
+    fn check_for_recovery(&mut self) {
+        match persistence::PersistentState::load() {
+            Ok(Some(state)) if state.has_pending_recovery() => {
+                if let Some(message) = state.pending_message {
+                    self.data.base.generated_message = compact_str::CompactString::new(&message);
+                    self.data.base.edit_history.initialize(&message);
+                    self.data.base.toasts.info(
+                        "Recovered unsaved commit message from previous session".to_string()
+                    );
+                    self.transition_to(christina_core::AppState::Review);
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("Failed to load persistent state: {}", e);
+            }
         }
     }
 

@@ -196,6 +196,12 @@ impl ProviderError {
     }
 }
 
+impl IsTransient for ProviderError {
+    fn is_transient(&self) -> bool {
+        false
+    }
+}
+
 /// Error type for tokenizer operations
 #[derive(Debug, Error)]
 pub enum TokenizerError {

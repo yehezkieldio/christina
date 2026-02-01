@@ -130,6 +130,9 @@ impl App {
                 let first_line = message.as_ref();
                 self.exit_message = Some(format!("✓ {} ({})", first_line, short_oid));
                 self.should_quit = true;
+                if let Err(e) = crate::app::persistence::PersistentState::clear() {
+                    tracing::warn!("Failed to clear persistent state: {}", e);
+                }
             }
             Err(e) => {
                 self.exit_message = Some(format!("✗ Commit failed: {}", e));

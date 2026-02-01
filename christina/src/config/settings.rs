@@ -87,6 +87,18 @@ pub struct Config {
     /// Number of recent commits to include for style analysis
     #[serde(default)]
     pub commit_history_depth: usize,
+
+    /// Maximum concurrent LLM requests (1-10, default: 4)
+    #[serde(default)]
+    pub max_concurrent_requests: usize,
+
+    /// Maximum partial failure rate before aborting (0.0-1.0, default: 0.10)
+    #[serde(default)]
+    pub max_partial_failure_rate: f64,
+
+    /// Failure rate threshold for prompting user confirmation (0.0-1.0, default: 0.05)
+    #[serde(default)]
+    pub prompt_failure_rate_threshold: f64,
 }
 
 impl Default for Config {
@@ -116,6 +128,9 @@ impl Default for Config {
             commit_message_validation_mode: ValidationMode::default(),
             use_commit_history: true,
             commit_history_depth: 5,
+            max_concurrent_requests: 4,
+            max_partial_failure_rate: 0.10,
+            prompt_failure_rate_threshold: 0.05,
         }
     }
 }
@@ -309,6 +324,9 @@ impl Config {
             "diff_show_preview" => Some(self.diff.show_preview.to_string()),
             "use_commit_history" => Some(self.use_commit_history.to_string()),
             "commit_history_depth" => Some(self.commit_history_depth.to_string()),
+            "max_concurrent_requests" => Some(self.max_concurrent_requests.to_string()),
+            "max_partial_failure_rate" => Some(self.max_partial_failure_rate.to_string()),
+            "prompt_failure_rate_threshold" => Some(self.prompt_failure_rate_threshold.to_string()),
             _ => None,
         }
     }
@@ -440,8 +458,28 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                // Clamp to valid range: 5-20 commits for balance between context and cost
                 self.commit_history_depth = parsed.clamp(5, 20);
+            }
+            "max_concurrent_requests" => {
+                let parsed: usize = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.max_concurrent_requests = parsed.clamp(1, 10);
+            }
+            "max_partial_failure_rate" => {
+                let parsed: f64 = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.max_partial_failure_rate = parsed.clamp(0.0, 1.0);
+            }
+            "prompt_failure_rate_threshold" => {
+                let parsed: f64 = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.prompt_failure_rate_threshold = parsed.clamp(0.0, 1.0);
             }
             _ => anyhow::bail!("Unknown configuration key: {}", key),
         }

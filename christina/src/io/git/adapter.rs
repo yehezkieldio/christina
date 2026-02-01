@@ -472,3 +472,42 @@ pub fn validate_for_commit(repo: &Repository) -> Result<()> {
 
     Ok(())
 }
+
+pub fn build_staged_diff(repo: &Repository) -> Result<String> {
+    if repo.state() != git2::RepositoryState::Clean {
+        return Err(anyhow::anyhow!("Repository is in {:?} state", repo.state()));
+    }
+
+    let mut index = repo.index().context("Failed to get index")?;
+    let oid = index.write_tree().context("Failed to write tree")?;
+    let tree = repo.find_tree(oid).context("Failed to find tree")?;
+
+    let head = repo
+        .head()
+        .ok()
+        .and_then(|h| h.target())
+        .and_then(|oid| repo.find_commit(oid).ok());
+    let parent_tree = head.as_ref().and_then(|c| c.tree().ok());
+
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+        .context("Failed to create diff")?;
+
+    let mut diff_string = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        use std::fmt::Write;
+        let _ = write!(
+            &mut diff_string,
+            "{}",
+            String::from_utf8_lossy(line.content())
+        );
+        true
+    })
+    .context("Failed to format diff")?;
+
+    if diff_string.is_empty() {
+        return Err(anyhow::anyhow!("No staged changes to process"));
+    }
+
+    Ok(diff_string)
+}

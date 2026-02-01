@@ -143,67 +143,11 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
         // Perform heavy git operations in background using spawn_blocking
         // This prevents blocking the main thread/UI while reading large diffs
         let diff_result = tokio::task::spawn_blocking(move || {
-            // Re-open repository in background thread. This is necessary because:
-            //
-            // 1. git2::Repository is NOT Send - cannot be shared across threads
-            // 2. spawn_blocking runs on a separate thread pool (blocking thread pool)
-            // 3. The repository must be opened in the worker thread that uses it
-            //
-            // Reopening can fail if:
-            // - Repository was moved or deleted
-            // - Permissions changed
-            // - Network mount disconnected
-            // - .git directory corrupted
             let repo = git2::Repository::open(&repo_path)
                 .map_err(|e| GitError::Git(format!("Failed to open repository: {}", e)))?;
 
-            // Validate for commit
-            if repo.state() != git2::RepositoryState::Clean {
-                return Err(GitError::Git(format!(
-                    "Repository is in {:?} state",
-                    repo.state()
-                )));
-            }
-
-            // Get staged diff as string
-            let mut index = repo
-                .index()
-                .map_err(|e| GitError::Git(format!("Failed to get index: {}", e)))?;
-            let oid = index
-                .write_tree()
-                .map_err(|e| GitError::Git(format!("Failed to write tree: {}", e)))?;
-            let tree = repo
-                .find_tree(oid)
-                .map_err(|e| GitError::Git(format!("Failed to find tree: {}", e)))?;
-
-            let head = repo
-                .head()
-                .ok()
-                .and_then(|h| h.target())
-                .and_then(|oid| repo.find_commit(oid).ok());
-            let parent_tree = head.as_ref().and_then(|c| c.tree().ok());
-
-            let diff = repo
-                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
-                .map_err(|e| GitError::Git(format!("Failed to create diff: {}", e)))?;
-
-            let mut diff_string = String::new();
-            diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-                use std::fmt::Write;
-                let _ = write!(
-                    &mut diff_string,
-                    "{}",
-                    String::from_utf8_lossy(line.content())
-                );
-                true
-            })
-            .map_err(|e| GitError::Git(format!("Failed to format diff: {}", e)))?;
-
-            if diff_string.is_empty() {
-                return Err(GitError::Git("No staged changes to process".to_string()));
-            }
-
-            Ok(diff_string)
+            crate::io::git::adapter::build_staged_diff(&repo)
+                .map_err(|e| GitError::Git(e.to_string()))
         })
         .await;
 

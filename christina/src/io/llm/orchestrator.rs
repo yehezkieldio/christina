@@ -23,8 +23,6 @@ const LLM_RETRY_TIMEOUT_SECONDS: u64 = 60;
 const LLM_TIMEOUT_SECONDS: u64 = 120;
 
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
-const DEFAULT_MAX_PARTIAL_FAILURE_RATE: f64 = 0.10;
-const PROMPT_FAILURE_RATE_THRESHOLD: f64 = 0.05;
 
 #[derive(Debug)]
 enum MapError {
@@ -149,25 +147,32 @@ pub struct AIOrchestrator {
     limiter: RequestLimiter,
     retry_policy: RetryPolicy,
     concurrency_limit: usize,
+    max_partial_failure_rate: f64,
+    prompt_failure_rate_threshold: f64,
 }
 
 impl AIOrchestrator {
+    #[allow(dead_code)]
     pub fn new(provider: Arc<Provider>) -> Self {
-        let concurrency_limit = std::env::var("CHRISTINA_CONCURRENCY_LIMIT")
-            .ok()
-            .and_then(|s| {
-                let parsed: usize = s.parse().ok()?;
-                Some(parsed.clamp(1, 20))
-            })
-            .unwrap_or(MAX_CONCURRENT_REQUESTS);
+        Self::with_config(provider, MAX_CONCURRENT_REQUESTS, 0.10, 0.05)
+    }
 
+    pub fn with_config(
+        provider: Arc<Provider>,
+        concurrency_limit: usize,
+        max_partial_failure_rate: f64,
+        prompt_failure_rate_threshold: f64,
+    ) -> Self {
         let requests_per_second = 5.0;
+        let concurrency_limit = concurrency_limit.clamp(1, 20);
 
         Self {
             provider,
             limiter: RequestLimiter::new(concurrency_limit, requests_per_second),
             retry_policy: RetryPolicy::default(),
             concurrency_limit,
+            max_partial_failure_rate: max_partial_failure_rate.clamp(0.0, 1.0),
+            prompt_failure_rate_threshold: prompt_failure_rate_threshold.clamp(0.0, 1.0),
         }
     }
 
@@ -437,7 +442,7 @@ impl AIOrchestrator {
             );
         }
 
-        if failure_rate > PROMPT_FAILURE_RATE_THRESHOLD && failed_count > 0 {
+        if failure_rate > self.prompt_failure_rate_threshold && failed_count > 0 {
             let should_proceed = self.prompt_partial_failure_confirmation(
                 failed_count,
                 total_chunks,
@@ -972,11 +977,7 @@ impl AIOrchestrator {
     }
 
     fn max_failure_rate(&self) -> f64 {
-        std::env::var("CHRISTINA_MAX_FAILURE_RATE")
-            .ok()
-            .and_then(|s| s.parse::<f64>().ok())
-            .map(|rate| rate.clamp(0.0, 1.0))
-            .unwrap_or(DEFAULT_MAX_PARTIAL_FAILURE_RATE)
+        self.max_partial_failure_rate
     }
 
     fn prompt_partial_failure_confirmation(

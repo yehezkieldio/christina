@@ -139,7 +139,12 @@ pub async fn generate_commit_message_with_progress(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
-    let orchestrator = AIOrchestrator::new(Arc::clone(&provider));
+    let orchestrator = AIOrchestrator::with_config(
+        Arc::clone(&provider),
+        config.max_concurrent_requests,
+        config.max_partial_failure_rate,
+        config.prompt_failure_rate_threshold,
+    );
 
     let history_context = if config.use_commit_history {
         match get_commit_history(config.commit_history_depth) {

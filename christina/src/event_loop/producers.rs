@@ -80,7 +80,10 @@ impl EventProducers {
                         if should_stop_tick.load(Ordering::Relaxed) {
                             break;
                         }
-                        let _ = tx_tick.try_send(Event::Tick);
+                        if tx_tick.try_send(Event::Tick).is_err() {
+                            tracing::debug!("Tick channel closed, stopping tick task");
+                            break;
+                        }
                     }
                     _ = shutdown_rx_tick.recv() => {
                         break;
@@ -101,7 +104,9 @@ impl EventProducers {
         self.should_stop.store(true, Ordering::SeqCst);
 
         // Broadcast shutdown signal to all subscribers
-        let _ = self.shutdown_tx.send(());
+        if self.shutdown_tx.send(()).is_err() {
+            tracing::debug!("Shutdown channel closed, no subscribers to notify");
+        }
 
         // Wait for tick task with timeout
         let _ = tokio::time::timeout(
