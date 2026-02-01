@@ -8,6 +8,13 @@
 
 Christina is a personal Terminal User Interface (TUI) tool designed to streamline version control workflows. It analyzes your staged Git changes and uses AI to automatically generate meaningful, conventional commit messages, saving you time and ensuring consistency across your project history, *most of the time.*
 
+## Features
+
+- **AI-Powered Commit Generation**: Uses LLMs to generate commit messages based on your staged changes.
+- **Conventional Commits**: Automatically formats commit messages according to the Conventional Commits specification.
+- **TUI Interface**: A user-friendly terminal interface for managing your commits.
+- **Profile Management**: Create and manage different profiles for different use cases.
+
 ## License
 
 Licensed under either the MIT License or the Apache License 2.0, at your option
