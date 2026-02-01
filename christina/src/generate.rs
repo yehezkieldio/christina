@@ -19,11 +19,15 @@ fn config_to_profile(config: &Config) -> ProviderProfile {
         provider: config.model_provider,
         model: config.model.clone(),
         api_url: config.model_api_url.clone(),
-        api_key: config.api_key.clone(),
+        api_key: match &config.api_key {
+            Some(key) => christina_core::config::Secret::Value(key.clone()),
+            None => christina_core::config::Secret::Value(String::new()),
+        },
         max_input_tokens: config.max_input_tokens,
         max_output_tokens: config.max_output_tokens,
         azure_api_version: config.azure_api_version.clone(),
         azure_deployment_id: config.azure_deployment_id.clone(),
+        temperature: None,
     }
 }
 

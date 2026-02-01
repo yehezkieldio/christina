@@ -318,7 +318,7 @@ impl Config {
                     "model_api_url" => profile.api_url = Some(Url::parse(v)?),
                     "azure_api_version" => profile.azure_api_version = Some(v.to_string()),
                     "azure_deployment_id" => profile.azure_deployment_id = Some(v.to_string()),
-                    "api_key" | "model_api_key" => profile.api_key = Some(v.to_string()),
+                     "api_key" | "model_api_key" => profile.api_key = christina_core::config::Secret::Value(v.to_string()),
                     // Note: ignore_files are not in profile
                     _ => {}
                 }
@@ -431,7 +431,9 @@ impl Config {
         self.model_api_url = profile.api_url.clone();
         self.azure_api_version = profile.azure_api_version.clone();
         self.azure_deployment_id = profile.azure_deployment_id.clone();
-        self.api_key = profile.api_key.clone();
+        self.api_key = match &profile.api_key {
+            christina_core::config::Secret::Value(key) => Some(key.clone()),
+        };
     }
 
     pub fn load_active_profile(&mut self) {
@@ -448,11 +450,15 @@ impl Config {
             provider: self.model_provider,
             model: self.model.clone(),
             api_url: self.model_api_url.clone(),
-            api_key: self.api_key.clone(),
+            api_key: match &self.api_key {
+                Some(key) => christina_core::config::Secret::Value(key.clone()),
+                None => christina_core::config::Secret::Value(String::new()),
+            },
             max_input_tokens: self.max_input_tokens,
             max_output_tokens: self.max_output_tokens,
             azure_api_version: self.azure_api_version.clone(),
             azure_deployment_id: self.azure_deployment_id.clone(),
+            temperature: None,
         }
     }
 }
@@ -1081,11 +1087,12 @@ mod tests {
             provider: ProviderKind::Azure,
             model: ModelName::from("gpt-4.1-mini"),
             api_url: Some(Url::parse("https://api.azure.com").unwrap()),
-            api_key: Some("sk-azure-test".to_string()),
+            api_key: christina_core::config::Secret::Value("sk-azure-test".to_string()),
             max_input_tokens: TokenCount::new_saturating(8192),
             max_output_tokens: TokenCount::new_saturating(4096),
             azure_api_version: Some("test-version".to_string()),
             azure_deployment_id: Some("test-deployment".to_string()),
+            temperature: None,
         };
 
         config.apply_profile(&profile);
@@ -1120,7 +1127,7 @@ mod tests {
         assert_eq!(profile.name, "openai-profile");
         assert_eq!(profile.provider, ProviderKind::OpenAI);
         assert_eq!(profile.model, ModelName::from("gpt-5.2"));
-        assert_eq!(profile.api_key, Some("sk-openai-test".to_string()));
+        assert_eq!(profile.api_key, christina_core::config::Secret::Value("sk-openai-test".to_string()));
         assert_eq!(profile.max_input_tokens.get(), 16384);
         assert_eq!(profile.max_output_tokens.get(), 2048);
     }
