@@ -373,11 +373,26 @@ impl Config {
                     "api_key" | "model_api_key" => {
                         profile.api_key = christina_core::config::Secret::Value(v.to_string())
                     }
+                    "model_temperature" => {
+                        profile.temperature = Some(v.parse().map_err(anyhow::Error::msg)?)
+                    }
                     // Note: ignore_files are not in profile
                     _ => {}
                 }
             }
             Ok(())
+        };
+
+        // Helper for consistent boolean parsing
+        let parse_bool = |v: &str| -> Result<bool> {
+            let lower = v.trim().to_lowercase();
+            match lower.as_str() {
+                "true" | "yes" | "1" | "on" => Ok(true),
+                "false" | "no" | "0" | "off" => Ok(false),
+                _ => v
+                    .parse()
+                    .context("Invalid boolean (expected true/false, yes/no, 1/0, on/off)"),
+            }
         };
 
         match key {
@@ -451,18 +466,10 @@ impl Config {
                 self.diff.tool = value.parse().map_err(anyhow::Error::msg)?;
             }
             "diff_show_preview" => {
-                self.diff.show_preview = value.parse().map_err(anyhow::Error::msg)?;
+                self.diff.show_preview = parse_bool(value)?;
             }
             "use_commit_history" => {
-                let lower = value.trim().to_lowercase();
-                let bool_val = match lower.as_str() {
-                    "true" | "yes" | "1" | "on" => true,
-                    "false" | "no" | "0" | "off" => false,
-                    _ => value
-                        .parse()
-                        .context("Invalid boolean (expected true/false, yes/no, 1/0, on/off)")?,
-                };
-                self.use_commit_history = bool_val;
+                self.use_commit_history = parse_bool(value)?;
             }
             "commit_history_depth" => {
                 let parsed: usize = value

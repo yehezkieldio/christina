@@ -82,8 +82,6 @@ impl FormState {
                         self.error = Some(e.to_string());
                     }
 
-                    // Refresh field definitions (in case they changed based on values)
-                    self.fields = editable.fields();
                     true
                 }
                 Err(e) => {
