@@ -315,35 +315,6 @@ The LLM prompt says "no period at the end" but `CommitMessage::validate()` does 
 
 ---
 
-### 7. Test Coverage
-
-#### 7.1 Missing Integration Tests
-
-**Reference:**
-- `old_backup/christina-git/tests/integration_test.rs` — 40+ tests
-- `old_backup/christina-llm/tests/integration_test.rs` — 15+ tests
-
-**Current state:**
-No integration tests exist. All tests are unit tests within modules.
-
-**Impact:**
-- End-to-end flows are untested
-- Git operations against real repositories are untested
-- LLM API mocking covers happy path but not edge cases
-
----
-
-#### 7.2 Orchestrator Tests Use Mock Provider
-
-**Location:** `christina/src/io/llm/orchestrator.rs` tests
-
-All orchestrator tests use `Provider::mock()` which returns static responses. This is appropriate for unit tests but means:
-- Real HTTP error handling is untested
-- Timeout behavior is untested
-- Rate limiting response handling is untested
-
----
-
 ## Behavioral Gaps vs `old_backup/`
 
 ### 3.1 Lost Features
@@ -386,13 +357,9 @@ All orchestrator tests use `Provider::mock()` which returns static responses. Th
 
 5. **Centralize diff string construction** — Remove duplication between event loop and adapter.
 
-### Should Fix
+6. **Implement local config loading** — Or remove the documentation claiming it's supported.
 
-6. **Add integration tests** — Port tests from `old_backup/` to verify end-to-end behavior.
-
-7. **Implement local config loading** — Or remove the documentation claiming it's supported.
-
-8. **Validate API key at startup** — Fail fast rather than at generation time.
+7. **Validate API key at startup** — Fail fast rather than at generation time.
 
 ---
 

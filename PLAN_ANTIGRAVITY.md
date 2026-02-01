@@ -23,8 +23,6 @@ The Christina codebase represents a well-architected AI-powered commit message g
 
 4. **Groq Provider Incomplete** — `christina/src/io/llm/groq.rs` exists but the `ProviderKind::Groq` variant handling in some code paths is inconsistent with the others.
 
-5. **Missing Integration Tests** — No integration tests exist in the current workspace. The old `christina-git/tests/` and `christina-llm/tests/` directories contained test infrastructure that was not migrated.
-
 ### Systemic Failure Modes
 
 1. **Token Budget Edge Cases** — `TokenBudget` calculations assume positive results but `remaining_for_diff()` can theoretically underflow if reserved tokens exceed max input.
@@ -293,15 +291,6 @@ providers/
    - Handle send errors properly
    - Consider bounded channels with backpressure
 
-4. **Add Integration Tests**
-   - Port tests from old_backup
-   - Add mock LLM provider for testing
-   - Test TUI flows programmatically
-
-5. **Implement Git Hooks**
-   - Execute pre-commit, commit-msg, post-commit hooks
-   - Respect hook configuration in .git/config
-
 6. **Make Commit History Fetch Async**
    - Use `spawn_blocking` or async git2 bindings
    - Prevent UI blocking on large repositories
@@ -403,9 +392,6 @@ The Christina codebase is **substantially complete** for core functionality but 
 
 1. **Missing GPG signing** — security-critical for many workflows
 2. **Plaintext credential storage** — no keyring integration
-3. **Absent test infrastructure** — high regression risk
 4. **Git hook bypass** — violates expected git behavior
 
 The architectural consolidation from 4 crates to 2 was generally successful, but some behaviors were lost or degraded in the transition. The `orchestrator.rs` file at 1819 lines represents a maintainability concern and should be refactored into smaller, focused modules.
-
-**Recommendation:** Address blocking issues 1-6 before any production deployment. The codebase is well-structured and the remaining work is achievable, but should not be deferred.
