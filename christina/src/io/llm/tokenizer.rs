@@ -1,4 +1,7 @@
-use std::{num::NonZeroUsize, sync::OnceLock};
+use std::num::NonZeroUsize;
+
+#[cfg(test)]
+use std::sync::OnceLock;
 
 use christina_core::{
     error::{TokenizerError, TokenizerResult},
@@ -11,6 +14,7 @@ use tiktoken_rs::CoreBPE;
 pub type Result<T> = TokenizerResult<T>;
 
 #[allow(dead_code)]
+#[cfg(test)]
 static TOKENIZER: OnceLock<TokenizerService> = OnceLock::new();
 
 /// Get the global tokenizer service instance.
@@ -18,6 +22,7 @@ static TOKENIZER: OnceLock<TokenizerService> = OnceLock::new();
 /// This initializes the tokenizer on first call and returns a reference
 /// to the same instance on subsequent calls.
 #[allow(dead_code)]
+#[cfg(test)]
 pub fn get_tokenizer() -> Result<&'static TokenizerService> {
     match TOKENIZER.get() {
         Some(t) => Ok(t),
@@ -186,6 +191,7 @@ impl TokenBudget {
     }
 
     #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "preset for external use"))]
     pub fn small() -> Self {
         Self {
             max_input: TokenCount::new_saturating(32_000),
@@ -206,6 +212,7 @@ impl TokenBudget {
     }
 
     #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "preset for external use"))]
     pub fn large() -> Self {
         Self {
             max_input: TokenCount::new_saturating(256_000),
@@ -216,6 +223,7 @@ impl TokenBudget {
     }
 
     #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "preset for external use"))]
     pub fn massive() -> Self {
         Self {
             max_input: TokenCount::new_saturating(1_000_000),
