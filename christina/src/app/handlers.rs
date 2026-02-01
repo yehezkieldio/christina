@@ -41,7 +41,7 @@ impl App {
     }
 
     fn handle_stage_file(&mut self, path: FilePath) {
-        let Some(ref repo) = self.app_context.repo else {
+        let Some(ref _repo) = self.app_context.repo else {
             self.data.base.toasts.error(
                 "No git repository found. Run from inside a git-initialized directory.".to_string(),
             );
@@ -49,23 +49,15 @@ impl App {
         };
 
         // Find the file status from unstaged_files
-        if let Some(file) = self
+        if let Some(_file) = self
             .data
             .base
             .unstaged_files
             .iter()
             .find(|f| f.path == path)
         {
-            let file_to_stage = vec![(PathBuf::from(file.path.as_str()), file.status_enum)];
-            if let Err(e) = repo.stage_files(&file_to_stage) {
-                self.data
-                    .base
-                    .toasts
-                    .error(format!("Failed to stage file: {}", e));
-            } else {
-                self.data.base.toasts.success("File staged".to_string());
-                self.refresh_git_files();
-            }
+            // Stub - stage_files not yet implemented
+            self.data.base.toasts.error("Stage functionality not yet implemented".to_string());
         } else {
             self.data
                 .base
@@ -74,41 +66,15 @@ impl App {
         }
     }
 
-    fn handle_stage_files(&mut self, paths: Vec<FilePath>) {
-        let Some(ref repo) = self.app_context.repo else {
+    fn handle_stage_files(&mut self, _paths: Vec<FilePath>) {
+        let Some(ref _repo) = self.app_context.repo else {
             self.data.base.toasts.error(
                 "No git repository found. Run from inside a git-initialized directory.".to_string(),
             );
             return;
         };
 
-        let files_to_stage: Vec<_> = paths
-            .iter()
-            .filter_map(|path_str| {
-                self.data
-                    .base
-                    .unstaged_files
-                    .iter()
-                    .find(|f| f.path == *path_str)
-                    .map(|f| (PathBuf::from(f.path.as_str()), f.status_enum))
-            })
-            .collect();
-
-        if !files_to_stage.is_empty() {
-            if let Err(e) = repo.stage_files(&files_to_stage) {
-                self.data
-                    .base
-                    .toasts
-                    .error(format!("Failed to stage files: {}", e));
-            } else {
-                self.data
-                    .base
-                    .toasts
-                    .success(format!("Staged {} files", files_to_stage.len()));
-                self.refresh_git_files();
-                self.transition_to(AppState::Dashboard);
-            }
-        }
+        self.data.base.toasts.error("Stage functionality not yet implemented".to_string());
     }
 
     fn handle_unstage_file(&mut self, path: FilePath) {

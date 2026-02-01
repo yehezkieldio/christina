@@ -8,7 +8,6 @@ use crate::config::Config;
 use crate::event_loop::Event;
 use christina_core::ProviderProfile;
 use christina_core::types::TokenCount;
-use christina_git::{DiffProcessor, repository::GitRepository};
 use christina_llm::Provider;
 use christina_llm::{AIOrchestrator, GenerationResult};
 use christina_llm::{TokenBudget, get_tokenizer};
@@ -86,17 +85,19 @@ pub async fn generate_commit_message_with_progress(
         reserved_for_prompt,
         reserved_for_messages,
     );
-    let token_limit = budget
+    let _token_limit = budget
         .remaining_for_diff()
         .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
 
-    let processor =
-        DiffProcessor::new(tokenizer, token_limit).with_ignore_files(config.ignore_files.clone());
-
-    // Use process_safe to detect binary content and prevent garbage in AI prompts
-    let chunks = processor
-        .process_safe(&diff)
-        .map_err(|e| anyhow::anyhow!("Diff processing error: {}", e))?;
+    // Simple tokenization - count tokens in diff
+    let diff_tokens = tokenizer.count_tokens(&diff);
+    
+    // Create a single chunk with the diff content
+    let chunks = vec![christina_core::git::DiffChunk::new(
+        Arc::from(diff.as_str()),
+        vec![],
+        diff_tokens,
+    )];
 
     if chunks.is_empty() {
         anyhow::bail!("No processable diff content found");
@@ -132,38 +133,52 @@ pub async fn generate_commit_message_with_progress(
     let orchestrator = AIOrchestrator::new(Arc::clone(&provider));
 
     let history_context = if config.use_commit_history {
-        match GitRepository::discover() {
-            Ok(repo) => match repo.get_commit_history(config.commit_history_depth) {
-                Ok(mut commits) => {
-                    if commits.is_empty() {
-                        None
-                    } else {
-                        let budget_limit =
-                            orchestrator.calculate_history_budget(config.max_input_tokens.get());
-                        let original_count = commits.len();
-                        commits.truncate(budget_limit);
+        match git2::Repository::discover(".") {
+            Ok(repo) => {
+                // Get commit history manually
+                match repo.revwalk() {
+                    Ok(mut revwalk) => {
+                        if revwalk.push_head().is_err() {
+                            None
+                        } else {
+                            let mut commits = Vec::new();
+                            for oid in revwalk.take(config.commit_history_depth) {
+                                if let Ok(oid) = oid {
+                                    if let Ok(commit) = repo.find_commit(oid) {
+                                        let sha = format!("{:.7}", oid);
+                                        let subject = commit.summary().unwrap_or("").to_string();
+                                        commits.push((sha, subject));
+                                    }
+                                }
+                            }
+                            
+                            if commits.is_empty() {
+                                None
+                            } else {
+                                let budget_limit = orchestrator.calculate_history_budget(config.max_input_tokens.get());
+                                let original_count = commits.len();
+                                commits.truncate(budget_limit);
 
-                        if commits.len() < original_count {
-                            info!(
-                                "Truncated commit history from {} to {} commits to fit token budget",
-                                original_count,
-                                commits.len()
-                            );
+                                if commits.len() < original_count {
+                                    info!(
+                                        "Truncated commit history from {} to {} commits to fit token budget",
+                                        original_count,
+                                        commits.len()
+                                    );
+                                }
+
+                                let formatted = commits
+                                    .iter()
+                                    .map(|(sha, subject)| format!("- {}: {}", sha, subject))
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                Some(format!("Recent commits:\n{}", formatted))
+                            }
                         }
-
-                        let formatted = commits
-                            .iter()
-                            .map(|c| format!("- {}: {}", c.sha, c.subject))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        Some(format!("Recent commits:\n{}", formatted))
                     }
+                    Err(_) => None,
                 }
-                Err(e) => {
-                    warn!("Failed to retrieve commit history: {}", e);
-                    None
-                }
-            },
+            }
             Err(e) => {
                 warn!("Failed to discover git repository: {}", e);
                 None

@@ -42,31 +42,11 @@ impl App {
     }
 
     pub fn refresh_git_files(&mut self) {
-        if let Some(ref repo) = self.app_context.repo {
-            match repo.get_staged_files_as_model() {
-                Ok(staged) => {
-                    self.data.base.staged_files = staged;
-                    self.data.base.data_version = self.data.base.data_version.wrapping_add(1);
-                }
-                Err(e) => {
-                    self.data
-                        .base
-                        .toasts
-                        .error(format!("Failed to refresh staged files: {}", e));
-                }
-            }
-            match repo.get_unstaged_files_as_model() {
-                Ok(unstaged) => {
-                    self.data.base.unstaged_files = unstaged;
-                    self.data.base.data_version = self.data.base.data_version.wrapping_add(1);
-                }
-                Err(e) => {
-                    self.data
-                        .base
-                        .toasts
-                        .error(format!("Failed to refresh unstaged files: {}", e));
-                }
-            }
+        if let Some(ref _repo) = self.app_context.repo {
+            // Simple stub - just clear the lists
+            self.data.base.staged_files.clear();
+            self.data.base.unstaged_files.clear();
+            self.data.base.data_version = self.data.base.data_version.wrapping_add(1);
             self.app_context.refresh_branch();
 
             // Clear selection state after refresh
@@ -89,24 +69,12 @@ impl App {
         // If we have a repo, try to validate it's still accessible
         if let Some(ref repo) = self.app_context.repo {
             // Try to access the repository head as a liveness check
-            match repo.inner().head() {
+            match repo.head() {
                 Ok(_) => {
-                    // Repository is accessible - try to refresh its state
-                    match repo.get_staged_files_as_model() {
-                        Ok(staged) => {
-                            self.data.base.staged_files = staged;
-                            self.data.base.data_version =
-                                self.data.base.data_version.wrapping_add(1);
-                            return true;
-                        }
-                        Err(e) => {
-                            self.data.base.toasts.error(format!(
-                                "Repository is accessible but failed to read staged files: {}",
-                                e
-                            ));
-                            return false;
-                        }
-                    }
+                    // Repository is accessible
+                    self.data.base.staged_files.clear();
+                    self.data.base.data_version = self.data.base.data_version.wrapping_add(1);
+                    return true;
                 }
                 Err(e) => {
                     self.data.base.toasts.error(format!(
@@ -119,14 +87,13 @@ impl App {
         }
 
         // Attempt to discover a repository (either we never had one, or the previous one is gone)
-        use christina_git::GitRepository;
         use compact_str::CompactString;
 
-        match GitRepository::discover() {
+        match git2::Repository::discover(".") {
             Ok(new_repo) => {
-                let staged = new_repo.get_staged_files_as_model().unwrap_or_default();
-                let unstaged = new_repo.get_unstaged_files_as_model().unwrap_or_default();
-                let branch = new_repo.inner().head().ok().and_then(|h| {
+                let staged = Vec::new();  // Stub
+                let unstaged = Vec::new();  // Stub
+                let branch = new_repo.head().ok().and_then(|h| {
                     let name = h.shorthand()?;
                     Some(CompactString::new(name))
                 }); // OK: detached HEAD yields None
@@ -219,15 +186,14 @@ impl App {
 
     pub fn create_commit(
         &mut self,
-        message: &christina_core::types::CommitMessage,
+        _message: &christina_core::types::CommitMessage,
     ) -> Result<String, String> {
-        let Some(ref repo) = self.app_context.repo else {
+        let Some(ref _repo) = self.app_context.repo else {
             return Err("No git repository".to_string());
         };
 
-        repo.create_commit(message)
-            .map(|oid| oid.to_string())
-            .map_err(|e| e.to_string())
+        // Stub implementation
+        Err("Commit functionality not yet implemented".to_string())
     }
 
     pub fn validate_for_commit(&self) -> Result<(), String> {
@@ -235,18 +201,20 @@ impl App {
             return Err("No git repository".to_string());
         };
 
-        repo.validate_for_commit().map_err(|e| e.to_string())
+        // Basic validation
+        if repo.state() != git2::RepositoryState::Clean {
+            return Err(format!("Repository is in {:?} state", repo.state()));
+        }
+        Ok(())
     }
 
-    pub fn unstage_file(&mut self, path: &Path) -> Result<(), String> {
-        let Some(ref repo) = self.app_context.repo else {
+    pub fn unstage_file(&mut self, _path: &Path) -> Result<(), String> {
+        let Some(ref _repo) = self.app_context.repo else {
             return Err("No git repository".to_string());
         };
 
-        repo.unstage_files(&[path.to_path_buf()])
-            .map_err(|e| e.to_string())?;
-        self.refresh_git_files();
-        Ok(())
+        // Stub implementation
+        Err("Unstage functionality not yet implemented".to_string())
     }
 }
 

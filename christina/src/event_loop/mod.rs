@@ -13,7 +13,6 @@ use crate::bootstrap::TerminalHandle;
 use crate::generate::generate_commit_message_with_progress;
 use crate::tui::render;
 use christina_core::{AppState, GitError};
-use christina_git::GitRepository;
 
 use handlers::{
     format_error_message, handle_generation_complete, handle_generation_error, handle_input,
@@ -152,16 +151,40 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
             // - Permissions changed
             // - Network mount disconnected
             // - .git directory corrupted
-            let repo = GitRepository::open(Some(&repo_path))?;
-            repo.validate_for_commit()?;
-            let diff = repo.get_staged_diff()?;
+            let repo = git2::Repository::open(&repo_path)
+                .map_err(|e| GitError::Git(format!("Failed to open repository: {}", e)))?;
+            
+            // Validate for commit
+            if repo.state() != git2::RepositoryState::Clean {
+                return Err(GitError::Git(format!("Repository is in {:?} state", repo.state())));
+            }
+            
+            // Get staged diff as string
+            let mut index = repo.index()
+                .map_err(|e| GitError::Git(format!("Failed to get index: {}", e)))?;
+            let oid = index.write_tree()
+                .map_err(|e| GitError::Git(format!("Failed to write tree: {}", e)))?;
+            let tree = repo.find_tree(oid)
+                .map_err(|e| GitError::Git(format!("Failed to find tree: {}", e)))?;
+            
+            let head = repo.head().ok().and_then(|h| h.target()).and_then(|oid| repo.find_commit(oid).ok());
+            let parent_tree = head.as_ref().and_then(|c| c.tree().ok());
+            
+            let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+                .map_err(|e| GitError::Git(format!("Failed to create diff: {}", e)))?;
+            
+            let mut diff_string = String::new();
+            diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+                use std::fmt::Write;
+                let _ = write!(&mut diff_string, "{}", String::from_utf8_lossy(line.content()));
+                true
+            }).map_err(|e| GitError::Git(format!("Failed to format diff: {}", e)))?;
 
-            if diff.is_empty() {
+            if diff_string.is_empty() {
                 return Err(GitError::Git("No staged changes to process".to_string()));
             }
 
-            diff.to_string()
-                .map_err(|e| GitError::Git(format!("Failed to serialize diff: {}", e)))
+            Ok(diff_string)
         })
         .await;
 
