@@ -852,10 +852,8 @@ impl AIOrchestrator {
                 }
                 b'}' => {
                     depth -= 1;
-                    if depth == 0 {
-                        if let Some(s) = start {
-                            return Some(response[s..=i].to_string());
-                        }
+                    if depth == 0 && let Some(s) = start {
+                        return Some(response[s..=i].to_string());
                     }
                 }
                 _ => {}
@@ -922,10 +920,10 @@ impl AIOrchestrator {
     fn clean_response(&self, response: &str) -> String {
         let mut message = response.trim().to_string();
 
-        if message.starts_with("```") {
-            if let Some(end) = message[3..].find("```") {
-                message = message[3..3 + end].trim().to_string();
-            }
+        if message.starts_with("```")
+            && let Some(end) = message[3..].find("```")
+        {
+            message = message[3..3 + end].trim().to_string();
         }
 
         let preambles = [

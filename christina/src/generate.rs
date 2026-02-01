@@ -10,7 +10,7 @@ use crate::io::git::diff_processor::DiffProcessor;
 use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget, TokenizerService};
 use crate::io::llm::provider::Provider;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
-use christina_core::types::{CommitMessage, TokenCount};
+use christina_core::types::TokenCount;
 use christina_core::ProviderProfile;
 
 fn config_to_profile(config: &Config) -> ProviderProfile {
@@ -67,7 +67,7 @@ pub async fn generate_commit_message_with_progress(
         })
         .await;
 
-    let tokenizer = Arc::new(TokenizerService::new()?);
+    let tokenizer: Arc<dyn christina_core::Tokenizer> = Arc::new(TokenizerService::new()?);
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);
@@ -84,7 +84,7 @@ pub async fn generate_commit_message_with_progress(
         .remaining_for_diff()
         .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
 
-    let processor = DiffProcessor::new(tokenizer.clone(), token_limit)
+    let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
         .with_ignore_files(config.ignore_files.clone());
 
     let chunks = processor

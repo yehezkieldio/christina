@@ -13,10 +13,6 @@ pub enum Event {
     /// Generation progress update
     GenerationProgress { stage: String, generation_id: u64 },
     /// Token count update after diff processing
-    #[expect(
-        dead_code,
-        reason = "Will be constructed when token counting is implemented"
-    )]
     TokenCountUpdate {
         token_count: TokenCount,
         generation_id: u64,

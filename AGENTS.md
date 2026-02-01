@@ -71,7 +71,7 @@ If performance matters and is unclear, measure.
 
 ## Code Quality Gates (Hard Requirements)
 
-A task is incomplete unless all of the following pass:
+A task is incomplete unless all of the following pass (from "justfile"):
 - `just check` with zero warnings
 - `just clippy` with zero warnings
 

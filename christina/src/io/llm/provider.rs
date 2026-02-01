@@ -3,10 +3,9 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 
 use christina_core::{
-    config::Secret,
     error::{CompletionError, ProviderError},
     ids::GenerationId,
-    llm::{ChatMessage, LlmRequest, Role},
+    llm::{ChatMessage, LlmRequest},
     profile::ProviderProfile,
     types::{ModelName, ProviderKind, TokenCount},
 };
@@ -33,6 +32,7 @@ impl std::fmt::Debug for ApiKey {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(not(test), expect(dead_code, reason = "mock providers used in tests"))]
 pub enum Provider {
     OpenAI {
         model: ModelName,
@@ -190,6 +190,7 @@ impl Provider {
         }
     }
 
+    #[cfg(test)]
     pub fn mock(response: impl Into<String>) -> Self {
         Provider::Mock {
             response: response.into(),
@@ -197,10 +198,22 @@ impl Provider {
         }
     }
 
+    #[cfg(test)]
     pub fn mock_sequence(responses: Vec<Result<String, CompletionError>>) -> Self {
         Provider::MockSequence {
             responses: Arc::new(Mutex::new(responses)),
             delay_ms: 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mock_sequence_with_delay(
+        responses: Vec<Result<String, CompletionError>>,
+        delay_ms: u64,
+    ) -> Self {
+        Provider::MockSequence {
+            responses: Arc::new(Mutex::new(responses)),
+            delay_ms,
         }
     }
 }
@@ -212,13 +225,8 @@ fn request_from_messages(
 ) -> LlmRequest {
     let mut mapped = Vec::with_capacity(messages.len());
     for msg in messages {
-        let role = match msg.role {
-            Role::System => Role::System,
-            Role::User => Role::User,
-            Role::Assistant => Role::Assistant,
-        };
         mapped.push(ChatMessage {
-            role,
+            role: msg.role,
             content: msg.content.clone(),
         });
     }
@@ -229,23 +237,5 @@ fn request_from_messages(
         max_tokens,
         temperature,
         system_prompt: None,
-    }
-}
-
-fn api_key_from_secret(secret: &Secret) -> Option<String> {
-    match secret {
-        Secret::Value(key) if !key.is_empty() => Some(key.clone()),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn api_key_from_secret_none() {
-        let secret = Secret::Value(String::new());
-        assert!(api_key_from_secret(&secret).is_none());
     }
 }
