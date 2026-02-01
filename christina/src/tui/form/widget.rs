@@ -66,6 +66,12 @@ impl<T: Editable> FormWidget<'_, T> {
                     FieldType::Boolean => {
                         if value == "true" { "✓ Yes" } else { "✗ No" }.to_string()
                     }
+                    FieldType::Float { min: Some(m), .. } if value.parse::<f64>() == Ok(*m) => {
+                        format!("{} (min)", value)
+                    }
+                    FieldType::Float { max: Some(m), .. } if value.parse::<f64>() == Ok(*m) => {
+                        format!("{} (max)", value)
+                    }
                     _ => {
                         if value.is_empty() {
                             "<empty>".to_string()
@@ -92,7 +98,11 @@ impl<T: Editable> FormWidget<'_, T> {
                 };
 
                 let marker = if is_current {
-                    if is_editing { "▶ " } else { "› " }
+                    if is_editing {
+                        "▶ "
+                    } else {
+                        "› "
+                    }
                 } else {
                     "  "
                 };

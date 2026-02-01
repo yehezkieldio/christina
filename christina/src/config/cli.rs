@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::cli::ConfigCommands;
 use crate::config::Config;
 use crate::tui::{
-    ConfigTuiOptions, ConfigTuiResult, ProfileTuiOptions, run_config_tui, run_profile_tui,
+    run_config_tui, run_profile_tui, ConfigTuiOptions, ConfigTuiResult, ProfileTuiOptions,
 };
 
 /// Handle config commands - routes between CLI and TUI based on subcommand.
@@ -92,6 +92,7 @@ fn handle_list() -> Result<()> {
             .unwrap_or_else(|| "<not set>".to_string())
     );
     println!("  ignore_files: {}", config.ignore_files.join(", "));
+    println!("  model_temperature: {}", config.model_temperature);
     println!(
         "  commit_message_max_length: {}",
         config
@@ -111,6 +112,18 @@ fn handle_list() -> Result<()> {
     println!("  diff_show_preview: {}", config.diff.show_preview);
     println!("  use_commit_history: {}", config.use_commit_history);
     println!("  commit_history_depth: {}", config.commit_history_depth);
+    println!(
+        "  max_concurrent_requests: {}",
+        config.max_concurrent_requests
+    );
+    println!(
+        "  max_partial_failure_rate: {}",
+        config.max_partial_failure_rate
+    );
+    println!(
+        "  prompt_failure_rate_threshold: {}",
+        config.prompt_failure_rate_threshold
+    );
     println!();
     println!(
         "  Active profile: {}",

@@ -327,6 +327,8 @@ impl Config {
             "max_concurrent_requests" => Some(self.max_concurrent_requests.to_string()),
             "max_partial_failure_rate" => Some(self.max_partial_failure_rate.to_string()),
             "prompt_failure_rate_threshold" => Some(self.prompt_failure_rate_threshold.to_string()),
+            "model_temperature" => Some(self.model_temperature.to_string()),
+            "experimental_placeholder" => Some("-".to_string()),
             _ => None,
         }
     }
@@ -481,6 +483,15 @@ impl Config {
                     .context("Invalid number")?;
                 self.prompt_failure_rate_threshold = parsed.clamp(0.0, 1.0);
             }
+            "model_temperature" => {
+                let parsed: f32 = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid temperature value")?;
+                self.model_temperature = parsed.clamp(0.0, 2.0);
+                update_active_profile(key, value)?;
+            }
+            "experimental_placeholder" => (),
             _ => anyhow::bail!("Unknown configuration key: {}", key),
         }
         Ok(())
@@ -536,77 +547,161 @@ impl Config {
     }
 }
 
-impl crate::tui::form::editable::Editable for Config {
-    fn fields(&self) -> Vec<crate::tui::form::editable::FieldDef> {
+/// Configuration tab categories
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfigTab {
+    #[default]
+    General,
+    Advanced,
+    Experimental,
+}
+
+impl ConfigTab {
+    pub const ALL: [ConfigTab; 3] = [ConfigTab::General, ConfigTab::Advanced, ConfigTab::Experimental];
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            ConfigTab::General => "General",
+            ConfigTab::Advanced => "Advanced",
+            ConfigTab::Experimental => "Experimental",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            ConfigTab::General => "Basic settings for the AI model and commit generation",
+            ConfigTab::Advanced => "Fine-tune performance, concurrency, and failure handling",
+            ConfigTab::Experimental => "Unstable features that may change or be removed",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            ConfigTab::General => ConfigTab::Advanced,
+            ConfigTab::Advanced => ConfigTab::Experimental,
+            ConfigTab::Experimental => ConfigTab::General,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            ConfigTab::General => ConfigTab::Experimental,
+            ConfigTab::Advanced => ConfigTab::General,
+            ConfigTab::Experimental => ConfigTab::Advanced,
+        }
+    }
+}
+
+impl Config {
+    /// Get fields for a specific configuration tab
+    pub fn fields_for_tab(&self, tab: ConfigTab) -> Vec<crate::tui::form::editable::FieldDef> {
         use crate::tui::form::editable::{FieldDef, FieldType};
 
-        let mut fields = vec![
-            FieldDef::new("max_input_tokens", "Max Input Tokens")
-                .help(format!(
-                    "Maximum input tokens (0-{})",
-                    MAX_INPUT
-                ))
-                .field_type(FieldType::Number {
-                    min: Some(1),
-                    max: Some(MAX_INPUT as i64),
-                })
-                .required(),
-            FieldDef::new("max_output_tokens", "Output Tokens")
-                .help(format!(
-                    "Maximum output tokens (0-{})",
-                    MAX_OUTPUT
-                ))
-                .field_type(FieldType::Number {
-                    min: Some(1),
-                    max: Some(MAX_OUTPUT as i64),
-                })
-                .required(),
-            FieldDef::new("model_provider", "Provider")
-                .help("AI provider (openai, azure, etc.)")
-                .required(),
-            FieldDef::new("model", "Model")
-                .help("Model name (e.g., gpt-4.1-mini, claude-4.5-sonnet)")
-                .required(),
-            FieldDef::new("api_key", "API Key")
-                .help("API key for the provider (prefer keyring)")
-                .field_type(FieldType::Secret),
-            FieldDef::new("model_api_url", "API URL").help("Custom API endpoint URL (optional)"),
-            FieldDef::new("ignore_files", "Ignore Files")
-                .help("Comma-separated list of files to ignore")
-                .field_type(FieldType::Text),
-            FieldDef::new("commit_message_max_length", "Commit Message Max Length")
-                .help("Maximum commit message length (default: 72)"),
-            FieldDef::new("commit_message_validation_mode", "Commit Message Validation")
-                .help("Validation mode: strict, soft, or disabled (default: soft)"),
-            FieldDef::new("diff_tool", "Diff Tool")
-                .help("Diff tool: auto, delta, difftastic, diff-so-fancy, git, basic (default: auto)"),
-             FieldDef::new("diff_show_preview", "Show Diff Preview")
-                 .help("Show diff preview panel on dashboard (default: true)")
-                 .field_type(FieldType::Boolean),
-             FieldDef::new("use_commit_history", "Use Commit History")
-                 .help("Include commit history context in LLM prompts for style consistency (default: false)")
-                 .field_type(FieldType::Boolean),
-             FieldDef::new("commit_history_depth", "Commit History Depth")
-                 .help("Number of recent commits to analyze for style (5-20, default: 5)")
-                 .field_type(FieldType::Number {
-                     min: Some(5),
-                     max: Some(20),
-                 }),
-         ];
+        match tab {
+            ConfigTab::General => {
+                let mut fields = vec![
+                    FieldDef::new("model_provider", "Provider")
+                        .help("AI provider (openai, azure, groq, anthropic, etc.)")
+                        .required(),
+                    FieldDef::new("model", "Model")
+                        .help("Model name (e.g., gpt-4.1-mini, claude-4-sonnet)")
+                        .required(),
+                    FieldDef::new("api_key", "API Key")
+                        .help("API key for the provider (use 'env:VAR' or 'keyring:KEY' for secure storage)")
+                        .field_type(FieldType::Secret),
+                    FieldDef::new("max_input_tokens", "Max Input Tokens")
+                        .help(format!("Maximum input tokens (1-{})", MAX_INPUT))
+                        .field_type(FieldType::Number {
+                            min: Some(1),
+                            max: Some(MAX_INPUT as i64),
+                        })
+                        .required(),
+                    FieldDef::new("max_output_tokens", "Output Tokens")
+                        .help(format!("Maximum output tokens (1-{})", MAX_OUTPUT))
+                        .field_type(FieldType::Number {
+                            min: Some(1),
+                            max: Some(MAX_OUTPUT as i64),
+                        })
+                        .required(),
+                    FieldDef::new("model_temperature", "Temperature")
+                        .help("Model temperature: 0.0 (deterministic) to 2.0 (creative), default: 0.3")
+                        .field_type(FieldType::Float {
+                            min: Some(0.0),
+                            max: Some(2.0),
+                        }),
+                    FieldDef::new("model_api_url", "API URL")
+                        .help("Custom API endpoint URL (optional, for proxies or self-hosted)"),
+                    FieldDef::new("ignore_files", "Ignore Files")
+                        .help("Comma-separated list of files/patterns to exclude from AI processing"),
+                ];
 
-        // Add Azure-specific fields if provider is azure
-        if self.model_provider == ProviderKind::Azure {
-            fields.push(
-                FieldDef::new("azure_api_version", "Azure API Version")
-                    .help("Azure OpenAI API version (e.g., 2024-02-15-preview)"),
-            );
-            fields.push(
-                FieldDef::new("azure_deployment_id", "Azure Deployment ID")
-                    .help("Azure deployment/model name"),
-            );
+                // Add Azure-specific fields if provider is azure
+                if self.model_provider == ProviderKind::Azure {
+                    fields.push(
+                        FieldDef::new("azure_api_version", "Azure API Version")
+                            .help("Azure OpenAI API version (e.g., 2024-02-15-preview)")
+                            .required(),
+                    );
+                    fields.push(
+                        FieldDef::new("azure_deployment_id", "Azure Deployment ID")
+                            .help("Azure deployment/model name")
+                            .required(),
+                    );
+                }
+
+                fields
+            }
+            ConfigTab::Advanced => vec![
+                FieldDef::new("commit_message_max_length", "Commit Message Max Length")
+                    .help("Maximum commit message length in characters (default: 72, leave empty for no limit)"),
+                FieldDef::new("commit_message_validation_mode", "Commit Message Validation")
+                    .help("Validation mode: strict, soft, or disabled (default: soft)"),
+                FieldDef::new("diff_tool", "Diff Tool")
+                    .help("Diff rendering: auto, delta, difftastic, diff-so-fancy, git, basic"),
+                FieldDef::new("diff_show_preview", "Show Diff Preview")
+                    .help("Show diff preview panel on dashboard (default: true)")
+                    .field_type(FieldType::Boolean),
+                FieldDef::new("use_commit_history", "Use Commit History")
+                    .help("Include recent commit history for style consistency (default: true)")
+                    .field_type(FieldType::Boolean),
+                FieldDef::new("commit_history_depth", "Commit History Depth")
+                    .help("Number of recent commits to analyze for style (5-20, default: 5)")
+                    .field_type(FieldType::Number {
+                        min: Some(5),
+                        max: Some(20),
+                    }),
+                FieldDef::new("max_concurrent_requests", "Max Concurrent Requests")
+                    .help("Maximum concurrent LLM requests (1-10, default: 4)")
+                    .field_type(FieldType::Number {
+                        min: Some(1),
+                        max: Some(10),
+                    }),
+                FieldDef::new("max_partial_failure_rate", "Max Partial Failure Rate")
+                    .help("Failure rate threshold to abort (0.0-1.0, default: 0.10)")
+                    .field_type(FieldType::Float {
+                        min: Some(0.0),
+                        max: Some(1.0),
+                    }),
+                FieldDef::new("prompt_failure_rate_threshold", "Prompt Failure Rate Threshold")
+                    .help("Rate at which to prompt user confirmation (0.0-1.0, default: 0.05)")
+                    .field_type(FieldType::Float {
+                        min: Some(0.0),
+                        max: Some(1.0),
+                    }),
+            ],
+            ConfigTab::Experimental => vec![
+                FieldDef::new("experimental_placeholder", "[No Experimental Options]")
+                    .help("No experimental features are currently available. Check back in future updates.")
+                    .read_only(),
+            ],
         }
+    }
+}
 
-        fields
+impl crate::tui::form::editable::Editable for Config {
+    fn fields(&self) -> Vec<crate::tui::form::editable::FieldDef> {
+        // Default implementation returns general tab fields (for backward compatibility)
+        self.fields_for_tab(ConfigTab::General)
     }
 
     fn get_field(&self, key: &str) -> Option<String> {

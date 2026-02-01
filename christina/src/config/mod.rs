@@ -4,4 +4,4 @@ pub mod profile_cli;
 pub mod settings;
 
 pub use diff_tool::DiffTool;
-pub use settings::Config;
+pub use settings::{Config, ConfigTab};

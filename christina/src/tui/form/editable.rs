@@ -1,10 +1,11 @@
 use anyhow::Result;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldType {
     Text,
     Boolean,
     Number { min: Option<i64>, max: Option<i64> },
+    Float { min: Option<f64>, max: Option<f64> },
     Secret,
 }
 
@@ -43,6 +44,11 @@ impl FieldDef {
 
     pub fn required(mut self) -> Self {
         self.required = true;
+        self
+    }
+
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
         self
     }
 }

@@ -23,13 +23,17 @@ pub struct FormState {
 
 impl FormState {
     pub fn new<T: Editable>(editable: &T) -> Self {
+        Self::with_fields(editable.fields())
+    }
+
+    pub fn with_fields(fields: Vec<FieldDef>) -> Self {
         Self {
             cursor: 0,
             mode: FormMode::Navigation,
             edit_buffer: String::new(),
             edit_cursor: 0,
             error: None,
-            fields: editable.fields(),
+            fields,
         }
     }
 
