@@ -45,6 +45,6 @@ workspace = true
 # Christina will be distributed via NPM, via prebuilt binaries, except for development or debugging only features
 # We don't have feature-gated dependencies for now, will be not needed foreseeably
 [features]
-default = []
+default = ["keyring-support"]
 dhat-heap = ["dhat"]
 keyring-support = ["christina-core/keyring-support", "dep:keyring"]

@@ -2,7 +2,6 @@ pub mod context;
 pub mod edit_history;
 pub mod handlers;
 pub mod init;
-pub mod persistence;
 pub mod state;
 
 use std::path::Path;
@@ -30,7 +29,7 @@ impl App {
             toasts.warning(&warning);
         }
 
-        let mut app = Self {
+        Self {
             app_context: init_result.context,
             ui: init_result.ui,
             data: init_result.data,
@@ -38,31 +37,10 @@ impl App {
             should_quit: false,
             exit_message: None,
             generation_state: GenerationState::Idle,
-        };
-
-        app.check_for_recovery();
-
-        app
-    }
-
-    fn check_for_recovery(&mut self) {
-        match persistence::PersistentState::load() {
-            Ok(Some(state)) if state.has_pending_recovery() => {
-                if let Some(message) = state.pending_message {
-                    self.data.base.generated_message = compact_str::CompactString::new(&message);
-                    self.data.base.edit_history.initialize(&message);
-                    self.data.base.toasts.info(
-                        "Recovered unsaved commit message from previous session".to_string()
-                    );
-                    self.transition_to(christina_core::AppState::Review);
-                }
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::warn!("Failed to load persistent state: {}", e);
-            }
         }
     }
+
+
 
     pub fn refresh_git_files(&mut self) {
         if let Some(ref repo) = self.app_context.repo {
@@ -143,7 +121,7 @@ impl App {
 
                 // Load file lists using the initialized repository
                 let (staged, unstaged, file_warnings) = init::load_file_lists(Some(&new_repo));
-                
+
                 // Surface any warnings from file loading
                 for warning in file_warnings {
                     self.data.base.toasts.warning(warning);

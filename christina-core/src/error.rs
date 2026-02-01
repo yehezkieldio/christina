@@ -234,6 +234,27 @@ impl IsTransient for TokenizerError {
 /// Result type alias for tokenizer operations
 pub type TokenizerResult<T> = std::result::Result<T, TokenizerError>;
 
+/// Error type for diff processing operations
+#[derive(Debug, Error)]
+pub enum DiffError {
+    /// Diff size exceeds maximum allowed
+    #[error("Diff size exceeds maximum: {actual} bytes > {max} bytes")]
+    SizeExceeded { actual: usize, max: usize },
+
+    /// No processable diff content found
+    #[error("No processable diff content found")]
+    NoContent,
+}
+
+impl IsTransient for DiffError {
+    fn is_transient(&self) -> bool {
+        false
+    }
+}
+
+/// Result type alias for diff processing operations
+pub type DiffResult<T> = std::result::Result<T, DiffError>;
+
 /// Unified application error that can represent any subsystem error
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -248,6 +269,9 @@ pub enum AppError {
 
     #[error(transparent)]
     Tokenizer(#[from] TokenizerError),
+
+    #[error(transparent)]
+    Diff(#[from] DiffError),
 
     #[error("Application error: {0}")]
     Other(String),
@@ -274,7 +298,7 @@ impl AppError {
             AppError::Git(_) => ErrorCategory::Git,
             AppError::Completion(_) | AppError::Provider(_) => ErrorCategory::Llm,
             AppError::Tokenizer(_) => ErrorCategory::Tokenizer,
-            AppError::Other(_) => ErrorCategory::General,
+            AppError::Diff(_) | AppError::Other(_) => ErrorCategory::General,
         }
     }
 }

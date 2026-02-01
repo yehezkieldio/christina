@@ -15,7 +15,7 @@ thiserror = { workspace = true }
 url = { workspace = true }
 
 [features]
-default = []
+default = ["keyring-support"]
 git2-support = ["git2"]
 keyring-support = ["keyring"]
 

@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -34,6 +35,7 @@ fn config_to_profile(config: &Config) -> ProviderProfile {
 pub async fn generate_commit_message_with_progress(
     config: Config,
     diff: String,
+    repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
     generation_id: u64,
     user_context: Option<String>,
@@ -143,11 +145,10 @@ pub async fn generate_commit_message_with_progress(
         Arc::clone(&provider),
         config.max_concurrent_requests,
         config.max_partial_failure_rate,
-        config.prompt_failure_rate_threshold,
     );
 
     let history_context = if config.use_commit_history {
-        match get_commit_history(config.commit_history_depth) {
+        match get_commit_history(&repo_path, config.commit_history_depth) {
             Ok(mut commits) => {
                 if commits.is_empty() {
                     None
@@ -223,8 +224,8 @@ struct CommitInfo {
     subject: String,
 }
 
-fn get_commit_history(limit: usize) -> Result<Vec<CommitInfo>> {
-    let repo = git2::Repository::discover(".")?;
+fn get_commit_history(repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
+    let repo = git2::Repository::open(repo_path)?;
 
     if repo.head().is_err() {
         return Ok(vec![]);

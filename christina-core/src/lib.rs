@@ -14,8 +14,8 @@ pub use config::{
     SecretString,
 };
 pub use error::{
-    AppError, CompletionError, ErrorCategory, GitError, GitResult, ProviderError, TokenizerError,
-    TokenizerResult,
+    AppError, CompletionError, DiffError, DiffResult, ErrorCategory, GitError, GitResult,
+    ProviderError, TokenizerError, TokenizerResult,
 };
 pub use git::{GitFile, GitFileStatus};
 pub use ids::GenerationId;

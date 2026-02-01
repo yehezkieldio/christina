@@ -1,10 +1,8 @@
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::path::PathBuf;
 
 const MAX_HISTORY_SIZE: usize = 50;
-const HISTORY_FILENAME: &str = "edit_history.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
@@ -52,18 +50,12 @@ impl EditHistory {
         }
         self.redo_stack.clear();
         self.current = Some(entry);
-        if let Err(e) = self.save() {
-            tracing::debug!("Failed to save edit history: {}", e);
-        }
     }
 
     pub fn undo(&mut self) -> Option<&HistoryEntry> {
         if let Some(current) = self.current.take() {
             self.redo_stack.push(current);
             self.current = self.undo_stack.pop_back();
-        }
-        if let Err(e) = self.save() {
-            tracing::debug!("Failed to save edit history: {}", e);
         }
         self.current.as_ref()
     }
@@ -74,9 +66,6 @@ impl EditHistory {
                 self.undo_stack.push_back(current);
             }
             self.current = Some(redo);
-        }
-        if let Err(e) = self.save() {
-            tracing::debug!("Failed to save edit history: {}", e);
         }
         self.current.as_ref()
     }
@@ -89,49 +78,11 @@ impl EditHistory {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.current = None;
-        if let Err(e) = Self::clear_persisted() {
-            tracing::debug!("Failed to clear persisted history: {}", e);
-        }
     }
 
     pub fn initialize(&mut self, message: impl Into<CompactString>) {
         self.clear();
         self.current = Some(HistoryEntry::new(message, (0, 0), "initial"));
-        if let Err(e) = self.save() {
-            tracing::debug!("Failed to save initial history: {}", e);
-        }
-    }
-
-    pub fn load() -> Option<Self> {
-        let path = Self::history_path().ok()?;
-        if !path.exists() {
-            return None;
-        }
-        let json = std::fs::read_to_string(path).ok()?;
-        serde_json::from_str(&json).ok()
-    }
-
-    fn save(&self) -> anyhow::Result<()> {
-        let path = Self::history_path()?;
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
-    }
-
-    fn clear_persisted() -> anyhow::Result<()> {
-        let path = Self::history_path()?;
-        if path.exists() {
-            std::fs::remove_file(path)?;
-        }
-        Ok(())
-    }
-
-    fn history_path() -> anyhow::Result<PathBuf> {
-        let cache_dir = directories::ProjectDirs::from("", "", "christina")
-            .map(|dirs| dirs.cache_dir().to_path_buf())
-            .ok_or_else(|| anyhow::anyhow!("Could not determine cache directory"))?;
-        std::fs::create_dir_all(&cache_dir)?;
-        Ok(cache_dir.join(HISTORY_FILENAME))
     }
 }
 

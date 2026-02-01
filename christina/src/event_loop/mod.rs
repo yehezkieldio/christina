@@ -142,8 +142,9 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
 
         // Perform heavy git operations in background using spawn_blocking
         // This prevents blocking the main thread/UI while reading large diffs
+        let repo_path_for_diff = repo_path.clone();
         let diff_result = tokio::task::spawn_blocking(move || {
-            let repo = git2::Repository::open(&repo_path)
+            let repo = git2::Repository::open(&repo_path_for_diff)
                 .map_err(|e| GitError::Git(format!("Failed to open repository: {}", e)))?;
 
             crate::io::git::adapter::build_staged_diff(&repo)
@@ -204,6 +205,7 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
         match generate_commit_message_with_progress(
             config,
             staged_diff,
+            repo_path,
             tx_progress.clone(),
             generation_id,
             user_context,

@@ -551,17 +551,15 @@ pub enum ConfigTab {
     #[default]
     General,
     Advanced,
-    Experimental,
 }
 
 impl ConfigTab {
-    pub const ALL: [ConfigTab; 3] = [ConfigTab::General, ConfigTab::Advanced, ConfigTab::Experimental];
+    pub const ALL: [ConfigTab; 2] = [ConfigTab::General, ConfigTab::Advanced];
 
     pub fn name(&self) -> &'static str {
         match self {
             ConfigTab::General => "General",
             ConfigTab::Advanced => "Advanced",
-            ConfigTab::Experimental => "Experimental",
         }
     }
 
@@ -569,23 +567,20 @@ impl ConfigTab {
         match self {
             ConfigTab::General => "Basic settings for the AI model and commit generation",
             ConfigTab::Advanced => "Fine-tune performance, concurrency, and failure handling",
-            ConfigTab::Experimental => "No experimental settings available",
         }
     }
 
     pub fn next(self) -> Self {
         match self {
             ConfigTab::General => ConfigTab::Advanced,
-            ConfigTab::Advanced => ConfigTab::Experimental,
-            ConfigTab::Experimental => ConfigTab::General,
+            ConfigTab::Advanced => ConfigTab::General,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            ConfigTab::General => ConfigTab::Experimental,
+            ConfigTab::General => ConfigTab::Advanced,
             ConfigTab::Advanced => ConfigTab::General,
-            ConfigTab::Experimental => ConfigTab::Advanced,
         }
     }
 }
@@ -687,7 +682,6 @@ impl Config {
                         max: Some(1.0),
                     }),
             ],
-            ConfigTab::Experimental => Vec::new(),
         }
     }
 }

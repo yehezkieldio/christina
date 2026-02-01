@@ -1,4 +1,4 @@
-use std::io::{IsTerminal, Write};
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -148,20 +148,18 @@ pub struct AIOrchestrator {
     retry_policy: RetryPolicy,
     concurrency_limit: usize,
     max_partial_failure_rate: f64,
-    prompt_failure_rate_threshold: f64,
 }
 
 impl AIOrchestrator {
     #[cfg(test)]
     pub fn new(provider: Arc<Provider>) -> Self {
-        Self::with_config(provider, MAX_CONCURRENT_REQUESTS, 0.10, 0.05)
+        Self::with_config(provider, MAX_CONCURRENT_REQUESTS, 0.10)
     }
 
     pub fn with_config(
         provider: Arc<Provider>,
         concurrency_limit: usize,
         max_partial_failure_rate: f64,
-        prompt_failure_rate_threshold: f64,
     ) -> Self {
         let requests_per_second = 5.0;
         let concurrency_limit = concurrency_limit.clamp(1, 20);
@@ -172,7 +170,6 @@ impl AIOrchestrator {
             retry_policy: RetryPolicy::default(),
             concurrency_limit,
             max_partial_failure_rate: max_partial_failure_rate.clamp(0.0, 1.0),
-            prompt_failure_rate_threshold: prompt_failure_rate_threshold.clamp(0.0, 1.0),
         }
     }
 
@@ -440,30 +437,6 @@ impl AIOrchestrator {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-        }
-
-        if failure_rate > self.prompt_failure_rate_threshold && failed_count > 0 {
-            let should_proceed = self.prompt_partial_failure_confirmation(
-                failed_count,
-                total_chunks,
-                failure_rate,
-                &failed_files,
-            )?;
-
-            if !should_proceed {
-                anyhow::bail!(
-                    "User declined to proceed with partial failures. \
-                     {}/{} chunks failed ({:.0}%). Files affected: {}",
-                    failed_count,
-                    total_chunks,
-                    failure_rate * 100.0,
-                    failed_files
-                        .iter()
-                        .map(|path| path.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
         }
 
         if failed_count > 0 {
@@ -980,73 +953,6 @@ impl AIOrchestrator {
         self.max_partial_failure_rate
     }
 
-    fn prompt_partial_failure_confirmation(
-        &self,
-        failed_count: usize,
-        total_chunks: usize,
-        failure_rate: f64,
-        failed_files: &[FilePath],
-    ) -> Result<bool> {
-        let is_interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
-
-        if !is_interactive {
-            eprintln!(
-                "Warning: {}/{} chunks failed ({:.0}%) in non-interactive mode. Proceeding...",
-                failed_count,
-                total_chunks,
-                failure_rate * 100.0
-            );
-            return Ok(true);
-        }
-
-        let failed_files_str = if failed_files.len() <= 5 {
-            failed_files
-                .iter()
-                .map(|path| path.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        } else {
-            format!(
-                "{} and {} more",
-                failed_files[..5]
-                    .iter()
-                    .map(|path| path.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                failed_files.len() - 5
-            )
-        };
-
-        eprintln!();
-        eprintln!("⚠️  Partial Failure Warning");
-        eprintln!(
-            "   {}/{} chunks failed to process ({:.0}%)",
-            failed_count,
-            total_chunks,
-            failure_rate * 100.0
-        );
-        eprintln!("   Failed files: {}", failed_files_str);
-        eprintln!();
-        eprintln!("The generated commit message may not reflect all changes.");
-        eprintln!();
-        eprint!("Do you want to proceed anyway? [y/N]: ");
-
-        std::io::stderr().flush()?;
-
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-
-        let input = input.trim().to_lowercase();
-        let confirmed = matches!(input.as_str(), "y" | "yes");
-
-        if confirmed {
-            eprintln!("Proceeding with partial results...");
-        } else {
-            eprintln!("Aborting.");
-        }
-
-        Ok(confirmed)
-    }
 }
 
 fn debug_enabled() -> bool {

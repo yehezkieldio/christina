@@ -8,7 +8,7 @@ pub struct ConfigApp {
     /// Current configuration data
     pub config: Config,
     /// Form states for each tab (indexed by ConfigTab ordinal)
-    pub form_states: [FormState; 3],
+    pub form_states: [FormState; 2],
     /// Current active tab
     pub current_tab: ConfigTab,
     /// Whether to quit the TUI
@@ -26,12 +26,10 @@ impl ConfigApp {
         // Create separate form states for each tab
         let general_state = FormState::with_fields(config.fields_for_tab(ConfigTab::General));
         let advanced_state = FormState::with_fields(config.fields_for_tab(ConfigTab::Advanced));
-        let experimental_state =
-            FormState::with_fields(config.fields_for_tab(ConfigTab::Experimental));
 
         Self {
             config,
-            form_states: [general_state, advanced_state, experimental_state],
+            form_states: [general_state, advanced_state],
             current_tab: ConfigTab::General,
             should_quit: false,
             open_profiles: false,
@@ -72,9 +70,9 @@ impl ConfigApp {
         self.status_message = None;
     }
 
-    /// Switch to a specific tab by index (1=General, 2=Advanced, 3=Experimental)
+    /// Switch to a specific tab by index (1=General, 2=Advanced)
     pub fn set_tab(&mut self, index: usize) {
-        if (1..=3).contains(&index) {
+        if (1..=2).contains(&index) {
             self.current_tab = ConfigTab::ALL[index - 1];
             self.status_message = None;
         }
@@ -86,7 +84,5 @@ impl ConfigApp {
             FormState::with_fields(self.config.fields_for_tab(ConfigTab::General));
         self.form_states[1] =
             FormState::with_fields(self.config.fields_for_tab(ConfigTab::Advanced));
-        self.form_states[2] =
-            FormState::with_fields(self.config.fields_for_tab(ConfigTab::Experimental));
     }
 }

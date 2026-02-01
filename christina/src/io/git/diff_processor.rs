@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use christina_core::{
+    error::DiffError,
     git::{DiffChunk, MAX_DIFF_SIZE},
     types::TokenCount,
     Tokenizer,
@@ -95,21 +96,17 @@ impl DiffProcessor {
     }
 
     /// Process a diff string into chunks that fit within the token budget.
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "Result wrapper preserved for future error handling"
-    )]
-    pub fn process(&self, diff: &str) -> Result<Vec<DiffChunk>, String> {
+    pub fn process(&self, diff: &str) -> Vec<DiffChunk> {
         if diff.is_empty() {
-            return Ok(Vec::new());
+            return Vec::new();
         }
 
         if parsing::is_all_file_deletions(diff) || parsing::is_deletion_only(diff) {
             let limit = if diff.len() >= 500 * 1024 { 100 } else { 50 };
-            return Ok(self.process_owned(parsing::truncate_deletion_diff(diff, limit)));
+            return self.process_owned(parsing::truncate_deletion_diff(diff, limit));
         }
 
-        Ok(self.process_borrowed(diff))
+        self.process_borrowed(diff)
     }
 
     fn process_borrowed(&self, diff: &str) -> Vec<DiffChunk> {
@@ -217,13 +214,12 @@ impl DiffProcessor {
         )
     }
 
-    pub fn process_safe(&self, diff: &str) -> Result<Vec<DiffChunk>, String> {
+    pub fn process_safe(&self, diff: &str) -> Result<Vec<DiffChunk>, DiffError> {
         if diff.len() > self.max_diff_size {
-            return Err(format!(
-                "Diff size ({} bytes) exceeds maximum ({} bytes)",
-                diff.len(),
-                self.max_diff_size
-            ));
+            return Err(DiffError::SizeExceeded {
+                actual: diff.len(),
+                max: self.max_diff_size,
+            });
         }
 
         let file_diffs = parsing::split_by_files(diff, self.tokenizer.as_ref());
@@ -246,13 +242,13 @@ impl DiffProcessor {
                 ));
             } else {
                 has_text_content = true;
-                let file_chunks = self.process(&file_diff.content)?;
+                let file_chunks = self.process(&file_diff.content);
                 chunks.extend(file_chunks);
             }
         }
 
         if !has_text_content {
-            return Err("No processable diff content found".to_string());
+            return Err(DiffError::NoContent);
         }
 
         Ok(chunks)
@@ -308,7 +304,7 @@ mod tests {
     #[test]
     fn empty_diff_processing() {
         let processor = create_processor(1000);
-        let chunks = processor.process("").expect("should process");
+        let chunks = processor.process("");
         assert_eq!(chunks.len(), 0);
     }
 
@@ -316,7 +312,7 @@ mod tests {
     fn small_diff_single_chunk() {
         let processor = create_processor(10_000);
         let diff = "diff --git a/test.txt b/test.txt\n+new line\n";
-        let chunks = processor.process(diff).expect("should process");
+        let chunks = processor.process(diff);
         assert_eq!(chunks.len(), 1);
     }
 
@@ -527,7 +523,7 @@ mod tests {
         let diff = "diff --git a/test.bin b/test.bin\n\0binary\n";
         let result = processor.process_safe(diff);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No processable diff content"));
+        assert!(matches!(result.unwrap_err(), DiffError::NoContent));
     }
 
     #[test]
@@ -546,7 +542,7 @@ mod tests {
         let huge_diff = "a".repeat(MAX_DIFF_SIZE + 1000);
         let result = processor.process_safe(&huge_diff);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("exceeds maximum"));
+        assert!(matches!(result.unwrap_err(), DiffError::SizeExceeded { .. }));
     }
 
     #[test]
@@ -650,7 +646,7 @@ mod tests {
         }
         let mut processor = processor;
         processor.max_diff_size = 80;
-        let chunks = processor.process(&diff).expect("should process");
+        let chunks = processor.process(&diff);
         assert!(chunks.iter().any(|c| c.content.contains("diff truncated")));
     }
 
@@ -665,7 +661,7 @@ deleted file mode 100644\n\
 @@ -1,120 +0,0 @@\n",
         );
         diff.push_str(&"-line\n".repeat(120));
-        let chunks = processor.process(&diff).expect("should process");
+        let chunks = processor.process(&diff);
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].content.contains("deleted content truncated"));
     }
@@ -682,7 +678,7 @@ deleted file mode 100644\n\
         );
         diff.push_str(&"-line\n".repeat(200_000));
         assert!(diff.len() >= 500 * 1024);
-        let chunks = processor.process(&diff).expect("should process");
+        let chunks = processor.process(&diff);
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].content.contains("deleted content truncated"));
     }
@@ -699,7 +695,7 @@ deleted file mode 100644\n\
         }
         let mut processor = processor;
         processor.max_diff_size = 20;
-        let chunks = processor.process(diff.as_str()).expect("should process");
+        let chunks = processor.process(diff.as_str());
         assert!(!chunks.is_empty());
     }
 }
