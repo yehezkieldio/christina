@@ -2,8 +2,8 @@ use christina_core::error::CompletionError;
 use christina_core::types::{CommitMessage, TokenCount};
 use compact_str::CompactString;
 
-use crate::app::App;
 use crate::app::state::GenerationState;
+use crate::app::App;
 use crate::tui::handle_key;
 use christina_core::{AppState, ReviewAction};
 
@@ -109,6 +109,9 @@ pub fn format_error_message(err: &anyhow::Error) -> String {
             }
             CompletionError::InvalidResponse(msg) => {
                 format!("Invalid response from API: {}", msg)
+            }
+            CompletionError::UnknownError(msg) => {
+                format!("An unexpected error occurred: {}", msg)
             }
         };
     }

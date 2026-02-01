@@ -1093,11 +1093,10 @@ async fn generate_with_retry(
         tokio::time::sleep(delay).await;
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "retry loop guarantees last_error is set before exhaustion"
-    )]
-    Err(last_error.expect("retry loop should have at least one error"))
+    // Fallback if all retries exhausted without recording an error (logic bug guard)
+    Err(last_error.unwrap_or_else(|| CompletionError::UnknownError(
+        "All retry attempts exhausted without error details".to_string(),
+    )))
 }
 
 fn validate_commit_message(

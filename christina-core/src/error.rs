@@ -101,6 +101,10 @@ pub enum CompletionError {
     /// Invalid or unexpected response from API
     #[error("Invalid response: {0}")]
     InvalidResponse(String),
+
+    /// Unknown or unclassified error
+    #[error("Unknown error: {0}")]
+    UnknownError(String),
 }
 
 impl CompletionError {
