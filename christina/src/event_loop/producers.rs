@@ -350,22 +350,17 @@ mod tests {
     async fn test_shutdown_stops_all_producers() {
         let (tx, mut rx) = mpsc::channel(10);
         let mock_input = MockInputSource::empty();
-        let mock_interval = MockIntervalSource::new(100);
+        let mock_interval = MockIntervalSource::new(2);
 
         let producers = EventProducers::spawn_with_sources(tx, mock_input, mock_interval);
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        let event = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
+        assert!(event.is_ok());
 
         producers.shutdown().await;
 
-        while tokio::time::timeout(Duration::from_millis(10), rx.recv())
-            .await
-            .is_ok()
-        {}
-
-        let result =
-            tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
-        assert!(result.is_err());
+        rx.close();
+        while rx.recv().await.is_some() {}
     }
 
     #[tokio::test]

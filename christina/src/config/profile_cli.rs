@@ -46,13 +46,13 @@ pub fn handle_profile_command(command: ProfileCommands) -> Result<()> {
 
 fn handle_profile_command_with_deps(
     command: ProfileCommands,
-    _store: &mut dyn ConfigStore,
+    store: &mut dyn ConfigStore,
     _input: &mut dyn BufRead,
-    _output: &mut dyn Write,
+    output: &mut dyn Write,
 ) -> Result<()> {
     match command {
-        ProfileCommands::List => handle_list(),
-        ProfileCommands::Show { name } => handle_show(&name),
+        ProfileCommands::List => handle_list(store, output),
+        ProfileCommands::Show { name } => handle_show(store, output, &name),
         ProfileCommands::Create {
             name,
             provider,
@@ -102,80 +102,93 @@ fn handle_profile_command_with_deps(
     }
 }
 
-fn handle_list() -> Result<()> {
-    let config = Config::load()?;
+fn handle_list(store: &mut dyn ConfigStore, output: &mut dyn Write) -> Result<()> {
+    let config = store.load()?;
 
     let profiles = config.profiles.list_names();
 
     if profiles.is_empty() {
-        println!("No profiles configured.");
-        println!("Use 'christina profile create <name>' to create one.");
+        writeln!(output, "No profiles configured.")?;
+        writeln!(
+            output,
+            "Use 'christina profile create <name>' to create one."
+        )?;
     } else {
-        println!("Profiles:");
+        writeln!(output, "Profiles:")?;
         for name in &profiles {
             let marker = if config.profiles.active.as_ref() == Some(name) {
                 " *"
             } else {
                 ""
             };
-            println!("  {}{}", name, marker);
+            writeln!(output, "  {}{}", name, marker)?;
         }
         if config.profiles.active.is_none() {
-            println!("\nNo active profile set.");
+            writeln!(output, "\nNo active profile set.")?;
         }
     }
 
     Ok(())
 }
 
-fn handle_show(name: &str) -> Result<()> {
-    let config = Config::load()?;
+fn handle_show(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str) -> Result<()> {
+    let config = store.load()?;
 
     match config.profiles.get(name) {
         Some(profile) => {
-            println!("Profile: {}", profile.name);
-            println!("  Provider: {}", profile.provider);
-            println!("  Model: {}", profile.model);
+            writeln!(output, "Profile: {}", profile.name)?;
+            writeln!(output, "  Provider: {}", profile.provider)?;
+            writeln!(output, "  Model: {}", profile.model)?;
             let api_key_display = match &profile.api_key {
                 Secret::Value(_) => "<set>".to_string(),
                 Secret::EnvVar(name) => format!("<env:{}>", name),
                 Secret::Keyring(key) => format!("<keyring:{}>", key),
             };
-            println!("  API Key: {}", api_key_display);
-            println!(
+            writeln!(output, "  API Key: {}", api_key_display)?;
+            writeln!(
+                output,
                 "  API URL: {}",
                 profile
                     .api_url
                     .as_ref()
                     .map(|u| u.as_str())
                     .unwrap_or("<not set>")
-            );
-            println!("  Max Input Tokens: {}", profile.max_input_tokens.get());
-            println!("  Max Output Tokens: {}", profile.max_output_tokens.get());
-            println!(
+            )?;
+            writeln!(
+                output,
+                "  Max Input Tokens: {}",
+                profile.max_input_tokens.get()
+            )?;
+            writeln!(
+                output,
+                "  Max Output Tokens: {}",
+                profile.max_output_tokens.get()
+            )?;
+            writeln!(
+                output,
                 "  Azure API Version: {}",
                 profile
                     .azure_api_version
                     .as_ref()
                     .cloned()
                     .unwrap_or_else(|| "<not set>".to_string())
-            );
-            println!(
+            )?;
+            writeln!(
+                output,
                 "  Azure Deployment ID: {}",
                 profile
                     .azure_deployment_id
                     .as_ref()
                     .cloned()
                     .unwrap_or_else(|| "<not set>".to_string())
-            );
+            )?;
 
             if config.profiles.active.as_deref() == Some(name) {
-                println!("\n  [Active Profile]");
+                writeln!(output, "\n  [Active Profile]")?;
             }
         }
         None => {
-            eprintln!("Error: Profile '{}' not found", name);
-            std::process::exit(1);
+            anyhow::bail!("Profile '{}' not found", name);
         }
     }
 

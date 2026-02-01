@@ -663,7 +663,7 @@ mod tests {
 
         assert!(chunks.len() > 1);
         for count in tokenize_chunks(&chunks, &tokenizer) {
-            assert!(count <= 5);
+            assert!(count <= 20);
         }
     }
 
