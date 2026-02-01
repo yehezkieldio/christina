@@ -7,11 +7,11 @@ use tracing::{info, warn};
 use crate::config::Config;
 use crate::event_loop::Event;
 use crate::io::git::diff_processor::DiffProcessor;
-use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget, TokenizerService};
 use crate::io::llm::provider::Provider;
+use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget, TokenizerService};
+use christina_core::ProviderProfile;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::TokenCount;
-use christina_core::ProviderProfile;
 
 fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
@@ -230,10 +230,7 @@ fn get_commit_history(limit: usize) -> Result<Vec<CommitInfo>> {
         }
 
         let oid_str = format!("{}", oid);
-        let sha = oid_str
-            .get(..7)
-            .unwrap_or(oid_str.as_str())
-            .to_string();
+        let sha = oid_str.get(..7).unwrap_or(oid_str.as_str()).to_string();
 
         commits.push(CommitInfo { sha, subject });
     }

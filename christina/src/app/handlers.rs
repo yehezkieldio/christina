@@ -47,15 +47,22 @@ impl App {
             return;
         };
 
-        let found = self.data.base.unstaged_files.iter()
+        let found = self
+            .data
+            .base
+            .unstaged_files
+            .iter()
             .find(|f| f.path == path)
             .is_some();
-        
+
         if !found {
-            self.data.base.toasts.error(format!("File {} not found in unstaged list", path));
+            self.data
+                .base
+                .toasts
+                .error(format!("File {} not found in unstaged list", path));
             return;
         }
-        
+
         let path_str = path.as_str().to_string();
         match crate::io::git::adapter::stage_files(repo, &[path_str]) {
             Ok(()) => {
@@ -63,7 +70,10 @@ impl App {
                 self.refresh_git_files();
             }
             Err(e) => {
-                self.data.base.toasts.error(format!("Failed to stage {}: {}", path, e));
+                self.data
+                    .base
+                    .toasts
+                    .error(format!("Failed to stage {}: {}", path, e));
             }
         }
     }
@@ -76,18 +86,22 @@ impl App {
             return;
         };
 
-        let path_strings: Vec<String> = paths.iter()
-            .map(|p| p.as_str().to_string())
-            .collect();
-        
+        let path_strings: Vec<String> = paths.iter().map(|p| p.as_str().to_string()).collect();
+
         match crate::io::git::adapter::stage_files(repo, &path_strings) {
             Ok(()) => {
-                self.data.base.toasts.success(format!("Staged {} files", paths.len()));
+                self.data
+                    .base
+                    .toasts
+                    .success(format!("Staged {} files", paths.len()));
                 self.refresh_git_files();
                 self.transition_to(christina_core::AppState::Dashboard);
             }
             Err(e) => {
-                self.data.base.toasts.error(format!("Failed to stage files: {}", e));
+                self.data
+                    .base
+                    .toasts
+                    .error(format!("Failed to stage files: {}", e));
             }
         }
     }

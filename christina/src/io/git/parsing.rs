@@ -1,6 +1,6 @@
 #![allow(dead_code, reason = "Utilities wired in diff processor")]
 
-use christina_core::{git::FileDiff, types::FilePath, Tokenizer};
+use christina_core::{Tokenizer, git::FileDiff, types::FilePath};
 
 const FILE_HEADER: &str = "diff --git ";
 const MAX_FILE_DIFF_SIZE: usize = 1024 * 1024; // 1MB
@@ -98,11 +98,7 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
         .and_then(|s| s.trim_start().strip_prefix("--git"))
         .and_then(|s| {
             let s = s.trim_start();
-            if s.is_empty() {
-                None
-            } else {
-                Some(s)
-            }
+            if s.is_empty() { None } else { Some(s) }
         })?;
 
     let (path_a_raw, remaining) = parse_path(after_git)?;

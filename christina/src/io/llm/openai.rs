@@ -3,7 +3,7 @@ use christina_core::llm::{LlmRequest, LlmResponse, Role};
 use llm::builder::{LLMBackend, LLMBuilder};
 use llm::chat::ChatMessage as LLMChatMessage;
 
-use super::retry::{retry_with_backoff, RetryPolicy};
+use super::retry::{RetryPolicy, retry_with_backoff};
 
 /// Execute an OpenAI request with retry logic and exponential backoff.
 ///

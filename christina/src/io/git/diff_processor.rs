@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use christina_core::{
+    Tokenizer,
     git::{DiffChunk, MAX_DIFF_SIZE},
     types::TokenCount,
-    Tokenizer,
 };
 
 use crate::io::git::{

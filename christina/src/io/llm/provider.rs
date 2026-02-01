@@ -89,10 +89,9 @@ impl Provider {
                     .azure_api_version
                     .clone()
                     .ok_or_else(|| ProviderError::MissingConfig("azure_api_version".to_string()))?;
-                let deployment_id = profile
-                    .azure_deployment_id
-                    .clone()
-                    .ok_or_else(|| ProviderError::MissingConfig("azure_deployment_id".to_string()))?;
+                let deployment_id = profile.azure_deployment_id.clone().ok_or_else(|| {
+                    ProviderError::MissingConfig("azure_deployment_id".to_string())
+                })?;
 
                 Ok(Provider::Azure {
                     model: profile.model.clone(),
@@ -175,7 +174,10 @@ impl Provider {
                 tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
                 Ok(response.clone())
             }
-            Provider::MockSequence { responses, delay_ms } => {
+            Provider::MockSequence {
+                responses,
+                delay_ms,
+            } => {
                 tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
                 let mut guard = responses
                     .lock()

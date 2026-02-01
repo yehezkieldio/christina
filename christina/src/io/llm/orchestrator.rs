@@ -501,14 +501,18 @@ impl AIOrchestrator {
 
         let _permit = self.limiter.acquire().await;
 
-        let response = generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
-            .await
-            .context("Intent extraction failed after retries")?;
+        let response =
+            generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
+                .await
+                .context("Intent extraction failed after retries")?;
 
         match self.parse_themes(&response) {
             Ok(themes) => Ok((themes, false)),
             Err(e) => {
-                debug!("Failed to parse themes JSON: {}. Using fallback theme generation.", e);
+                debug!(
+                    "Failed to parse themes JSON: {}. Using fallback theme generation.",
+                    e
+                );
                 debug!(
                     "LLM response excerpt: {}",
                     &response.chars().take(200).collect::<String>()
@@ -597,9 +601,10 @@ impl AIOrchestrator {
 
         let _permit = self.limiter.acquire().await;
 
-        let response = generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
-            .await
-            .context("Sub-theme extraction failed")?;
+        let response =
+            generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
+                .await
+                .context("Sub-theme extraction failed")?;
 
         self.parse_sub_themes(&response)
     }
@@ -852,7 +857,9 @@ impl AIOrchestrator {
                 }
                 b'}' => {
                     depth -= 1;
-                    if depth == 0 && let Some(s) = start {
+                    if depth == 0
+                        && let Some(s) = start
+                    {
                         return Some(response[s..=i].to_string());
                     }
                 }
@@ -1181,8 +1188,7 @@ mod tests {
         let provider = Arc::new(Provider::mock("unused"));
         let orchestrator = AIOrchestrator::new(provider);
 
-        let response =
-            r#"{"themes": [{"title": "Test", "description": "Test desc", "fileCount": 1, "scope": "feature"}]}"#;
+        let response = r#"{"themes": [{"title": "Test", "description": "Test desc", "fileCount": 1, "scope": "feature"}]}"#;
 
         let json = orchestrator.extract_json(response);
         assert_eq!(json, response);
@@ -1478,8 +1484,7 @@ Some text in between
         let provider = Arc::new(Provider::mock("unused"));
         let orchestrator = AIOrchestrator::new(provider);
 
-        let response =
-            r#"{"themes": [{"title": "Raw", "description": "No markers", "fileCount": 1, "scope": "test"}]}"#;
+        let response = r#"{"themes": [{"title": "Raw", "description": "No markers", "fileCount": 1, "scope": "test"}]}"#;
 
         let json = orchestrator.extract_json(response);
         assert_eq!(json, response);
@@ -1749,7 +1754,10 @@ This is not JSON at all, just plain text
             },
         ];
 
-        let themes = orchestrator.aggregate_sub_themes(&sub_themes).await.unwrap();
+        let themes = orchestrator
+            .aggregate_sub_themes(&sub_themes)
+            .await
+            .unwrap();
 
         assert_eq!(themes.len(), 2);
 
@@ -1798,7 +1806,10 @@ This is not JSON at all, just plain text
             },
         ];
 
-        let themes = orchestrator.aggregate_sub_themes(&sub_themes).await.unwrap();
+        let themes = orchestrator
+            .aggregate_sub_themes(&sub_themes)
+            .await
+            .unwrap();
 
         assert_eq!(themes.len(), 3);
         assert_eq!(themes[0].file_count, 10);
