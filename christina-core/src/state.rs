@@ -2,10 +2,11 @@ use std::fmt;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-#[error("Invalid transition from {from} to {to}")]
+#[error("Invalid transition from {from} to {to}: {reason}")]
 pub struct TransitionError {
     pub from: AppState,
     pub to: AppState,
+    pub reason: &'static str,
 }
 
 /// Application state representing different screens/modes
@@ -60,6 +61,15 @@ impl StateMachine {
 
     /// Validate a state transition
     pub fn can_transition(&self, from: &AppState, to: &AppState) -> Result<(), TransitionError> {
+        // Same state transitions are never valid
+        if from == to {
+            return Err(TransitionError {
+                from: from.clone(),
+                to: to.clone(),
+                reason: "cannot transition to same state",
+            });
+        }
+
         let valid = matches!(
             (from, to),
             // From StagingSelection
@@ -98,6 +108,7 @@ impl StateMachine {
             Err(TransitionError {
                 from: from.clone(),
                 to: to.clone(),
+                reason: "transition not allowed by state machine",
             })
         }
     }
@@ -462,9 +473,10 @@ mod tests {
         let err = TransitionError {
             from: AppState::Dashboard,
             to: AppState::Review,
+            reason: "test reason",
         };
         let msg = format!("{}", err);
-        assert_eq!(msg, "Invalid transition from Dashboard to Review");
+        assert_eq!(msg, "Invalid transition from Dashboard to Review: test reason");
     }
 
     #[test]
@@ -472,11 +484,13 @@ mod tests {
         let err = TransitionError {
             from: AppState::StagingSelection,
             to: AppState::Error,
+            reason: "debug test",
         };
         let debug = format!("{:?}", err);
         assert!(debug.contains("TransitionError"));
         assert!(debug.contains("from"));
         assert!(debug.contains("to"));
+        assert!(debug.contains("reason"));
     }
 
     #[test]
@@ -484,9 +498,11 @@ mod tests {
         let err = TransitionError {
             from: AppState::Review,
             to: AppState::Dashboard,
+            reason: "field test",
         };
         assert_eq!(err.from, AppState::Review);
         assert_eq!(err.to, AppState::Dashboard);
+        assert_eq!(err.reason, "field test");
     }
 
     #[test]

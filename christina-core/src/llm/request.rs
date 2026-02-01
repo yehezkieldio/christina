@@ -8,6 +8,32 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+impl ChatMessage {
+    /// Create a system message
+    pub fn system(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::System,
+            content: content.into(),
+        }
+    }
+
+    /// Create a user message
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::User,
+            content: content.into(),
+        }
+    }
+
+    /// Create an assistant message
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+        }
+    }
+}
+
 /// The role of a chat message participant
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {

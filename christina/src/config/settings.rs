@@ -232,6 +232,16 @@ impl Config {
         {
             config.commit_history_depth = v.clamp(5, 20);
         }
+        if let Ok(env_val) = std::env::var("CHRISTINA_CONCURRENCY_LIMIT")
+            && let Ok(v) = env_val.parse::<usize>()
+        {
+            config.max_concurrent_requests = v.clamp(1, 20);
+        }
+        if let Ok(env_val) = std::env::var("CHRISTINA_MAX_FAILURE_RATE")
+            && let Ok(v) = env_val.parse::<f64>()
+        {
+            config.max_partial_failure_rate = v.clamp(0.0, 1.0);
+        }
 
         config.diff = config.diff.with_env_override();
 
