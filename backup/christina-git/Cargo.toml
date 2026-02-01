@@ -1,0 +1,17 @@
+[package]
+name = "christina-git"
+version = "0.1.0"
+description = "Git integration for Christina."
+edition = "2024"
+
+[dependencies]
+christina-core = { path = "../christina-core" }
+git2 = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
