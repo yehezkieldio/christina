@@ -18,11 +18,30 @@ pub trait Tokenizer: Send + Sync {
     /// 1. Does not exceed the specified token limit
     /// 2. Ends at a valid UTF-8 boundary
     ///
-    /// TODO: Currently we use a binary search approach to find the largest valid slice.
-    ///       Research optimizations or alternative algorithms to improve performance.
+    /// Uses a fast path that tokenizes once and maps token counts to byte
+    /// offsets when encode/decode align with token counts. Falls back to
+    /// boundary-aware binary search for other implementations.
     fn slice_to_token_limit<'a>(&self, text: &'a str, limit: crate::types::TokenCount) -> &'a str {
-        if self.count_tokens(text) <= limit {
+        let total_tokens = self.count_tokens(text);
+        if total_tokens <= limit {
             return text;
+        }
+
+        let limit_usize = usize::from(limit);
+        let total_tokens_usize = usize::from(total_tokens);
+        let tokens = self.encode(text);
+
+        if tokens.len() == total_tokens_usize && limit_usize <= tokens.len() {
+            let prefix_tokens = &tokens[..limit_usize];
+            if let Some(decoded) = self.decode(prefix_tokens) {
+                let end = decoded.len();
+                if !decoded.is_empty() && text.starts_with(&decoded) && text.is_char_boundary(end) {
+                    let prefix_count = self.count_tokens(&text[..end]);
+                    if prefix_count == limit {
+                        return &text[..end];
+                    }
+                }
+            }
         }
 
         let mut low = 0;
