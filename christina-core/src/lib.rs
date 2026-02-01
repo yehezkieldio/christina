@@ -1,3 +1,4 @@
+pub mod config;
 pub mod error;
 pub mod git;
 pub mod profile;
@@ -6,6 +7,7 @@ pub mod state;
 pub mod tokenizer;
 pub mod types;
 
+pub use config::{AzureEndpoint, AzureEndpointError};
 pub use error::{
     AppError, CompletionError, ErrorCategory, GitError, GitResult, ProviderError, TokenizerError,
     TokenizerResult,
