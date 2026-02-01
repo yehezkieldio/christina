@@ -40,46 +40,56 @@ impl App {
     }
 
     fn handle_stage_file(&mut self, path: FilePath) {
-        let Some(ref _repo) = self.app_context.repo else {
+        let Some(ref repo) = self.app_context.repo else {
             self.data.base.toasts.error(
                 "No git repository found. Run from inside a git-initialized directory.".to_string(),
             );
             return;
         };
 
-        // Find the file status from unstaged_files
-        if let Some(_file) = self
-            .data
-            .base
-            .unstaged_files
-            .iter()
+        let found = self.data.base.unstaged_files.iter()
             .find(|f| f.path == path)
-        {
-            // Stub - stage_files not yet implemented
-            self.data
-                .base
-                .toasts
-                .error("Stage functionality not yet implemented".to_string());
-        } else {
-            self.data
-                .base
-                .toasts
-                .error("File not found in unstaged files".to_string());
+            .is_some();
+        
+        if !found {
+            self.data.base.toasts.error(format!("File {} not found in unstaged list", path));
+            return;
+        }
+        
+        let path_str = path.as_str().to_string();
+        match crate::io::git::adapter::stage_files(repo, &[path_str]) {
+            Ok(()) => {
+                self.data.base.toasts.success(format!("Staged {}", path));
+                self.refresh_git_files();
+            }
+            Err(e) => {
+                self.data.base.toasts.error(format!("Failed to stage {}: {}", path, e));
+            }
         }
     }
 
-    fn handle_stage_files(&mut self, _paths: Vec<FilePath>) {
-        let Some(ref _repo) = self.app_context.repo else {
+    fn handle_stage_files(&mut self, paths: Vec<FilePath>) {
+        let Some(ref repo) = self.app_context.repo else {
             self.data.base.toasts.error(
                 "No git repository found. Run from inside a git-initialized directory.".to_string(),
             );
             return;
         };
 
-        self.data
-            .base
-            .toasts
-            .error("Stage functionality not yet implemented".to_string());
+        let path_strings: Vec<String> = paths.iter()
+            .map(|p| p.as_str().to_string())
+            .collect();
+        
+        match crate::io::git::adapter::stage_files(repo, &path_strings) {
+            Ok(()) => {
+                self.data.base.toasts.success(format!("Staged {} files", paths.len()));
+                self.refresh_git_files();
+                self.transition_to(christina_core::AppState::Dashboard);
+            }
+            Err(e) => {
+                self.data.base.toasts.error(format!("Failed to stage files: {}", e));
+            }
+        }
     }
 
     fn handle_unstage_file(&mut self, path: FilePath) {

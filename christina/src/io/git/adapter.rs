@@ -9,10 +9,7 @@ use christina_core::git::{GitFile, GitFileStatus, RepoSnapshot};
 /// This adapter function discovers the git repository from the current directory
 /// and returns a `RepoSnapshot` containing information about files
 /// and repository status.
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
+#[allow(dead_code)]
 pub fn status() -> Result<RepoSnapshot> {
     // Discover repository from current directory
     let repo = Repository::discover(".").context("Failed to discover git repository")?;
@@ -51,20 +48,31 @@ pub fn status() -> Result<RepoSnapshot> {
         })
         .collect();
 
+    // Get staged and unstaged file lists
+    let staged_files = get_staged_files(&repo)?;
+    let unstaged_files = get_unstaged_files(&repo)?;
+
+    // Extract just the paths for staged and unstaged lists
+    let staged: Vec<String> = staged_files
+        .iter()
+        .map(|f| f.path.as_str().to_string())
+        .collect();
+    let unstaged: Vec<String> = unstaged_files
+        .iter()
+        .map(|f| f.path.as_str().to_string())
+        .collect();
+
     Ok(RepoSnapshot {
         files,
-        staged: vec![],   // TODO: populate from get_staged_files
-        unstaged: vec![], // TODO: populate from get_unstaged_files
+        staged,
+        unstaged,
         branch,
         repo_root: root,
     })
 }
 
 /// Open a repository at a specific path or discover from current directory
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
+#[allow(dead_code)]
 pub fn open(path: Option<&std::path::Path>) -> Result<Repository> {
     match path {
         Some(p) => Repository::open(p).context("Failed to open repository"),
@@ -73,6 +81,7 @@ pub fn open(path: Option<&std::path::Path>) -> Result<Repository> {
 }
 
 /// Get current branch name from repository
+#[allow(dead_code)]
 fn get_branch_name(repo: &Repository) -> Result<String> {
     let head = repo.head()?;
     if let Some(name) = head.shorthand() {
@@ -83,6 +92,7 @@ fn get_branch_name(repo: &Repository) -> Result<String> {
 }
 
 /// Convert git2::Status to core::GitFileStatus
+#[allow(dead_code)]
 fn convert_status(status: git2::Status) -> GitFileStatus {
     use git2::Status;
 
@@ -102,10 +112,6 @@ fn convert_status(status: git2::Status) -> GitFileStatus {
 }
 
 /// Get staged files (changes between HEAD and index)
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
 pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let head_tree = match repo.head() {
         Ok(head) => Some(head.peel_to_tree()?),
@@ -134,6 +140,7 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
         .copy_threshold(40);
     diff.find_similar(Some(&mut find_opts))?;
 
+    // Collect file metadata first
     let mut files = Vec::new();
     diff.foreach(
         &mut |delta, _| {
@@ -146,11 +153,7 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
                     git2::Delta::Copied => "C",
                     _ => "?",
                 };
-                files.push(GitFile::new(
-                    path.to_string_lossy().to_string(),
-                    status.to_string(),
-                    String::new(),
-                ));
+                files.push((path.to_string_lossy().to_string(), status.to_string()));
             }
             true
         },
@@ -159,14 +162,53 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
         None,
     )?;
 
-    Ok(files)
+    // Capture diff content per file
+    use std::collections::HashMap;
+    let mut diff_map: HashMap<String, String> = HashMap::new();
+    let mut current_path = String::new();
+    let mut current_diff = String::new();
+
+    diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
+        let new_path = delta
+            .new_file()
+            .path()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // If we've moved to a new file, save the previous one
+        if !current_path.is_empty() && new_path != current_path {
+            diff_map.insert(current_path.clone(), current_diff.clone());
+            current_diff.clear();
+        }
+
+        current_path = new_path;
+
+        // Append line content to current diff
+        if let Ok(content) = std::str::from_utf8(line.content()) {
+            current_diff.push_str(content);
+        }
+
+        true
+    })?;
+
+    // Save the last file's diff
+    if !current_path.is_empty() {
+        diff_map.insert(current_path, current_diff);
+    }
+
+    // Create GitFile objects with diff content
+    let result = files
+        .into_iter()
+        .map(|(path, status)| {
+            let diff_content = diff_map.get(&path).cloned().unwrap_or_default();
+            GitFile::new(path, status, diff_content)
+        })
+        .collect();
+
+    Ok(result)
 }
 
 /// Get unstaged files (changes between index and workdir)
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
 pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut opts = DiffOptions::new();
     opts.include_untracked(true)
@@ -186,6 +228,7 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
         .renames_from_rewrites(true);
     diff.find_similar(Some(&mut find_opts))?;
 
+    // Collect file metadata first
     let mut files = Vec::new();
     diff.foreach(
         &mut |delta, _| {
@@ -198,11 +241,7 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
                     git2::Delta::Copied => "C",
                     _ => "?",
                 };
-                files.push(GitFile::new(
-                    path.to_string_lossy().to_string(),
-                    status.to_string(),
-                    String::new(),
-                ));
+                files.push((path.to_string_lossy().to_string(), status.to_string()));
             }
             true
         },
@@ -211,14 +250,53 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
         None,
     )?;
 
-    Ok(files)
+    // Capture diff content per file
+    use std::collections::HashMap;
+    let mut diff_map: HashMap<String, String> = HashMap::new();
+    let mut current_path = String::new();
+    let mut current_diff = String::new();
+
+    diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
+        let new_path = delta
+            .new_file()
+            .path()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // If we've moved to a new file, save the previous one
+        if !current_path.is_empty() && new_path != current_path {
+            diff_map.insert(current_path.clone(), current_diff.clone());
+            current_diff.clear();
+        }
+
+        current_path = new_path;
+
+        // Append line content to current diff
+        if let Ok(content) = std::str::from_utf8(line.content()) {
+            current_diff.push_str(content);
+        }
+
+        true
+    })?;
+
+    // Save the last file's diff
+    if !current_path.is_empty() {
+        diff_map.insert(current_path, current_diff);
+    }
+
+    // Create GitFile objects with diff content
+    let result = files
+        .into_iter()
+        .map(|(path, status)| {
+            let diff_content = diff_map.get(&path).cloned().unwrap_or_default();
+            GitFile::new(path, status, diff_content)
+        })
+        .collect();
+
+    Ok(result)
 }
 
 /// Stage files by path
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
 pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let mut index = repo.index()?;
 
@@ -236,10 +314,6 @@ pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
 }
 
 /// Unstage files by path
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
 pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let path_refs: Vec<&std::path::Path> = paths.iter().map(|p| p.as_ref()).collect();
 
@@ -262,10 +336,6 @@ pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
 }
 
 /// Create a commit with the given message
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
 pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
     let signature = repo.signature()?;
     let mut index = repo.index()?;
@@ -310,10 +380,6 @@ pub fn has_staged_changes(repo: &Repository) -> Result<bool> {
 }
 
 /// Validate that the repository is ready for commit
-#[expect(
-    dead_code,
-    reason = "Will be used when Cmd executor is wired to event loop"
-)]
 pub fn validate_for_commit(repo: &Repository) -> Result<()> {
     // Check for staged changes
     if !has_staged_changes(repo)? {

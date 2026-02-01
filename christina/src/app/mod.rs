@@ -42,14 +42,30 @@ impl App {
     }
 
     pub fn refresh_git_files(&mut self) {
-        if let Some(ref _repo) = self.app_context.repo {
-            // Simple stub - just clear the lists
-            self.data.base.staged_files.clear();
-            self.data.base.unstaged_files.clear();
+        if let Some(ref repo) = self.app_context.repo {
+            // Call git adapter to get staged and unstaged files
+            match crate::io::git::adapter::get_staged_files(repo) {
+                Ok(staged_git_files) => {
+                    self.data.base.staged_files = staged_git_files;
+                }
+                Err(e) => {
+                    self.data.base.toasts.error(format!("Failed to get staged files: {}", e));
+                    self.data.base.staged_files.clear();
+                }
+            }
+            
+            match crate::io::git::adapter::get_unstaged_files(repo) {
+                Ok(unstaged_git_files) => {
+                    self.data.base.unstaged_files = unstaged_git_files;
+                }
+                Err(e) => {
+                    self.data.base.toasts.error(format!("Failed to get unstaged files: {}", e));
+                    self.data.base.unstaged_files.clear();
+                }
+            }
+            
             self.data.base.data_version = self.data.base.data_version.wrapping_add(1);
             self.app_context.refresh_branch();
-
-            // Clear selection state after refresh
             self.data.base.selected_indices.clear();
         } else {
             // No repository available - attempt to discover one
@@ -186,14 +202,23 @@ impl App {
 
     pub fn create_commit(
         &mut self,
-        _message: &christina_core::types::CommitMessage,
+        message: &christina_core::types::CommitMessage,
     ) -> Result<String, String> {
-        let Some(ref _repo) = self.app_context.repo else {
+        let Some(ref repo) = self.app_context.repo else {
             return Err("No git repository".to_string());
         };
-
-        // Stub implementation
-        Err("Commit functionality not yet implemented".to_string())
+        
+        if let Err(e) = crate::io::git::adapter::validate_for_commit(repo) {
+            return Err(format!("Commit validation failed: {}", e));
+        }
+        
+        match crate::io::git::adapter::create_commit(repo, message.as_ref()) {
+            Ok(oid) => {
+                self.refresh_git_files();
+                Ok(oid.to_string())
+            }
+            Err(e) => Err(format!("Failed to create commit: {}", e)),
+        }
     }
 
     pub fn validate_for_commit(&self) -> Result<(), String> {
@@ -208,13 +233,19 @@ impl App {
         Ok(())
     }
 
-    pub fn unstage_file(&mut self, _path: &Path) -> Result<(), String> {
-        let Some(ref _repo) = self.app_context.repo else {
+    pub fn unstage_file(&mut self, path: &Path) -> Result<(), String> {
+        let Some(ref repo) = self.app_context.repo else {
             return Err("No git repository".to_string());
         };
-
-        // Stub implementation
-        Err("Unstage functionality not yet implemented".to_string())
+        
+        let path_str = path.to_string_lossy().to_string();
+        match crate::io::git::adapter::unstage_files(repo, &[path_str]) {
+            Ok(()) => {
+                self.refresh_git_files();
+                Ok(())
+            }
+            Err(e) => Err(format!("Failed to unstage file: {}", e)),
+        }
     }
 }
 

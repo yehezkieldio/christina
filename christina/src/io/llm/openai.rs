@@ -3,18 +3,18 @@ use christina_core::llm::{LlmRequest, LlmResponse, Role};
 use llm::builder::{LLMBackend, LLMBuilder};
 use llm::chat::ChatMessage as LLMChatMessage;
 
-#[expect(dead_code, reason = "Public API for future use")]
 pub async fn execute_openai_request(
     request: &LlmRequest,
     api_key: &str,
     base_url: Option<&str>,
+    model: &str,
 ) -> Result<LlmResponse, CompletionError> {
     let system_prompt = extract_system_prompt(&request.messages);
 
     let mut builder = LLMBuilder::new()
         .backend(LLMBackend::OpenAI)
         .api_key(api_key)
-        .model("gpt-4")
+        .model(model)
         .max_tokens(request.max_tokens.get())
         .temperature(request.temperature);
 

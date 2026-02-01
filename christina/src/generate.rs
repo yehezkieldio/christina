@@ -3,6 +3,9 @@ use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::event_loop::Event;
+use christina_core::ids::GenerationId;
+use christina_core::llm::{ChatMessage, LlmRequest, Role};
+use christina_core::types::ProviderKind;
 use christina_core::ProviderProfile;
 use christina_core::types::CommitMessage;
 
@@ -30,10 +33,6 @@ impl GenerationResult {
     }
 }
 
-#[expect(
-    dead_code,
-    reason = "Will be used when LLM generation is reimplemented"
-)]
 fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),
@@ -53,36 +52,137 @@ fn config_to_profile(config: &Config) -> ProviderProfile {
 }
 
 pub async fn generate_commit_message_with_progress(
-    _config: Config,
-    _diff: String,
+    config: Config,
+    diff: String,
     progress_tx: mpsc::Sender<Event>,
     generation_id: u64,
-    _user_context: Option<String>,
+    user_context: Option<String>,
 ) -> Result<GenerationResult> {
-    // Stub implementation - christina_llm crate has been removed
-    // This function needs to be reimplemented with the new architecture
+    let profile = config_to_profile(&config);
 
-    let _ = progress_tx
+    progress_tx
         .send(Event::GenerationProgress {
-            stage: "Placeholder: AI integration needs to be reimplemented".to_string(),
+            stage: "Building request...".to_string(),
             generation_id,
         })
-        .await;
+        .await
+        .ok();
 
-    let _ = progress_tx
-        .send(Event::GenerationProgress {
-            stage: "Finalizing...".to_string(),
-            generation_id,
-        })
-        .await;
+    let system_prompt = build_system_prompt();
+    let user_message = build_user_message(&diff, user_context.as_deref());
 
-    let message = CommitMessage::try_from("chore: placeholder stub implementation".to_string())
-        .map_err(|e| anyhow::anyhow!("Failed to create placeholder commit message: {}", e))?;
-
-    Ok(GenerationResult {
-        message,
-        warnings: vec![
-            "Stub implementation - actual AI integration not yet reimplemented".to_string(),
+    let request = LlmRequest {
+        id: GenerationId::new(generation_id),
+        messages: vec![
+            ChatMessage {
+                role: Role::System,
+                content: system_prompt.clone(),
+            },
+            ChatMessage {
+                role: Role::User,
+                content: user_message,
+            },
         ],
-    })
+        temperature: profile.temperature.unwrap_or(0.7),
+        max_tokens: profile.max_output_tokens,
+        system_prompt: Some(system_prompt),
+    };
+
+    progress_tx
+        .send(Event::GenerationProgress {
+            stage: format!("Calling {} API...", profile.provider),
+            generation_id,
+        })
+        .await
+        .ok();
+
+    let api_key = match profile.api_key {
+        christina_core::config::Secret::Value(ref key) if !key.is_empty() => key.as_str(),
+        _ => return Err(anyhow::anyhow!("API key not configured")),
+    };
+
+    let model_str = profile.model.as_str();
+    let api_url_str = profile.api_url.as_ref().map(|u| u.as_str());
+
+    let response = match profile.provider {
+        ProviderKind::OpenAI => {
+            crate::io::llm::openai::execute_openai_request(&request, api_key, api_url_str, model_str)
+                .await?
+        }
+        ProviderKind::Azure => {
+            let endpoint = profile
+                .api_url
+                .as_ref()
+                .map(|u| u.as_str())
+                .ok_or_else(|| anyhow::anyhow!("Azure endpoint not configured"))?;
+            let deployment_id = profile
+                .azure_deployment_id
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Azure deployment ID not configured"))?;
+            let api_version = profile
+                .azure_api_version
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Azure API version not configured"))?;
+
+            crate::io::llm::azure::execute_azure_request(
+                &request,
+                api_key,
+                endpoint,
+                deployment_id,
+                api_version,
+                model_str,
+            )
+            .await?
+        }
+    };
+
+    progress_tx
+        .send(Event::GenerationProgress {
+            stage: "Processing response...".to_string(),
+            generation_id,
+        })
+        .await
+        .ok();
+
+    let commit_text = response.content.trim().to_string();
+    let message = CommitMessage::try_from(commit_text.clone())
+        .map_err(|e| anyhow::anyhow!("Failed to parse commit message: {}", e))?;
+
+    let mut warnings = Vec::new();
+
+    if !commit_text.contains(':') {
+        warnings.push("Message may not follow conventional commit format".to_string());
+    }
+
+    if response.tokens_used.is_none() {
+        warnings.push("Token count not available from provider".to_string());
+    }
+
+    Ok(GenerationResult { message, warnings })
+}
+
+fn build_system_prompt() -> String {
+    r#"You are an expert at writing concise, conventional commit messages.
+Generate a commit message following these rules:
+1. Use conventional commit format: <type>: <description>
+2. Type must be one of: feat, fix, docs, style, refactor, test, chore
+3. Description must be lowercase, no period at end
+4. Keep total message under 72 characters
+5. Be specific about what changed, not how
+6. Focus on the intent, not implementation details"#
+        .to_string()
+}
+
+fn build_user_message(diff: &str, user_context: Option<&str>) -> String {
+    let mut message = format!(
+        "Generate a conventional commit message for these changes:\n\n{}",
+        diff
+    );
+
+    if let Some(context) = user_context {
+        message.push_str(&format!("\n\nAdditional context: {}", context));
+    }
+
+    message.push_str("\n\nRespond ONLY with the commit message, no explanation.");
+    message
 }

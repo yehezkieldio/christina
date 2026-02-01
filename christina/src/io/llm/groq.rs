@@ -3,18 +3,19 @@ use christina_core::llm::{LlmRequest, LlmResponse, Role};
 use llm::builder::{LLMBackend, LLMBuilder};
 use llm::chat::ChatMessage as LLMChatMessage;
 
-#[expect(dead_code, reason = "Public API for future use")]
+#[expect(dead_code, reason = "Groq not yet in ProviderKind enum - future use")]
 pub async fn execute_groq_request(
     request: &LlmRequest,
     api_key: &str,
     base_url: Option<&str>,
+    model: &str,
 ) -> Result<LlmResponse, CompletionError> {
     let system_prompt = extract_system_prompt(&request.messages);
 
     let mut builder = LLMBuilder::new()
         .backend(LLMBackend::Groq)
         .api_key(api_key)
-        .model("llama-3.3-70b-versatile")
+        .model(model)
         .max_tokens(request.max_tokens.get())
         .temperature(request.temperature);
 
@@ -48,6 +49,7 @@ pub async fn execute_groq_request(
     })
 }
 
+#[allow(dead_code, reason = "Groq not yet in ProviderKind enum - future use")]
 fn convert_messages(messages: &[christina_core::llm::ChatMessage]) -> Vec<LLMChatMessage> {
     messages
         .iter()
@@ -59,6 +61,7 @@ fn convert_messages(messages: &[christina_core::llm::ChatMessage]) -> Vec<LLMCha
         .collect()
 }
 
+#[allow(dead_code, reason = "Groq not yet in ProviderKind enum - future use")]
 fn extract_system_prompt(messages: &[christina_core::llm::ChatMessage]) -> Option<&str> {
     messages
         .iter()
