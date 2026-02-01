@@ -543,3 +543,234 @@ pub fn build_staged_diff(repo: &Repository) -> Result<String> {
 
     Ok(diff_string)
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use christina_core::test_helpers::TempRepo;
+    use git2::build::CheckoutBuilder;
+    use std::path::Path;
+
+    fn new_repo() -> TempRepo {
+        let temp_repo = TempRepo::new();
+        disable_gpg(temp_repo.repo());
+        temp_repo
+    }
+
+    fn disable_gpg(repo: &Repository) {
+        let mut config = repo.config().unwrap();
+        config.set_str("commit.gpgsign", "false").unwrap();
+    }
+
+    fn write_file(repo: &Repository, path: &str, content: &str) {
+        let file_path = repo.workdir().unwrap().join(path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(file_path, content).unwrap();
+    }
+
+    fn stage(repo: &Repository, paths: &[&str]) {
+        let paths = paths.iter().map(|p| p.to_string()).collect::<Vec<_>>();
+        stage_files(repo, &paths).unwrap();
+    }
+
+    fn checkout_branch(repo: &Repository, reference: &str) {
+        repo.set_head(reference).unwrap();
+        let mut checkout = CheckoutBuilder::new();
+        checkout.force();
+        repo.checkout_head(Some(&mut checkout)).unwrap();
+    }
+
+    #[test]
+    fn test_get_staged_files_empty() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        let files = get_staged_files(repo).unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_get_staged_files_with_changes() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        write_file(repo, "file.txt", "hello\n");
+        stage(repo, &["file.txt"]);
+
+        let files = get_staged_files(repo).unwrap();
+        assert_eq!(files.len(), 1);
+        let file = &files[0];
+        assert_eq!(file.path.as_str(), "file.txt");
+        assert_eq!(file.status.as_str(), "A");
+        assert!(file.diff_content.contains("+hello"));
+    }
+
+    #[test]
+    fn test_get_unstaged_files() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        temp_repo.commit_file("file.txt", "base\n");
+        write_file(repo, "file.txt", "changed\n");
+
+        let files = get_unstaged_files(repo).unwrap();
+        assert_eq!(files.len(), 1);
+        let file = &files[0];
+        assert_eq!(file.path.as_str(), "file.txt");
+        assert_eq!(file.status.as_str(), "M");
+        assert!(file.diff_content.contains("+changed"));
+    }
+
+    #[test]
+    fn test_stage_files_adds_to_index() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        write_file(repo, "file.txt", "content\n");
+        stage(repo, &["file.txt"]);
+
+        let index = repo.index().unwrap();
+        assert!(index.get_path(Path::new("file.txt"), 0).is_some());
+    }
+
+    #[test]
+    fn test_unstage_files_removes_from_index() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        temp_repo.commit_file("base.txt", "base\n");
+        write_file(repo, "added.txt", "content\n");
+        stage(repo, &["added.txt"]);
+
+        let index = repo.index().unwrap();
+        assert!(index.get_path(Path::new("added.txt"), 0).is_some());
+
+        unstage_files(repo, &["added.txt".to_string()]).unwrap();
+
+        let index = repo.index().unwrap();
+        assert!(index.get_path(Path::new("added.txt"), 0).is_none());
+    }
+
+    #[test]
+    fn test_create_commit_initial() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        write_file(repo, "file.txt", "initial\n");
+        stage(repo, &["file.txt"]);
+
+        let oid = create_commit(repo, "Initial commit").unwrap();
+        let commit = repo.find_commit(oid).unwrap();
+        assert_eq!(commit.parent_count(), 0);
+        assert!(commit.message().unwrap().starts_with("Initial commit"));
+    }
+
+    #[test]
+    fn test_create_commit_normal() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        let parent_oid = temp_repo.commit_file("file.txt", "base\n");
+        write_file(repo, "file.txt", "updated\n");
+        stage(repo, &["file.txt"]);
+
+        let oid = create_commit(repo, "Second commit").unwrap();
+        let commit = repo.find_commit(oid).unwrap();
+        assert_eq!(commit.parent_count(), 1);
+        assert_eq!(commit.parent_id(0).unwrap(), parent_oid);
+    }
+
+    #[test]
+    fn test_has_staged_changes_true() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        write_file(repo, "file.txt", "content\n");
+        stage(repo, &["file.txt"]);
+
+        assert!(has_staged_changes(repo).unwrap());
+    }
+
+    #[test]
+    fn test_has_staged_changes_false() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        assert!(!has_staged_changes(repo).unwrap());
+    }
+
+    #[test]
+    fn test_validate_for_commit_no_changes() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        let err = validate_for_commit(repo).unwrap_err();
+        assert!(err.to_string().contains("No staged changes"));
+    }
+
+    #[test]
+    fn test_validate_for_commit_with_conflicts() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        let base_oid = temp_repo.commit_file("file.txt", "base\n");
+        let base_commit = repo.find_commit(base_oid).unwrap();
+        let base_ref = repo.head().unwrap().name().unwrap().to_string();
+        repo.branch("feature", &base_commit, false).unwrap();
+
+        checkout_branch(repo, "refs/heads/feature");
+        write_file(repo, "file.txt", "feature\n");
+        stage(repo, &["file.txt"]);
+        create_commit(repo, "feature commit").unwrap();
+
+        checkout_branch(repo, &base_ref);
+        write_file(repo, "file.txt", "main\n");
+        stage(repo, &["file.txt"]);
+        create_commit(repo, "main commit").unwrap();
+
+        let feature_ref = repo.find_reference("refs/heads/feature").unwrap();
+        let annotated = repo.reference_to_annotated_commit(&feature_ref).unwrap();
+        let mut checkout = CheckoutBuilder::new();
+        checkout.allow_conflicts(true).force();
+        repo.merge(&[&annotated], None, Some(&mut checkout))
+            .unwrap();
+
+        let index = repo.index().unwrap();
+        assert!(index.has_conflicts());
+
+        write_file(repo, "extra.txt", "extra\n");
+        stage(repo, &["extra.txt"]);
+
+        let err = validate_for_commit(repo).unwrap_err();
+        assert!(err.to_string().contains("conflicts"));
+
+        repo.cleanup_state().unwrap();
+    }
+
+    #[test]
+    fn test_build_staged_diff() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        temp_repo.commit_file("file.txt", "base\n");
+        write_file(repo, "file.txt", "changed\n");
+        stage(repo, &["file.txt"]);
+
+        let diff = build_staged_diff(repo).unwrap();
+        assert!(diff.contains("diff --git"));
+        assert!(diff.contains("file.txt"));
+        assert!(diff.contains("+changed"));
+    }
+
+    #[test]
+    fn test_build_staged_diff_empty() {
+        let temp_repo = new_repo();
+        let repo = temp_repo.repo();
+
+        let err = build_staged_diff(repo).unwrap_err();
+        assert!(err.to_string().contains("No staged changes"));
+    }
+}

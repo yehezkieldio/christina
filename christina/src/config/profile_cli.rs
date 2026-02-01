@@ -47,7 +47,7 @@ pub fn handle_profile_command(command: ProfileCommands) -> Result<()> {
 fn handle_profile_command_with_deps(
     command: ProfileCommands,
     store: &mut dyn ConfigStore,
-    _input: &mut dyn BufRead,
+    input: &mut dyn BufRead,
     output: &mut dyn Write,
 ) -> Result<()> {
     match command {
@@ -64,6 +64,8 @@ fn handle_profile_command_with_deps(
             azure_api_version,
             azure_deployment_id,
         } => handle_create(
+            store,
+            output,
             &name,
             provider,
             model,
@@ -85,6 +87,8 @@ fn handle_profile_command_with_deps(
             azure_api_version,
             azure_deployment_id,
         } => handle_edit(
+            store,
+            output,
             &name,
             provider,
             model,
@@ -95,9 +99,13 @@ fn handle_profile_command_with_deps(
             azure_api_version,
             azure_deployment_id,
         ),
-        ProfileCommands::Delete { name, force } => handle_delete(&name, force),
-        ProfileCommands::Switch { name } => handle_switch(&name),
-        ProfileCommands::Duplicate { source, new_name } => handle_duplicate(&source, &new_name),
+        ProfileCommands::Delete { name, force } => {
+            handle_delete(store, input, output, &name, force)
+        }
+        ProfileCommands::Switch { name } => handle_switch(store, output, &name),
+        ProfileCommands::Duplicate { source, new_name } => {
+            handle_duplicate(store, output, &source, &new_name)
+        }
         ProfileCommands::Tui => handle_tui(),
     }
 }
@@ -197,6 +205,8 @@ fn handle_show(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str) 
 
 #[allow(clippy::too_many_arguments)]
 fn handle_create(
+    store: &mut dyn ConfigStore,
+    output: &mut dyn Write,
     name: &str,
     provider: Option<String>,
     model: Option<String>,
@@ -207,11 +217,10 @@ fn handle_create(
     azure_api_version: Option<String>,
     azure_deployment_id: Option<String>,
 ) -> Result<()> {
-    let mut config = Config::load()?;
+    let mut config = store.load()?;
 
     if config.profiles.exists(name) {
-        eprintln!("Error: Profile '{}' already exists", name);
-        std::process::exit(1);
+        anyhow::bail!("Profile '{}' already exists", name);
     }
 
     // Parse provider with fallback
@@ -257,15 +266,17 @@ fn handle_create(
     // Validate and add
     profile.validate().context("Profile validation failed")?;
     config.profiles.add(profile)?;
-    config.save_to_global()?;
+    store.save(&config)?;
 
-    println!("Created profile: {}", name);
+    writeln!(output, "Created profile: {}", name)?;
 
     Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn handle_edit(
+    store: &mut dyn ConfigStore,
+    output: &mut dyn Write,
     name: &str,
     provider: Option<String>,
     model: Option<String>,
@@ -276,7 +287,7 @@ fn handle_edit(
     azure_api_version: Option<String>,
     azure_deployment_id: Option<String>,
 ) -> Result<()> {
-    let mut config = Config::load()?;
+    let mut config = store.load()?;
 
     let mut profile = config
         .profiles
@@ -320,46 +331,50 @@ fn handle_edit(
     // Validate and update
     profile.validate().context("Profile validation failed")?;
     config.profiles.update(name, profile)?;
-    config.save_to_global()?;
+    store.save(&config)?;
 
-    println!("Updated profile: {}", name);
+    writeln!(output, "Updated profile: {}", name)?;
 
     Ok(())
 }
 
-fn handle_delete(name: &str, force: bool) -> Result<()> {
-    let mut config = Config::load()?;
+fn handle_delete(
+    store: &mut dyn ConfigStore,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    name: &str,
+    force: bool,
+) -> Result<()> {
+    let mut config = store.load()?;
 
     if !config.profiles.exists(name) {
-        eprintln!("Error: Profile '{}' not found", name);
-        std::process::exit(1);
+        anyhow::bail!("Profile '{}' not found", name);
     }
 
     // Confirm deletion unless --force
     if !force {
-        print!("Delete profile '{}' ? [y/N]: ", name);
-        use std::io::Write;
-        std::io::stdout().flush()?;
+        write!(output, "Delete profile '{}' ? [y/N]: ", name)?;
+        output.flush()?;
 
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
+        let mut response = String::new();
+        input.read_line(&mut response)?;
 
-        if !input.trim().eq_ignore_ascii_case("y") {
-            println!("Cancelled.");
+        if !response.trim().eq_ignore_ascii_case("y") {
+            writeln!(output, "Cancelled.")?;
             return Ok(());
         }
     }
 
     config.profiles.remove(name)?;
-    config.save_to_global()?;
+    store.save(&config)?;
 
-    println!("Deleted profile: {}", name);
+    writeln!(output, "Deleted profile: {}", name)?;
 
     Ok(())
 }
 
-fn handle_switch(name: &str) -> Result<()> {
-    let mut config = Config::load()?;
+fn handle_switch(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str) -> Result<()> {
+    let mut config = store.load()?;
 
     config.profiles.set_active(name)?;
 
@@ -368,24 +383,27 @@ fn handle_switch(name: &str) -> Result<()> {
         config.apply_profile(&profile);
     }
 
-    config.save_to_global()?;
+    store.save(&config)?;
 
-    println!("Switched to profile: {}", name);
+    writeln!(output, "Switched to profile: {}", name)?;
 
     Ok(())
 }
 
-fn handle_duplicate(source: &str, new_name: &str) -> Result<()> {
-    let mut config = Config::load()?;
+fn handle_duplicate(
+    store: &mut dyn ConfigStore,
+    output: &mut dyn Write,
+    source: &str,
+    new_name: &str,
+) -> Result<()> {
+    let mut config = store.load()?;
 
     if !config.profiles.exists(source) {
-        eprintln!("Error: Source profile '{}' not found", source);
-        std::process::exit(1);
+        anyhow::bail!("Source profile '{}' not found", source);
     }
 
     if config.profiles.exists(new_name) {
-        eprintln!("Error: Profile '{}' already exists", new_name);
-        std::process::exit(1);
+        anyhow::bail!("Profile '{}' already exists", new_name);
     }
 
     let source_profile = config
@@ -397,9 +415,9 @@ fn handle_duplicate(source: &str, new_name: &str) -> Result<()> {
     new_profile.name = new_name.to_string();
 
     config.profiles.add(new_profile)?;
-    config.save_to_global()?;
+    store.save(&config)?;
 
-    println!("Duplicated '{}' to '{}'", source, new_name);
+    writeln!(output, "Duplicated '{}' to '{}'", source, new_name)?;
 
     Ok(())
 }
