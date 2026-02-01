@@ -113,12 +113,18 @@ impl App {
 
         match git2::Repository::discover(".") {
             Ok(new_repo) => {
-                let staged = Vec::new(); // Stub
-                let unstaged = Vec::new(); // Stub
                 let branch = new_repo.head().ok().and_then(|h| {
                     let name = h.shorthand()?;
                     Some(CompactString::new(name))
                 }); // OK: detached HEAD yields None
+
+                // Load file lists using the initialized repository
+                let (staged, unstaged, file_warnings) = init::load_file_lists(Some(&new_repo));
+                
+                // Surface any warnings from file loading
+                for warning in file_warnings {
+                    self.data.base.toasts.warning(warning);
+                }
 
                 self.app_context.repo = Some(new_repo);
                 self.app_context.branch_name = branch;

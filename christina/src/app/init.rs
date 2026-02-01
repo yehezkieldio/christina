@@ -7,7 +7,7 @@ use tui_textarea::TextArea;
 
 use crate::app::edit_history::EditHistory;
 use crate::config::Config;
-use crate::tui::{BASE, SUBTEXT0, SURFACE1, TEXT, ToastManager};
+use crate::tui::{ToastManager, BASE, SUBTEXT0, SURFACE1, TEXT};
 use christina_core::types::TokenCount;
 use christina_core::{AppState, ReviewAction, StateMachine};
 
@@ -78,21 +78,21 @@ pub fn load_file_lists(
         return (vec![], vec![], warnings);
     };
 
-    let staged = {
-        let mut files = Vec::new();
-        if let Ok(index) = repo.index() {
-            for entry in index.iter() {
-                files.push(christina_core::GitFile::new(
-                    String::from_utf8_lossy(&entry.path).to_string(),
-                    "M".to_string(),
-                    String::new(),
-                ));
-            }
+    let staged = match crate::io::git::adapter::get_staged_files(repo) {
+        Ok(files) => files,
+        Err(e) => {
+            warnings.push(format!("Failed to load staged files: {}", e));
+            Vec::new()
         }
-        files
     };
 
-    let unstaged = Vec::new();
+    let unstaged = match crate::io::git::adapter::get_unstaged_files(repo) {
+        Ok(files) => files,
+        Err(e) => {
+            warnings.push(format!("Failed to load unstaged files: {}", e));
+            Vec::new()
+        }
+    };
 
     // If both file loads failed, warn about potential repository issues
     if staged.is_empty() && unstaged.is_empty() && repo.head().is_ok() {

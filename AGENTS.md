@@ -6,7 +6,7 @@ Optimize for effective use of the context window. Decompose aggressively. Delega
 
 Your goal is to produce correct, idiomatic, performant Rust, not to preserve existing structure.
 
-Reference `old_backup/` folder for old codebase, in regard to newer codebase. As this is a work-in-progress rewrite.
+Reference `old_backup/` folder for old codebase, in regard to newer codebase. As this is a work-in-progress project rewrite.
 
 ## Rust Mental Model (Non-Negotiable)
 
