@@ -203,8 +203,10 @@ dependencies = [
  "config",
  "dhat",
  "directories",
+ "fs2",
  "futures",
  "git2",
+ "keyring",
  "llm",
  "lru",
  "mimalloc",
@@ -228,6 +230,7 @@ dependencies = [
  "anyhow",
  "compact_str",
  "git2",
+ "keyring",
  "regex",
  "serde",
  "thiserror 2.0.18",
@@ -486,6 +489,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]
@@ -936,6 +949,16 @@ checksum = "8c942ebf8e95485ca0d52d97da7c5a2c387d0e7f0ba4c35e93bfcaee045955b3"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "keyring"
+version = "3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
+dependencies = [
+ "log",
+ "zeroize",
 ]
 
 [[package]]

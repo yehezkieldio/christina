@@ -129,13 +129,16 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
     let tx_progress = tx.clone();
     let repo_path_display = repo_path.clone(); // For error messages
     let handle = tokio::spawn(async move {
-        // Send initial progress
-        let _ = tx_progress
+        if tx_progress
             .send(Event::GenerationProgress {
                 stage: "Analyzing repository...".to_string(),
                 generation_id,
             })
-            .await;
+            .await
+            .is_err()
+        {
+            return;
+        }
 
         // Perform heavy git operations in background using spawn_blocking
         // This prevents blocking the main thread/UI while reading large diffs
@@ -227,22 +230,29 @@ async fn try_start_generation(app: &mut App, tx: mpsc::Sender<Event>) -> Result<
                     GitError::GpgConfigInvalid(msg) => msg.clone(),
                     GitError::GpgSigningFailed(msg) => msg.clone(),
                 };
-                let _ = tx_progress
+                if tx_progress
                     .send(Event::GenerationError {
                         error: error_msg,
                         generation_id,
                     })
-                    .await;
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
                 return;
             }
             Err(e) => {
-                // JoinError
-                let _ = tx_progress
+                if tx_progress
                     .send(Event::GenerationError {
                         error: format!("Task panicked: {}", e),
                         generation_id,
                     })
-                    .await;
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
                 return;
             }
         };

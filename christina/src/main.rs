@@ -62,6 +62,12 @@ async fn main() -> Result<()> {
 async fn run_tui() -> Result<()> {
     let mut terminal = TerminalHandle::init()?;
     let mut app = App::new();
+
+    if let Err(e) = app.validate_configuration() {
+        terminal.cleanup(Some(format!("Configuration error: {}", e)))?;
+        anyhow::bail!("Configuration validation failed: {}", e);
+    }
+
     let (tx, rx) = mpsc::channel::<Event>(100);
 
     // Run event loop and ensure terminal cleanup even on panic

@@ -259,6 +259,22 @@ impl App {
             Err(e) => Err(format!("Failed to unstage file: {}", e)),
         }
     }
+
+    pub fn validate_configuration(&self) -> Result<(), String> {
+        let config = &self.app_context.config;
+
+        if config.api_key.as_ref().map(|k| k.is_empty()).unwrap_or(true) {
+            return Err(
+                "API key is not configured. Set it via:\n\
+                 - Config: christina config set api_key <key>\n\
+                 - Environment: CHRISTINA_MODEL_API_KEY=<key>\n\
+                 - Keyring: Set api_key to 'keyring:christina.api_key' and store via system keyring"
+                    .to_string(),
+            );
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for App {

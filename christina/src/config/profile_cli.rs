@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 
 use crate::cli::ProfileCommands;
 use crate::config::Config;
-use crate::tui::{ProfileTuiOptions, run_profile_tui};
+use crate::tui::{run_profile_tui, ProfileTuiOptions};
 use christina_core::config::Secret;
 use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};
@@ -95,12 +95,12 @@ fn handle_show(name: &str) -> Result<()> {
             println!("Profile: {}", profile.name);
             println!("  Provider: {}", profile.provider);
             println!("  Model: {}", profile.model);
-            println!(
-                "  API Key: {}",
-                match &profile.api_key {
-                    Secret::Value(_) => "<set>",
-                }
-            );
+            let api_key_display = match &profile.api_key {
+                Secret::Value(_) => "<set>".to_string(),
+                Secret::EnvVar(name) => format!("<env:{}>", name),
+                Secret::Keyring(key) => format!("<keyring:{}>", key),
+            };
+            println!("  API Key: {}", api_key_display);
             println!(
                 "  API URL: {}",
                 profile

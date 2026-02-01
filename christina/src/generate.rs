@@ -38,34 +38,46 @@ pub async fn generate_commit_message_with_progress(
     generation_id: u64,
     user_context: Option<String>,
 ) -> Result<GenerationResult> {
-    let _ = progress_tx
+    if progress_tx
         .send(Event::GenerationProgress {
             stage: "Retrieving API key...".to_string(),
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
     let api_key = match &config.api_key {
         Some(key) if !key.is_empty() => key.clone(),
         _ => anyhow::bail!("API key not found in configuration"),
     };
 
-    let _ = progress_tx
+    if progress_tx
         .send(Event::GenerationProgress {
             stage: "Connecting to AI provider...".to_string(),
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
     let provider = Provider::from_profile(&config_to_profile(&config), &api_key)?;
     let provider = Arc::new(provider);
 
-    let _ = progress_tx
+    if progress_tx
         .send(Event::GenerationProgress {
             stage: "Processing diff content...".to_string(),
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
     let tokenizer: Arc<dyn christina_core::Tokenizer> = Arc::new(TokenizerService::new()?);
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
@@ -101,14 +113,18 @@ pub async fn generate_commit_message_with_progress(
         .sum::<u32>();
     let total_tokens = TokenCount::new_saturating(total_tokens);
 
-    let _ = progress_tx
+    if progress_tx
         .send(Event::TokenCountUpdate {
             token_count: total_tokens,
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
-    let _ = progress_tx
+    if progress_tx
         .send(Event::GenerationProgress {
             stage: format!(
                 "Analyzing {} chunk{}...",
@@ -117,7 +133,11 @@ pub async fn generate_commit_message_with_progress(
             ),
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
     let orchestrator = AIOrchestrator::new(Arc::clone(&provider));
 
@@ -157,12 +177,16 @@ pub async fn generate_commit_message_with_progress(
         None
     };
 
-    let _ = progress_tx
+    if progress_tx
         .send(Event::GenerationProgress {
             stage: "Generating commit message...".to_string(),
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
     let result = orchestrator
         .generate_commit_message(
@@ -174,12 +198,16 @@ pub async fn generate_commit_message_with_progress(
         )
         .await?;
 
-    let _ = progress_tx
+    if progress_tx
         .send(Event::GenerationProgress {
             stage: "Finalizing...".to_string(),
             generation_id,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
 
     Ok(result)
 }

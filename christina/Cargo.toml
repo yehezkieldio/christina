@@ -33,6 +33,8 @@ compact_str = { workspace = true }
 url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
 futures = "0.3.31"
+fs2 = "0.4.3"
+keyring = { version = "3", optional = true }
 lru = "0.12.5"
 tiktoken-rs = "0.9.1"
 tracing = "0.1.41"
@@ -40,5 +42,9 @@ tracing = "0.1.41"
 [lints]
 workspace = true
 
+# Christina will be distributed via NPM, via prebuilt binaries, except for development or debugging only features
+# We don't have feature-gated dependencies for now, will be not needed foreseeably
 [features]
+default = []
 dhat-heap = ["dhat"]
+keyring-support = ["christina-core/keyring-support", "dep:keyring"]

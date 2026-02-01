@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use git2::{DiffOptions, Repository, StatusOptions};
+use std::io::Write;
 use std::path::PathBuf;
 
 use christina_core::git::{GitFile, GitFileStatus, RepoSnapshot};
@@ -335,7 +336,6 @@ pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Create a commit with the given message
 pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
     let signature = repo.signature()?;
     let mut index = repo.index()?;
@@ -350,16 +350,94 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
 
     let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
 
-    let oid = repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        message,
-        &tree,
-        &parents,
-    )?;
+    let config = repo.config()?;
+    let gpg_sign = config.get_bool("commit.gpgsign").unwrap_or(false);
 
-    Ok(oid)
+    if gpg_sign {
+        let signing_key = config.get_string("user.signingkey").ok();
+
+        let buffer = repo.commit_create_buffer(&signature, &signature, message, &tree, &parents)?;
+
+        let content = std::str::from_utf8(&buffer)
+            .map_err(|e| anyhow::anyhow!("Invalid UTF-8 in commit buffer: {}", e))?;
+
+        let program = config
+            .get_string("gpg.program")
+            .map(|s| {
+                if s.trim().is_empty() {
+                    "gpg".to_string()
+                } else {
+                    s
+                }
+            })
+            .unwrap_or_else(|_| "gpg".to_string());
+
+        let mut cmd = std::process::Command::new(&program);
+        cmd.stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .arg("-bsa");
+
+        if let Some(ref key) = signing_key {
+            cmd.arg("-u").arg(key);
+        }
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("Failed to spawn {}: {}", program, e))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(content.as_bytes())
+                .map_err(|e| anyhow::anyhow!("Failed to write to gpg: {}", e))?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .map_err(|e| anyhow::anyhow!("Failed to wait for gpg: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("GPG signing failed: {}", stderr);
+        }
+
+        let gpg_sig = String::from_utf8(output.stdout)
+            .map_err(|e| anyhow::anyhow!("Invalid UTF-8 in signature: {}", e))?;
+
+        let oid = repo.commit_signed(content, &gpg_sig, Some("gpgsig"))?;
+
+        match repo.head() {
+            Ok(head) => {
+                if let Some(name) = head.name() {
+                    repo.reference(name, oid, true, "commit (signed)")?;
+                } else {
+                    repo.set_head_detached(oid)?;
+                }
+            }
+            Err(e) if e.code() == git2::ErrorCode::UnbornBranch => {
+                let branch_name = config
+                    .get_string("init.defaultBranch")
+                    .unwrap_or_else(|_| "master".to_string());
+                let ref_name = format!("refs/heads/{}", branch_name);
+                repo.reference(&ref_name, oid, false, "initial commit (signed)")?;
+                repo.set_head(&ref_name)?;
+            }
+            Err(e) => return Err(e.into()),
+        }
+
+        Ok(oid)
+    } else {
+        let oid = repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )?;
+
+        Ok(oid)
+    }
 }
 
 /// Check if there are staged changes

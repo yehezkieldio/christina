@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     config::Secret,
     types::{
-        ModelName, ProviderKind, TokenCount,
         token_count::{MAX_INPUT, MAX_OUTPUT},
+        ModelName, ProviderKind, TokenCount,
     },
 };
 

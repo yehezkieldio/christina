@@ -134,14 +134,12 @@ impl Config {
             builder = builder.add_source(config::File::from(global_path).required(false));
         }
 
-        // Build config without local file first to get trusted values
+        let local_path = std::path::Path::new("./christina.toml");
+        if local_path.exists() {
+            builder = builder.add_source(config::File::from(local_path).required(false));
+        }
         let mut config = builder
             .clone()
-            .add_source(
-                config::Environment::with_prefix("CHRISTINA")
-                    .separator("_")
-                    .try_parsing(true),
-            )
             .build()
             .context("Failed to build configuration")?
             .try_deserialize::<Config>()
@@ -251,16 +249,41 @@ impl Config {
     }
 
     pub fn save_to_global(&self) -> Result<()> {
+        use anyhow::Context;
+        use fs2::FileExt;
+        use std::fs::File;
+        use std::io::Write;
+
         let config_dir = Self::global_config_dir()
             .context("Could not determine config directory for your platform")?;
 
         std::fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
 
         let config_path = config_dir.join("config.toml");
+        let temp_path = config_dir.join("config.toml.tmp");
+
         let toml_content =
             toml::to_string_pretty(self).context("Failed to serialize configuration")?;
 
-        std::fs::write(&config_path, toml_content).context("Failed to write config file")?;
+        {
+            let mut temp_file = File::create(&temp_path)
+                .context("Failed to create temporary config file")?;
+            temp_file
+                .write_all(toml_content.as_bytes())
+                .context("Failed to write to temporary config file")?;
+            temp_file
+                .sync_all()
+                .context("Failed to sync temporary config file")?;
+        }
+
+        let target_file = File::create(&config_path)
+            .context("Failed to open target config file for locking")?;
+        target_file
+            .lock_exclusive()
+            .context("Failed to acquire exclusive lock on config file")?;
+
+        std::fs::rename(&temp_path, &config_path)
+            .context("Failed to atomically replace config file")?;
 
         Ok(())
     }
@@ -435,6 +458,15 @@ impl Config {
         self.azure_deployment_id = profile.azure_deployment_id.clone();
         self.api_key = match &profile.api_key {
             christina_core::config::Secret::Value(key) => Some(key.clone()),
+            christina_core::config::Secret::EnvVar(name) => std::env::var(name).ok(),
+            #[cfg(feature = "keyring-support")]
+            christina_core::config::Secret::Keyring(key) => {
+                keyring::Entry::new("christina", key)
+                    .and_then(|e| e.get_password())
+                    .ok()
+            }
+            #[cfg(not(feature = "keyring-support"))]
+            christina_core::config::Secret::Keyring(_) => None,
         };
     }
 
@@ -452,10 +484,11 @@ impl Config {
             provider: self.model_provider,
             model: self.model.clone(),
             api_url: self.model_api_url.clone(),
-            api_key: match &self.api_key {
-                Some(key) => christina_core::config::Secret::Value(key.clone()),
-                None => christina_core::config::Secret::Value(String::new()),
-            },
+            api_key: self
+                .api_key
+                .as_ref()
+                .map(|k| christina_core::config::Secret::Value(k.clone()))
+                .unwrap_or_else(|| christina_core::config::Secret::Value(String::new())),
             max_input_tokens: self.max_input_tokens,
             max_output_tokens: self.max_output_tokens,
             azure_api_version: self.azure_api_version.clone(),

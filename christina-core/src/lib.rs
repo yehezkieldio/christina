@@ -1,4 +1,3 @@
-pub mod app;
 pub mod config;
 pub mod error;
 pub mod git;
@@ -10,9 +9,9 @@ pub mod state;
 pub mod tokenizer;
 pub mod types;
 
-pub use app::{GenerationStatus, GitState, Model, Route, Screens, Toast, ToastSeverity};
 pub use config::{
-    AzureEndpoint, AzureEndpointError, ConfigFile, ResolvedConfig, Secret, SecretRef, SecretString,
+    AzureEndpoint, AzureEndpointError, ConfigFile, ResolvedConfig, Secret, SecretError, SecretRef,
+    SecretString,
 };
 pub use error::{
     AppError, CompletionError, ErrorCategory, GitError, GitResult, ProviderError, TokenizerError,
