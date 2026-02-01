@@ -206,6 +206,7 @@ dependencies = [
  "dhat",
  "directories",
  "git2",
+ "llm",
  "mimalloc",
  "parking_lot",
  "ratatui",
