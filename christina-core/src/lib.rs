@@ -7,7 +7,9 @@ pub mod state;
 pub mod tokenizer;
 pub mod types;
 
-pub use config::{AzureEndpoint, AzureEndpointError};
+pub use config::{
+    AzureEndpoint, AzureEndpointError, ConfigFile, ResolvedConfig, Secret, SecretRef, SecretString,
+};
 pub use error::{
     AppError, CompletionError, ErrorCategory, GitError, GitResult, ProviderError, TokenizerError,
     TokenizerResult,

@@ -31,7 +31,7 @@ impl TryFrom<Url> for AzureEndpoint {
 
     fn try_from(url: Url) -> Result<Self, Self::Error> {
         // Check if this is an Azure endpoint
-        if !url.host_str().map_or(false, |host| {
+        if !url.host_str().is_some_and(|host| {
             host.contains("cognitiveservices.azure.com") || host.contains("openai.azure.com")
         }) {
             return Err(AzureEndpointError::NotAzureEndpoint);
