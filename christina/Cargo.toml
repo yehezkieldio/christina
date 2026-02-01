@@ -21,6 +21,7 @@ ansi-to-tui = "7.0.0"
 git2 = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 toml = { version = "0.9.11", default-features = false, features = ["parse", "display"] }
 config = { version = "0.15.19", default-features = false, features = ["toml"] }
 directories = "6.0.0"
@@ -31,6 +32,10 @@ parking_lot = { workspace = true }
 compact_str = { workspace = true }
 url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
+futures = "0.3.31"
+lru = "0.12.5"
+tiktoken-rs = "0.9.1"
+tracing = "0.1.41"
 
 [lints]
 workspace = true

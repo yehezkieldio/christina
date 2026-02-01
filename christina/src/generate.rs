@@ -1,37 +1,17 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use tokio::sync::mpsc;
+use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::event_loop::Event;
-use christina_core::ids::GenerationId;
-use christina_core::llm::{ChatMessage, LlmRequest, Role};
-use christina_core::types::ProviderKind;
+use crate::io::git::diff_processor::DiffProcessor;
+use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget, TokenizerService};
+use crate::io::llm::provider::Provider;
+use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
+use christina_core::types::{CommitMessage, TokenCount};
 use christina_core::ProviderProfile;
-use christina_core::types::CommitMessage;
-
-// TODO: Reimplement using new core LLM types
-// Temporarily stubbed out - christina_llm crate has been removed
-// use christina_llm::Provider;
-// use christina_llm::{AIOrchestrator, GenerationResult};
-// use christina_llm::{TokenBudget, get_tokenizer};
-
-/// Temporary stub for GenerationResult - to be reimplemented
-#[derive(Debug, Clone)]
-pub struct GenerationResult {
-    pub message: CommitMessage,
-    pub warnings: Vec<String>,
-}
-
-impl GenerationResult {
-    /// Get a summary of warnings
-    pub fn warning_summary(&self) -> Option<String> {
-        if self.warnings.is_empty() {
-            None
-        } else {
-            Some(self.warnings.join("\n"))
-        }
-    }
-}
 
 fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
@@ -47,7 +27,7 @@ fn config_to_profile(config: &Config) -> ProviderProfile {
         max_output_tokens: config.max_output_tokens,
         azure_api_version: config.azure_api_version.clone(),
         azure_deployment_id: config.azure_deployment_id.clone(),
-        temperature: None,
+        temperature: Some(config.model_temperature),
     }
 }
 
@@ -58,135 +38,205 @@ pub async fn generate_commit_message_with_progress(
     generation_id: u64,
     user_context: Option<String>,
 ) -> Result<GenerationResult> {
-    let profile = config_to_profile(&config);
-
-    progress_tx
+    let _ = progress_tx
         .send(Event::GenerationProgress {
-            stage: "Building request...".to_string(),
+            stage: "Retrieving API key...".to_string(),
             generation_id,
         })
-        .await
-        .ok();
+        .await;
 
-    let system_prompt = build_system_prompt();
-    let user_message = build_user_message(&diff, user_context.as_deref());
-
-    let request = LlmRequest {
-        id: GenerationId::new(generation_id),
-        messages: vec![
-            ChatMessage {
-                role: Role::System,
-                content: system_prompt.clone(),
-            },
-            ChatMessage {
-                role: Role::User,
-                content: user_message,
-            },
-        ],
-        temperature: profile.temperature.unwrap_or(0.7),
-        max_tokens: profile.max_output_tokens,
-        system_prompt: Some(system_prompt),
+    let api_key = match &config.api_key {
+        Some(key) if !key.is_empty() => key.clone(),
+        _ => anyhow::bail!("API key not found in configuration"),
     };
 
-    progress_tx
+    let _ = progress_tx
         .send(Event::GenerationProgress {
-            stage: format!("Calling {} API...", profile.provider),
+            stage: "Connecting to AI provider...".to_string(),
             generation_id,
         })
-        .await
-        .ok();
+        .await;
 
-    let api_key = match profile.api_key {
-        christina_core::config::Secret::Value(ref key) if !key.is_empty() => key.as_str(),
-        _ => return Err(anyhow::anyhow!("API key not configured")),
-    };
+    let provider = Provider::from_profile(&config_to_profile(&config), &api_key)?;
+    let provider = Arc::new(provider);
 
-    let model_str = profile.model.as_str();
-    let api_url_str = profile.api_url.as_ref().map(|u| u.as_str());
-
-    let response = match profile.provider {
-        ProviderKind::OpenAI => {
-            crate::io::llm::openai::execute_openai_request(&request, api_key, api_url_str, model_str)
-                .await?
-        }
-        ProviderKind::Azure => {
-            let endpoint = profile
-                .api_url
-                .as_ref()
-                .map(|u| u.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Azure endpoint not configured"))?;
-            let deployment_id = profile
-                .azure_deployment_id
-                .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("Azure deployment ID not configured"))?;
-            let api_version = profile
-                .azure_api_version
-                .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("Azure API version not configured"))?;
-
-            crate::io::llm::azure::execute_azure_request(
-                &request,
-                api_key,
-                endpoint,
-                deployment_id,
-                api_version,
-                model_str,
-            )
-            .await?
-        }
-        ProviderKind::Groq => {
-            crate::io::llm::groq::execute_groq_request(&request, api_key, api_url_str, model_str)
-                .await?
-        }
-    };
-
-    progress_tx
+    let _ = progress_tx
         .send(Event::GenerationProgress {
-            stage: "Processing response...".to_string(),
+            stage: "Processing diff content...".to_string(),
             generation_id,
         })
-        .await
-        .ok();
+        .await;
 
-    let commit_text = response.content.trim().to_string();
-    let message = CommitMessage::try_from(commit_text.clone())
-        .map_err(|e| anyhow::anyhow!("Failed to parse commit message: {}", e))?;
+    let tokenizer = Arc::new(TokenizerService::new()?);
+    let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
+    let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
+    let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);
+    let reserved_for_messages = TokenCount::new_saturating(500);
 
-    let mut warnings = Vec::new();
-
-    if !commit_text.contains(':') {
-        warnings.push("Message may not follow conventional commit format".to_string());
-    }
-
-    if response.tokens_used.is_none() {
-        warnings.push("Token count not available from provider".to_string());
-    }
-
-    Ok(GenerationResult { message, warnings })
-}
-
-fn build_system_prompt() -> String {
-    r#"You are an expert at writing concise, conventional commit messages.
-Generate a commit message following these rules:
-1. Use conventional commit format: <type>: <description>
-2. Type must be one of: feat, fix, docs, style, refactor, test, chore
-3. Description must be lowercase, no period at end
-4. Keep total message under 72 characters
-5. Be specific about what changed, not how
-6. Focus on the intent, not implementation details"#
-        .to_string()
-}
-
-fn build_user_message(diff: &str, user_context: Option<&str>) -> String {
-    let mut message = format!(
-        "Generate a conventional commit message for these changes:\n\n{}",
-        diff
+    let budget = TokenBudget::new(
+        config.max_input_tokens,
+        config.max_output_tokens,
+        reserved_for_prompt,
+        reserved_for_messages,
     );
 
-    if let Some(context) = user_context {
-        message.push_str(&format!("\n\nAdditional context: {}", context));
+    let token_limit = budget
+        .remaining_for_diff()
+        .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
+
+    let processor = DiffProcessor::new(tokenizer.clone(), token_limit)
+        .with_ignore_files(config.ignore_files.clone());
+
+    let chunks = processor
+        .process_safe(&diff)
+        .map_err(|e| anyhow::anyhow!("Diff processing error: {}", e))?;
+
+    if chunks.is_empty() {
+        anyhow::bail!("No processable diff content found");
     }
 
-    message.push_str("\n\nRespond ONLY with the commit message, no explanation.");
-    message
+    let total_tokens = chunks
+        .iter()
+        .map(|chunk| chunk.token_count.get())
+        .sum::<u32>();
+    let total_tokens = TokenCount::new_saturating(total_tokens);
+
+    let _ = progress_tx
+        .send(Event::TokenCountUpdate {
+            token_count: total_tokens,
+            generation_id,
+        })
+        .await;
+
+    let _ = progress_tx
+        .send(Event::GenerationProgress {
+            stage: format!(
+                "Analyzing {} chunk{}...",
+                chunks.len(),
+                if chunks.len() == 1 { "" } else { "s" }
+            ),
+            generation_id,
+        })
+        .await;
+
+    let orchestrator = AIOrchestrator::new(Arc::clone(&provider));
+
+    let history_context = if config.use_commit_history {
+        match get_commit_history(config.commit_history_depth) {
+            Ok(mut commits) => {
+                if commits.is_empty() {
+                    None
+                } else {
+                    let budget_limit =
+                        orchestrator.calculate_history_budget(config.max_input_tokens.get());
+                    let original_count = commits.len();
+                    commits.truncate(budget_limit);
+
+                    if commits.len() < original_count {
+                        info!(
+                            "Truncated commit history from {} to {} commits to fit token budget",
+                            original_count,
+                            commits.len()
+                        );
+                    }
+
+                    let formatted = commits
+                        .iter()
+                        .map(|c| format!("- {}: {}", c.sha, c.subject))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    Some(format!("Recent commits:\n{}", formatted))
+                }
+            }
+            Err(e) => {
+                warn!("Failed to retrieve commit history: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let _ = progress_tx
+        .send(Event::GenerationProgress {
+            stage: "Generating commit message...".to_string(),
+            generation_id,
+        })
+        .await;
+
+    let result = orchestrator
+        .generate_commit_message(
+            chunks,
+            user_context.as_deref(),
+            config.commit_message_validation_mode,
+            config.commit_message_max_length,
+            history_context,
+        )
+        .await?;
+
+    let _ = progress_tx
+        .send(Event::GenerationProgress {
+            stage: "Finalizing...".to_string(),
+            generation_id,
+        })
+        .await;
+
+    Ok(result)
+}
+
+#[derive(Debug)]
+struct CommitInfo {
+    sha: String,
+    subject: String,
+}
+
+fn get_commit_history(limit: usize) -> Result<Vec<CommitInfo>> {
+    let repo = git2::Repository::discover(".")?;
+
+    if repo.head().is_err() {
+        return Ok(vec![]);
+    }
+
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
+
+    let mut commits = Vec::new();
+
+    for oid_result in revwalk {
+        if commits.len() >= limit {
+            break;
+        }
+
+        let oid = oid_result?;
+        let commit = repo.find_commit(oid)?;
+
+        if commit.parent_count() > 1 {
+            continue;
+        }
+
+        let subject = commit
+            .message()
+            .unwrap_or("")
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+
+        if subject.starts_with("fixup!")
+            || subject.starts_with("squash!")
+            || subject.starts_with("amend!")
+        {
+            continue;
+        }
+
+        let oid_str = format!("{}", oid);
+        let sha = oid_str
+            .get(..7)
+            .unwrap_or(oid_str.as_str())
+            .to_string();
+
+        commits.push(CommitInfo { sha, subject });
+    }
+
+    Ok(commits)
 }
