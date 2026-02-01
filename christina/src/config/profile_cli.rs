@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::io::{self, BufRead, Write};
 
 use crate::cli::ProfileCommands;
 use crate::config::Config;
@@ -6,6 +7,25 @@ use crate::tui::{run_profile_tui, ProfileTuiOptions};
 use christina_core::config::{Secret, SecretRef};
 use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};
+
+trait ConfigStore {
+    #[allow(dead_code)]
+    fn load(&mut self) -> Result<Config>;
+    #[allow(dead_code)]
+    fn save(&mut self, config: &Config) -> Result<()>;
+}
+
+struct GlobalConfigStore;
+
+impl ConfigStore for GlobalConfigStore {
+    fn load(&mut self) -> Result<Config> {
+        Config::load()
+    }
+
+    fn save(&mut self, config: &Config) -> Result<()> {
+        config.save_to_global()
+    }
+}
 
 fn parse_secret_input(key: &str) -> Secret<String> {
     match SecretRef::parse(key) {
@@ -18,6 +38,18 @@ fn parse_secret_input(key: &str) -> Secret<String> {
 
 /// Handle profile commands - routes between CLI and TUI based on subcommand.
 pub fn handle_profile_command(command: ProfileCommands) -> Result<()> {
+    let mut store = GlobalConfigStore;
+    let mut input = io::BufReader::new(io::stdin());
+    let mut output = io::stdout();
+    handle_profile_command_with_deps(command, &mut store, &mut input, &mut output)
+}
+
+fn handle_profile_command_with_deps(
+    command: ProfileCommands,
+    _store: &mut dyn ConfigStore,
+    _input: &mut dyn BufRead,
+    _output: &mut dyn Write,
+) -> Result<()> {
     match command {
         ProfileCommands::List => handle_list(),
         ProfileCommands::Show { name } => handle_show(&name),

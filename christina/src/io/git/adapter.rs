@@ -1,8 +1,148 @@
 use anyhow::{Context, Result};
-use git2::{DiffOptions, Repository};
+use git2::{DiffOptions, Oid, Repository};
 use std::io::Write;
 
 use christina_core::git::GitFile;
+
+#[allow(dead_code)]
+pub trait GitRepository {
+    fn get_staged_files(&self) -> Result<Vec<GitFile>>;
+    fn get_unstaged_files(&self) -> Result<Vec<GitFile>>;
+    fn stage_files(&self, paths: &[String]) -> Result<()>;
+    fn unstage_files(&self, paths: &[String]) -> Result<()>;
+    fn create_commit(&self, message: &str) -> Result<Oid>;
+    fn has_staged_changes(&self) -> Result<bool>;
+    fn validate_for_commit(&self) -> Result<()>;
+    fn build_staged_diff(&self) -> Result<String>;
+}
+
+impl GitRepository for Repository {
+    fn get_staged_files(&self) -> Result<Vec<GitFile>> {
+        get_staged_files(self)
+    }
+
+    fn get_unstaged_files(&self) -> Result<Vec<GitFile>> {
+        get_unstaged_files(self)
+    }
+
+    fn stage_files(&self, paths: &[String]) -> Result<()> {
+        stage_files(self, paths)
+    }
+
+    fn unstage_files(&self, paths: &[String]) -> Result<()> {
+        unstage_files(self, paths)
+    }
+
+    fn create_commit(&self, message: &str) -> Result<Oid> {
+        create_commit(self, message)
+    }
+
+    fn has_staged_changes(&self) -> Result<bool> {
+        has_staged_changes(self)
+    }
+
+    fn validate_for_commit(&self) -> Result<()> {
+        validate_for_commit(self)
+    }
+
+    fn build_staged_diff(&self) -> Result<String> {
+        build_staged_diff(self)
+    }
+}
+
+#[cfg(test)]
+use std::cell::RefCell;
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn resolve_result<T: Clone>(result: &RefCell<Result<T, String>>) -> Result<T> {
+    match result.borrow().clone() {
+        Ok(value) => Ok(value),
+        Err(message) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct MockGitRepository {
+    pub staged_files: RefCell<Result<Vec<GitFile>, String>>,
+    pub unstaged_files: RefCell<Result<Vec<GitFile>, String>>,
+    pub stage_files_result: RefCell<Result<(), String>>,
+    pub unstage_files_result: RefCell<Result<(), String>>,
+    pub create_commit_result: RefCell<Result<Oid, String>>,
+    pub has_staged_changes_result: RefCell<Result<bool, String>>,
+    pub validate_for_commit_result: RefCell<Result<(), String>>,
+    pub build_staged_diff_result: RefCell<Result<String, String>>,
+    pub stage_calls: RefCell<Vec<Vec<String>>>,
+    pub unstage_calls: RefCell<Vec<Vec<String>>>,
+    pub commit_messages: RefCell<Vec<String>>,
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+impl MockGitRepository {
+    pub fn new() -> Self {
+        Self {
+            staged_files: RefCell::new(Ok(Vec::new())),
+            unstaged_files: RefCell::new(Ok(Vec::new())),
+            stage_files_result: RefCell::new(Ok(())),
+            unstage_files_result: RefCell::new(Ok(())),
+            create_commit_result: RefCell::new(Ok(Oid::zero())),
+            has_staged_changes_result: RefCell::new(Ok(false)),
+            validate_for_commit_result: RefCell::new(Ok(())),
+            build_staged_diff_result: RefCell::new(Ok(String::new())),
+            stage_calls: RefCell::new(Vec::new()),
+            unstage_calls: RefCell::new(Vec::new()),
+            commit_messages: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Default for MockGitRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+impl GitRepository for MockGitRepository {
+    fn get_staged_files(&self) -> Result<Vec<GitFile>> {
+        resolve_result(&self.staged_files)
+    }
+
+    fn get_unstaged_files(&self) -> Result<Vec<GitFile>> {
+        resolve_result(&self.unstaged_files)
+    }
+
+    fn stage_files(&self, paths: &[String]) -> Result<()> {
+        self.stage_calls.borrow_mut().push(paths.to_vec());
+        resolve_result(&self.stage_files_result)
+    }
+
+    fn unstage_files(&self, paths: &[String]) -> Result<()> {
+        self.unstage_calls.borrow_mut().push(paths.to_vec());
+        resolve_result(&self.unstage_files_result)
+    }
+
+    fn create_commit(&self, message: &str) -> Result<Oid> {
+        self.commit_messages.borrow_mut().push(message.to_string());
+        resolve_result(&self.create_commit_result)
+    }
+
+    fn has_staged_changes(&self) -> Result<bool> {
+        resolve_result(&self.has_staged_changes_result)
+    }
+
+    fn validate_for_commit(&self) -> Result<()> {
+        resolve_result(&self.validate_for_commit_result)
+    }
+
+    fn build_staged_diff(&self) -> Result<String> {
+        resolve_result(&self.build_staged_diff_result)
+    }
+}
 
 /// Get staged files (changes between HEAD and index)
 pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {

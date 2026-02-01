@@ -466,3 +466,332 @@ fn split_oversized_line(
 
     chunks
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use christina_core::test_helpers::DeterministicTokenizer;
+    use proptest::prelude::*;
+
+    fn file_diff(path: &str, content: &str, tokenizer: &DeterministicTokenizer) -> FileDiff {
+        FileDiff {
+            path: FilePath::from(path),
+            content: content.to_string(),
+            token_count: tokenizer.count_tokens(content),
+            truncated: false,
+        }
+    }
+
+    fn tokenize_chunks(chunks: &[DiffChunk], tokenizer: &DeterministicTokenizer) -> Vec<u32> {
+        chunks
+            .iter()
+            .map(|chunk| tokenizer.count_tokens(&chunk.content).get())
+            .collect()
+    }
+
+    fn sample_header() -> &'static str {
+        "diff --git a/file.txt b/file.txt\nindex 1111111..2222222 100644\n--- a/file.txt\n+++ b/file.txt"
+    }
+
+    fn sample_hunk(header: &str, lines: &[&str]) -> String {
+        let mut content = String::new();
+        content.push_str(header);
+        content.push('\n');
+        content.push_str("@@ -1,1 +1,1 @@\n");
+        for line in lines {
+            content.push_str(line);
+            content.push('\n');
+        }
+        content
+    }
+
+    #[test]
+    fn test_split_empty() {
+        let tokenizer = DeterministicTokenizer;
+        let chunks = split_recursive(Vec::new(), TokenCount::new_saturating(100), &[], &tokenizer);
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn test_split_single_small_file() {
+        let tokenizer = DeterministicTokenizer;
+        let content = sample_hunk(sample_header(), &["+hello"]);
+        let file = file_diff("file.txt", &content, &tokenizer);
+
+        let chunks = split_recursive(vec![file], TokenCount::new_saturating(200), &[], &tokenizer);
+
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].files, vec![FilePath::from("file.txt")]);
+        assert_eq!(chunks[0].content.as_ref(), content);
+    }
+
+    #[test]
+    fn test_split_multiple_files_one_chunk() {
+        let tokenizer = DeterministicTokenizer;
+        let content_a = sample_hunk(sample_header(), &["+alpha"]);
+        let content_b = sample_hunk(sample_header(), &["+beta"]);
+        let file_a = file_diff("a.txt", &content_a, &tokenizer);
+        let file_b = file_diff("b.txt", &content_b, &tokenizer);
+
+        let chunks = split_recursive(
+            vec![file_a, file_b],
+            TokenCount::new_saturating(500),
+            &[],
+            &tokenizer,
+        );
+
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].files.len(), 2);
+        assert!(chunks[0].content.contains(&content_a));
+        assert!(chunks[0].content.contains(&content_b));
+    }
+
+    #[test]
+    fn test_split_large_file_multiple_chunks() {
+        let tokenizer = DeterministicTokenizer;
+        let mut content = String::new();
+        for _ in 0..200 {
+            content.push_str("diff --git a/large.txt b/large.txt\n");
+            content.push_str("@@ -1 +1 @@\n");
+            content.push_str("+line one\n");
+        }
+        let file = file_diff("large.txt", &content, &tokenizer);
+
+        let chunks = split_recursive(vec![file], TokenCount::new_saturating(50), &[], &tokenizer);
+
+        assert!(chunks.len() > 1);
+        let counts = tokenize_chunks(&chunks, &tokenizer);
+        assert!(counts.iter().all(|count| *count <= 50));
+    }
+
+    #[test]
+    fn test_split_respects_token_limit() {
+        let tokenizer = DeterministicTokenizer;
+        let mut files = Vec::new();
+        for i in 0..10 {
+            let content = sample_hunk(sample_header(), &["+alpha", "+beta", "+gamma"]);
+            files.push(file_diff(&format!("file_{i}.txt"), &content, &tokenizer));
+        }
+
+        let chunks = split_recursive(files, TokenCount::new_saturating(25), &[], &tokenizer);
+
+        for count in tokenize_chunks(&chunks, &tokenizer) {
+            assert!(count <= 25);
+        }
+    }
+
+    #[test]
+    fn test_split_lockfile_truncation() {
+        let tokenizer = DeterministicTokenizer;
+        let mut content = String::new();
+        for _ in 0..50 {
+            content.push_str("diff --git a/Cargo.lock b/Cargo.lock\n");
+            content.push_str("@@ -1 +1 @@\n");
+            content.push_str("+package name version\n");
+        }
+        let file = file_diff("Cargo.lock", &content, &tokenizer);
+
+        let chunks = split_recursive(
+            vec![file],
+            TokenCount::new_saturating(500),
+            &["Cargo.lock".to_string()],
+            &tokenizer,
+        );
+
+        assert_eq!(chunks.len(), 1);
+        let chunk_content = &chunks[0].content;
+        assert!(chunk_content.contains("[... truncated lockfile ...]"));
+        let tokens = tokenizer.count_tokens(chunk_content);
+        assert!(tokens.get() <= 500);
+    }
+
+    #[test]
+    fn test_split_by_hunks_basic() {
+        let tokenizer = DeterministicTokenizer;
+        let content = format!(
+            "{header}\n@@ -1 +1 @@\n+alpha\n@@ -2 +2 @@\n+beta\n@@ -3 +3 @@\n+gamma\n",
+            header = sample_header()
+        );
+
+        let chunks = split_by_hunks(
+            &FilePath::from("file.txt"),
+            &content,
+            TokenCount::new_saturating(20),
+            &tokenizer,
+        );
+
+        assert!(chunks.len() >= 2);
+        assert!(chunks[0].content.contains("@@ -1 +1 @@"));
+        assert!(chunks[1].content.contains("@@ -2 +2 @@"));
+    }
+
+    #[test]
+    fn test_split_by_hunks_header_only() {
+        let tokenizer = DeterministicTokenizer;
+        let content = sample_header().to_string();
+
+        let chunks = split_by_hunks(
+            &FilePath::from("file.txt"),
+            &content,
+            TokenCount::new_saturating(200),
+            &tokenizer,
+        );
+
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].content.as_ref(), content);
+    }
+
+    #[test]
+    fn test_split_by_hunks_fallback_to_lines() {
+        let tokenizer = DeterministicTokenizer;
+        let header = sample_header();
+        let mut content = String::new();
+        content.push_str(header);
+        content.push('\n');
+        content.push_str("@@ -1 +1 @@\n");
+        for _ in 0..40 {
+            content.push_str("+oversized hunk line content\n");
+        }
+
+        let chunks = split_by_hunks(
+            &FilePath::from("file.txt"),
+            &content,
+            TokenCount::new_saturating(20),
+            &tokenizer,
+        );
+
+        assert!(chunks.len() > 1);
+        for count in tokenize_chunks(&chunks, &tokenizer) {
+            assert!(count <= 5);
+        }
+    }
+
+    #[test]
+    fn test_split_by_lines_basic() {
+        let tokenizer = DeterministicTokenizer;
+        let content = "line one\nline two\nline three\n";
+
+        let chunks = split_by_lines(
+            &FilePath::from("file.txt"),
+            content,
+            TokenCount::new_saturating(3),
+            &tokenizer,
+        );
+
+        assert!(chunks.len() >= 2);
+        for count in tokenize_chunks(&chunks, &tokenizer) {
+            assert!(count <= 3);
+        }
+    }
+
+    #[test]
+    fn test_split_oversized_line() {
+        let tokenizer = DeterministicTokenizer;
+        let content = "this line is far too long to fit\n";
+
+        let chunks = split_by_lines(
+            &FilePath::from("file.txt"),
+            content,
+            TokenCount::new_saturating(2),
+            &tokenizer,
+        );
+
+        assert!(chunks.len() > 1);
+        for count in tokenize_chunks(&chunks, &tokenizer) {
+            assert!(count <= 2);
+        }
+    }
+
+    #[test]
+    fn test_truncate_respects_limit() {
+        let tokenizer = DeterministicTokenizer;
+        let content = "alpha beta gamma delta epsilon";
+        let truncated = truncate_to_token_limit(content, TokenCount::new_saturating(3), &tokenizer);
+        let tokens = tokenizer.count_tokens(&truncated);
+        assert!(tokens.get() <= 3);
+    }
+
+    #[test]
+    fn test_truncate_preserves_newline() {
+        let tokenizer = DeterministicTokenizer;
+        let content = "alpha beta\ngamma delta\nepsilon zeta";
+        let truncated =
+            truncate_to_token_limit(content, TokenCount::new_saturating(12), &tokenizer);
+        assert!(truncated.ends_with('\n') || truncated == content);
+        let tokens = tokenizer.count_tokens(&truncated);
+        assert!(tokens.get() <= 12);
+    }
+
+    #[test]
+    fn test_truncate_fallback_to_lines() {
+        struct FailingDecodeTokenizer;
+
+        impl Tokenizer for FailingDecodeTokenizer {
+            fn count_tokens(&self, text: &str) -> TokenCount {
+                if text.is_empty() {
+                    return TokenCount::new_saturating(0);
+                }
+                TokenCount::new_saturating(text.split_whitespace().count() as u32)
+            }
+
+            fn encoding_name(&self) -> &str {
+                "failing-decode"
+            }
+
+            fn encode(&self, text: &str) -> Vec<u32> {
+                text.chars().map(|c| c as u32).collect()
+            }
+
+            fn decode(&self, _tokens: &[u32]) -> Option<String> {
+                None
+            }
+        }
+
+        let tokenizer = FailingDecodeTokenizer;
+        let content = "alpha beta\ngamma delta\nepsilon zeta";
+        let truncated = truncate_to_token_limit(content, TokenCount::new_saturating(3), &tokenizer);
+        assert!(truncated.contains('\n'));
+        let tokens = tokenizer.count_tokens(&truncated);
+        assert!(tokens.get() <= 3);
+    }
+
+    fn file_diff_strategy() -> impl Strategy<Value = FileDiff> {
+        let content_strategy =
+            proptest::string::string_regex("[a-zA-Z0-9 _\n@+-]{0,200}").expect("valid regex");
+        ("[a-z]{1,8}\\.txt", content_strategy).prop_map(|(name, content)| {
+            let tokenizer = DeterministicTokenizer;
+            FileDiff {
+                path: FilePath::from(name),
+                content: content.clone(),
+                token_count: tokenizer.count_tokens(&content),
+                truncated: false,
+            }
+        })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+        #[test]
+        fn chunks_never_exceed_token_limit(
+            files in prop::collection::vec(file_diff_strategy(), 0..10),
+            limit in 100usize..10000
+        ) {
+            let tokenizer = DeterministicTokenizer;
+            let chunks = split_recursive(files, TokenCount::new_saturating(limit as u32), &[], &tokenizer);
+            for chunk in chunks {
+                let tokens = tokenizer.count_tokens(&chunk.content);
+                prop_assert!(tokens.get() <= limit as u32);
+            }
+        }
+
+        #[test]
+        fn utf8_boundaries_preserved(
+            content in "\\PC{0,10000}"
+        ) {
+            let tokenizer = DeterministicTokenizer;
+            let truncated = truncate_to_token_limit(&content, TokenCount::new_saturating(100), &tokenizer);
+            prop_assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
+        }
+    }
+}

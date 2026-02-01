@@ -41,6 +41,7 @@ tracing = "0.1.41"
 
 [dev-dependencies]
 christina-core = { path = "../christina-core", features = ["test-helpers"] }
+proptest = "1.6.0"
 
 [lints]
 workspace = true

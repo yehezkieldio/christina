@@ -14,6 +14,21 @@ use christina_core::ProviderProfile;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::TokenCount;
 
+/// Trait for accessing Git repository commit history.
+/// Allows for testing without real repository access.
+pub trait CommitHistoryProvider: Send + Sync {
+    fn get_commit_history(&self, repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>>;
+}
+
+/// Real implementation using git2.
+pub struct GitCommitHistoryProvider;
+
+impl CommitHistoryProvider for GitCommitHistoryProvider {
+    fn get_commit_history(&self, repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
+        get_commit_history_impl(repo_path, limit)
+    }
+}
+
 fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),
@@ -39,6 +54,27 @@ pub async fn generate_commit_message_with_progress(
     progress_tx: mpsc::Sender<Event>,
     generation_id: u64,
     user_context: Option<String>,
+) -> Result<GenerationResult> {
+    generate_commit_message_with_progress_impl(
+        config,
+        diff,
+        repo_path,
+        progress_tx,
+        generation_id,
+        user_context,
+        &GitCommitHistoryProvider,
+    )
+    .await
+}
+
+async fn generate_commit_message_with_progress_impl(
+    config: Config,
+    diff: String,
+    repo_path: PathBuf,
+    progress_tx: mpsc::Sender<Event>,
+    generation_id: u64,
+    user_context: Option<String>,
+    history_provider: &dyn CommitHistoryProvider,
 ) -> Result<GenerationResult> {
     if progress_tx
         .send(Event::GenerationProgress {
@@ -148,7 +184,7 @@ pub async fn generate_commit_message_with_progress(
     );
 
     let history_context = if config.use_commit_history {
-        match get_commit_history(&repo_path, config.commit_history_depth) {
+        match history_provider.get_commit_history(&repo_path, config.commit_history_depth) {
             Ok(mut commits) => {
                 if commits.is_empty() {
                     None
@@ -218,13 +254,13 @@ pub async fn generate_commit_message_with_progress(
     Ok(result)
 }
 
-#[derive(Debug)]
-struct CommitInfo {
-    sha: String,
-    subject: String,
+#[derive(Debug, Clone)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub subject: String,
 }
 
-fn get_commit_history(repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
+fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
     let repo = git2::Repository::open(repo_path)?;
 
     if repo.head().is_err() {
@@ -270,4 +306,348 @@ fn get_commit_history(repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>>
     }
 
     Ok(commits)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use christina_core::types::ProviderKind;
+
+    struct MockCommitHistoryProvider {
+        commits: Vec<CommitInfo>,
+    }
+
+    impl MockCommitHistoryProvider {
+        fn new(commits: Vec<CommitInfo>) -> Self {
+            Self { commits }
+        }
+
+        fn empty() -> Self {
+            Self {
+                commits: Vec::new(),
+            }
+        }
+    }
+
+    impl CommitHistoryProvider for MockCommitHistoryProvider {
+        fn get_commit_history(&self, _repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
+            Ok(self.commits.iter().take(limit).cloned().collect())
+        }
+    }
+
+    struct FailingCommitHistoryProvider;
+
+    impl CommitHistoryProvider for FailingCommitHistoryProvider {
+        fn get_commit_history(&self, _repo_path: &Path, _limit: usize) -> Result<Vec<CommitInfo>> {
+            anyhow::bail!("Failed to retrieve commit history")
+        }
+    }
+
+    #[test]
+    fn test_config_to_profile_openai() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: Some("test-key".to_string()),
+            max_input_tokens: TokenCount::new_saturating(4000),
+            max_output_tokens: TokenCount::new_saturating(500),
+            model_temperature: 0.7,
+            ..Default::default()
+        };
+
+        let profile = config_to_profile(&config);
+
+        assert_eq!(profile.name, "active");
+        assert_eq!(profile.provider, ProviderKind::OpenAI);
+        assert_eq!(profile.model.as_str(), "gpt-4");
+        assert_eq!(profile.max_input_tokens, TokenCount::new_saturating(4000));
+        assert_eq!(profile.max_output_tokens, TokenCount::new_saturating(500));
+        assert_eq!(profile.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn test_config_to_profile_azure() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::Azure,
+            api_key: Some("azure-key".to_string()),
+            model_api_url: Some(url::Url::parse("https://test.openai.azure.com").unwrap()),
+            azure_api_version: Some("2023-05-15".to_string()),
+            azure_deployment_id: Some("gpt-4-deployment".to_string()),
+            max_input_tokens: TokenCount::new_saturating(8000),
+            max_output_tokens: TokenCount::new_saturating(1000),
+            model_temperature: 0.5,
+            ..Default::default()
+        };
+
+        let profile = config_to_profile(&config);
+
+        assert_eq!(profile.provider, ProviderKind::Azure);
+        assert_eq!(profile.azure_api_version, Some("2023-05-15".to_string()));
+        assert_eq!(
+            profile.azure_deployment_id,
+            Some("gpt-4-deployment".to_string())
+        );
+    }
+
+    #[test]
+    fn test_config_to_profile_groq() {
+        let config = Config {
+            model: "mixtral-8x7b".into(),
+            model_provider: ProviderKind::Groq,
+            api_key: Some("groq-key".to_string()),
+            max_input_tokens: TokenCount::new_saturating(32000),
+            max_output_tokens: TokenCount::new_saturating(2000),
+            model_temperature: 0.3,
+            ..Default::default()
+        };
+
+        let profile = config_to_profile(&config);
+
+        assert_eq!(profile.provider, ProviderKind::Groq);
+        assert_eq!(profile.model.as_str(), "mixtral-8x7b");
+    }
+
+    #[test]
+    fn test_config_to_profile_no_api_key() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: None,
+            ..Default::default()
+        };
+
+        let profile = config_to_profile(&config);
+
+        match profile.api_key {
+            christina_core::config::Secret::Value(key) => assert!(key.is_empty()),
+            _ => panic!("Expected Value variant"),
+        }
+    }
+
+    #[test]
+    fn test_mock_commit_history_provider_empty() {
+        let provider = MockCommitHistoryProvider::empty();
+        let result = provider
+            .get_commit_history(Path::new("/fake/path"), 10)
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_mock_commit_history_provider_with_commits() {
+        let commits = vec![
+            CommitInfo {
+                sha: "abc1234".to_string(),
+                subject: "feat: add feature A".to_string(),
+            },
+            CommitInfo {
+                sha: "def5678".to_string(),
+                subject: "fix: resolve bug B".to_string(),
+            },
+        ];
+
+        let provider = MockCommitHistoryProvider::new(commits);
+        let result = provider
+            .get_commit_history(Path::new("/fake/path"), 10)
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].sha, "abc1234");
+        assert_eq!(result[0].subject, "feat: add feature A");
+        assert_eq!(result[1].sha, "def5678");
+        assert_eq!(result[1].subject, "fix: resolve bug B");
+    }
+
+    #[test]
+    fn test_mock_commit_history_provider_respects_limit() {
+        let commits = vec![
+            CommitInfo {
+                sha: "abc1234".to_string(),
+                subject: "feat: add feature A".to_string(),
+            },
+            CommitInfo {
+                sha: "def5678".to_string(),
+                subject: "fix: resolve bug B".to_string(),
+            },
+            CommitInfo {
+                sha: "ghi9012".to_string(),
+                subject: "chore: update deps".to_string(),
+            },
+        ];
+
+        let provider = MockCommitHistoryProvider::new(commits);
+        let result = provider
+            .get_commit_history(Path::new("/fake/path"), 2)
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].sha, "abc1234");
+        assert_eq!(result[1].sha, "def5678");
+    }
+
+    #[test]
+    fn test_failing_commit_history_provider() {
+        let provider = FailingCommitHistoryProvider;
+        let result = provider.get_commit_history(Path::new("/fake/path"), 10);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to retrieve commit history"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_with_missing_api_key() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: None,
+            ..Default::default()
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let diff = "diff --git a/test.txt b/test.txt\n+new line\n".to_string();
+        let repo_path = PathBuf::from("/fake/repo");
+
+        let result = generate_commit_message_with_progress_impl(
+            config,
+            diff,
+            repo_path,
+            tx,
+            1,
+            None,
+            &MockCommitHistoryProvider::empty(),
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("API key not found"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_with_empty_api_key() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: Some(String::new()),
+            ..Default::default()
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let diff = "diff --git a/test.txt b/test.txt\n+new line\n".to_string();
+        let repo_path = PathBuf::from("/fake/repo");
+
+        let result = generate_commit_message_with_progress_impl(
+            config,
+            diff,
+            repo_path,
+            tx,
+            1,
+            None,
+            &MockCommitHistoryProvider::empty(),
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("API key not found"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_with_empty_diff() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: Some("test-key".to_string()),
+            max_input_tokens: TokenCount::new_saturating(4000),
+            max_output_tokens: TokenCount::new_saturating(500),
+            ..Default::default()
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let diff = String::new();
+        let repo_path = PathBuf::from("/fake/repo");
+
+        let result = generate_commit_message_with_progress_impl(
+            config,
+            diff,
+            repo_path,
+            tx,
+            1,
+            None,
+            &MockCommitHistoryProvider::empty(),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No processable diff content found"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_with_progress_receiver_dropped() {
+        let config = Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        };
+
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+
+        let diff = "diff --git a/test.txt b/test.txt\n+new line\n".to_string();
+        let repo_path = PathBuf::from("/fake/repo");
+
+        let result = generate_commit_message_with_progress_impl(
+            config,
+            diff,
+            repo_path,
+            tx,
+            1,
+            None,
+            &MockCommitHistoryProvider::empty(),
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Progress receiver dropped"));
+    }
+
+    #[test]
+    fn test_commit_info_debug() {
+        let commit = CommitInfo {
+            sha: "abc1234".to_string(),
+            subject: "feat: add feature".to_string(),
+        };
+
+        let debug_str = format!("{:?}", commit);
+        assert!(debug_str.contains("abc1234"));
+        assert!(debug_str.contains("feat: add feature"));
+    }
+
+    #[test]
+    fn test_commit_info_clone() {
+        let commit = CommitInfo {
+            sha: "abc1234".to_string(),
+            subject: "feat: add feature".to_string(),
+        };
+
+        let cloned = commit.clone();
+        assert_eq!(commit.sha, cloned.sha);
+        assert_eq!(commit.subject, cloned.subject);
+    }
+
+    #[test]
+    fn test_git_commit_history_provider_non_existent_repo() {
+        let provider = GitCommitHistoryProvider;
+        let result = provider.get_commit_history(Path::new("/non/existent/path"), 10);
+        assert!(result.is_err());
+    }
 }
