@@ -18,10 +18,35 @@ impl FilePath {
         Self(compact)
     }
 
+    pub fn try_new(path: impl Into<CompactString>) -> Result<Self, FilePathError> {
+        let compact = path.into();
+        if compact.starts_with('/') {
+            return Err(FilePathError::AbsolutePath(compact.to_string()));
+        }
+        Ok(Self(compact))
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilePathError {
+    AbsolutePath(String),
+}
+
+impl std::fmt::Display for FilePathError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FilePathError::AbsolutePath(path) => {
+                write!(f, "FilePath must be relative, got absolute path: {}", path)
+            }
+        }
+    }
+}
+
+impl std::error::Error for FilePathError {}
 
 impl std::fmt::Display for FilePath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

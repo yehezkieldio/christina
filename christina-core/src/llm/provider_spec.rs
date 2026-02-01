@@ -1,4 +1,5 @@
 use crate::config::AzureEndpoint;
+use crate::error::ProviderError;
 use crate::types::{ModelName, ProviderKind, TokenCount};
 use url::Url;
 
@@ -15,6 +16,61 @@ pub struct ProviderSpec {
     pub max_tokens: TokenCount,
     /// Temperature for sampling
     pub temperature: f32,
+}
+
+impl ProviderSpec {
+    pub fn validate(&self) -> Result<(), ProviderError> {
+        self.validate_endpoint_consistency()?;
+        self.validate_temperature()?;
+        self.validate_url_scheme()?;
+        Ok(())
+    }
+
+    fn validate_endpoint_consistency(&self) -> Result<(), ProviderError> {
+        match (&self.kind, &self.endpoint) {
+            (ProviderKind::OpenAI, ProviderEndpoint::OpenAi { .. }) => Ok(()),
+            (ProviderKind::Azure, ProviderEndpoint::AzureOpenAi { .. }) => Ok(()),
+            (ProviderKind::Groq, ProviderEndpoint::Groq { .. }) => Ok(()),
+            (kind, endpoint) => Err(ProviderError::InvalidConfig(format!(
+                "Provider kind {:?} is incompatible with endpoint variant {:?}",
+                kind, endpoint
+            ))),
+        }
+    }
+
+    fn validate_temperature(&self) -> Result<(), ProviderError> {
+        if self.temperature.is_nan() {
+            return Err(ProviderError::InvalidConfig(
+                "Temperature must be a valid number".to_string(),
+            ));
+        }
+        if self.temperature < 0.0 || self.temperature > 2.0 {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Temperature must be between 0.0 and 2.0, got {}",
+                self.temperature
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_url_scheme(&self) -> Result<(), ProviderError> {
+        let scheme = match &self.endpoint {
+            ProviderEndpoint::OpenAi { base_url } => base_url.scheme(),
+            ProviderEndpoint::Groq { base_url } => base_url.scheme(),
+            ProviderEndpoint::AzureOpenAi { endpoint, .. } => {
+                endpoint.endpoint.split("://").next().unwrap_or("https")
+            }
+        };
+
+        if scheme != "https" {
+            return Err(ProviderError::InvalidConfig(format!(
+                "URL scheme must be HTTPS for security, got {}",
+                scheme
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 /// Provider-specific endpoint configuration

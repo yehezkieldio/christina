@@ -145,9 +145,12 @@ impl CompletionError {
             CompletionError::RateLimited
         } else if msg_lower.contains("timeout") || msg_lower.contains("timed out") {
             CompletionError::Timeout
-        } else if msg_lower.contains("5")
-            || msg_lower.contains("server error")
+        } else if msg_lower.contains("server error")
             || msg_lower.contains("overloaded")
+            || msg_lower.contains("internal error")
+            || msg_lower.contains("bad gateway")
+            || msg_lower.contains("gateway timeout")
+            || msg_lower.contains("service unavailable")
         {
             CompletionError::ServerError(msg.to_string())
         } else if msg_lower.contains("network")

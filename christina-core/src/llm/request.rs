@@ -1,3 +1,4 @@
+use crate::error::ProviderError;
 use crate::ids::GenerationId;
 use crate::types::TokenCount;
 
@@ -55,6 +56,37 @@ pub struct LlmRequest {
     pub temperature: f32,
     /// Optional system prompt to prepend to messages
     pub system_prompt: Option<String>,
+}
+
+impl LlmRequest {
+    pub fn validate(&self) -> Result<(), ProviderError> {
+        if self.messages.is_empty() {
+            return Err(ProviderError::InvalidConfig(
+                "LlmRequest must contain at least one message".to_string(),
+            ));
+        }
+
+        if self.temperature.is_nan() {
+            return Err(ProviderError::InvalidConfig(
+                "Temperature must be a valid number".to_string(),
+            ));
+        }
+
+        if self.temperature < 0.0 || self.temperature > 2.0 {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Temperature must be between 0.0 and 2.0, got {}",
+                self.temperature
+            )));
+        }
+
+        if self.max_tokens.get() == 0 {
+            return Err(ProviderError::InvalidConfig(
+                "max_tokens must be greater than 0".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 /// Response from an LLM containing generated content
