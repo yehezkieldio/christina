@@ -41,3 +41,71 @@ impl Default for ConfigFile {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_values() {
+        let config = ConfigFile::default();
+
+        assert_eq!(config.active_profile, None);
+        assert!(config.profiles.is_empty());
+        assert_eq!(config.commit_message_max_length, None);
+        assert!(!config.include_file_diffs);
+        assert_eq!(config.ignore_files.len(), 5);
+    }
+
+    #[test]
+    fn test_serde_roundtrip() {
+        let config = ConfigFile {
+            active_profile: Some("default".to_string()),
+            commit_message_max_length: Some(100),
+            include_file_diffs: true,
+            ..ConfigFile::default()
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: ConfigFile = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.active_profile, config.active_profile);
+        assert_eq!(
+            deserialized.commit_message_max_length,
+            config.commit_message_max_length
+        );
+        assert_eq!(deserialized.include_file_diffs, config.include_file_diffs);
+        assert_eq!(deserialized.ignore_files, config.ignore_files);
+    }
+
+    #[test]
+    fn test_optional_fields() {
+        let config = ConfigFile {
+            active_profile: None,
+            profiles: HashMap::new(),
+            commit_message_max_length: None,
+            ignore_files: vec![],
+            include_file_diffs: false,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: ConfigFile = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.active_profile, None);
+        assert_eq!(deserialized.commit_message_max_length, None);
+    }
+
+    #[test]
+    fn test_ignore_files_default() {
+        let config = ConfigFile::default();
+
+        assert!(config.ignore_files.contains(&"Cargo.lock".to_string()));
+        assert!(config
+            .ignore_files
+            .contains(&"package-lock.json".to_string()));
+        assert!(config.ignore_files.contains(&"yarn.lock".to_string()));
+        assert!(config.ignore_files.contains(&"pnpm-lock.yaml".to_string()));
+        assert!(config.ignore_files.contains(&"*.lock".to_string()));
+    }
+}

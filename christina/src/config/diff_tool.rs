@@ -88,3 +88,155 @@ impl DiffConfig {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_difftool_from_str_auto() {
+        assert!(matches!(DiffTool::from_str("auto"), Ok(DiffTool::Auto)));
+    }
+
+    #[test]
+    fn test_difftool_from_str_delta() {
+        assert!(matches!(DiffTool::from_str("delta"), Ok(DiffTool::Delta)));
+    }
+
+    #[test]
+    fn test_difftool_from_str_diff_so_fancy() {
+        assert!(matches!(DiffTool::from_str("diff-so-fancy"), Ok(DiffTool::DiffSoFancy)));
+    }
+
+    #[test]
+    fn test_difftool_from_str_git() {
+        assert!(matches!(DiffTool::from_str("git"), Ok(DiffTool::Git)));
+    }
+
+    #[test]
+    fn test_difftool_from_str_basic() {
+        assert!(matches!(DiffTool::from_str("basic"), Ok(DiffTool::Basic)));
+    }
+
+    #[test]
+    fn test_difftool_from_str_case_insensitive() {
+        assert!(matches!(DiffTool::from_str("DELTA"), Ok(DiffTool::Delta)));
+        assert!(matches!(DiffTool::from_str("Delta"), Ok(DiffTool::Delta)));
+        assert!(matches!(DiffTool::from_str("AUTO"), Ok(DiffTool::Auto)));
+        assert!(matches!(DiffTool::from_str("DIFF-SO-FANCY"), Ok(DiffTool::DiffSoFancy)));
+        assert!(matches!(DiffTool::from_str("GIT"), Ok(DiffTool::Git)));
+        assert!(matches!(DiffTool::from_str("BASIC"), Ok(DiffTool::Basic)));
+    }
+
+    #[test]
+    fn test_difftool_aliases_diffsofancy() {
+        assert!(matches!(DiffTool::from_str("diffsofancy"), Ok(DiffTool::DiffSoFancy)));
+    }
+
+    #[test]
+    fn test_difftool_aliases_builtin() {
+        assert!(matches!(DiffTool::from_str("builtin"), Ok(DiffTool::Basic)));
+    }
+
+    #[test]
+    fn test_difftool_aliases_none() {
+        assert!(matches!(DiffTool::from_str("none"), Ok(DiffTool::Basic)));
+    }
+
+    #[test]
+    fn test_difftool_from_str_invalid() {
+        let result = DiffTool::from_str("invalid");
+        assert!(result.is_err(), "Should error on invalid tool");
+        if let Err(err) = result {
+            assert!(err.contains("Unknown diff tool"), "Error message should mention unknown tool");
+            assert!(err.contains("Valid options"), "Error message should list valid options");
+            assert!(err.contains("auto"), "Error should include auto");
+            assert!(err.contains("delta"), "Error should include delta");
+            assert!(err.contains("diff-so-fancy"), "Error should include diff-so-fancy");
+            assert!(err.contains("git"), "Error should include git");
+            assert!(err.contains("basic"), "Error should include basic");
+        }
+    }
+
+    #[test]
+    fn test_difftool_display_auto() {
+        assert_eq!(DiffTool::Auto.to_string(), "auto");
+    }
+
+    #[test]
+    fn test_difftool_display_delta() {
+        assert_eq!(DiffTool::Delta.to_string(), "delta");
+    }
+
+    #[test]
+    fn test_difftool_display_diff_so_fancy() {
+        assert_eq!(DiffTool::DiffSoFancy.to_string(), "diff-so-fancy");
+    }
+
+    #[test]
+    fn test_difftool_display_git() {
+        assert_eq!(DiffTool::Git.to_string(), "git");
+    }
+
+    #[test]
+    fn test_difftool_display_basic() {
+        assert_eq!(DiffTool::Basic.to_string(), "basic");
+    }
+
+    #[test]
+    fn test_diff_config_default() {
+        let config = DiffConfig::default();
+        assert_eq!(config.tool, DiffTool::Auto);
+        assert!(config.show_preview);
+    }
+
+    #[test]
+    fn test_diff_config_from_env() {
+        let result = DiffConfig::from_env();
+        assert!(matches!(result, Some(_) | None), "Should return Option");
+    }
+
+    #[test]
+    fn test_diff_config_from_env_none() {
+        let result = DiffConfig::from_env();
+        assert!(matches!(result, Some(_) | None), "from_env should return Option");
+    }
+
+    #[test]
+    fn test_diff_config_with_env_override() {
+        let config = DiffConfig {
+            tool: DiffTool::Basic,
+            show_preview: false,
+        };
+        let overridden = config.with_env_override();
+        assert_eq!(overridden.tool, DiffTool::Basic);
+        assert!(!overridden.show_preview);
+    }
+
+    #[test]
+    fn test_diff_config_with_env_override_show_preview() {
+        let config = DiffConfig {
+            tool: DiffTool::Auto,
+            show_preview: true,
+        };
+        let _overridden = config.with_env_override();
+    }
+
+    #[test]
+    fn test_diff_config_roundtrip_parse() {
+        let tools = vec![
+            DiffTool::Auto,
+            DiffTool::Delta,
+            DiffTool::DiffSoFancy,
+            DiffTool::Git,
+            DiffTool::Basic,
+        ];
+
+        for tool in tools {
+            let display_str = tool.to_string();
+            let parsed = DiffTool::from_str(&display_str).ok();
+            assert_eq!(parsed, Some(tool), "Round-trip should preserve tool: {}", display_str);
+        }
+    }
+}

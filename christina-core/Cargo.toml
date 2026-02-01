@@ -11,13 +11,20 @@ git2 = { workspace = true, optional = true }
 keyring = { version = "3", optional = true }
 regex = { workspace = true }
 serde = { workspace = true }
+tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 
+[dev-dependencies]
+git2 = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
 [features]
 default = ["keyring-support"]
-git2-support = ["git2"]
+git2-support = ["dep:git2"]
 keyring-support = ["keyring"]
+test-helpers = ["dep:tempfile", "dep:git2"]
 
 [lints]
 workspace = true

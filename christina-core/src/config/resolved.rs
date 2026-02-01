@@ -52,3 +52,101 @@ impl ResolvedConfig {
         self.profiles.get(name)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::SecretString,
+        profile::ProviderProfile,
+        types::{ModelName, ProviderKind},
+    };
+
+    #[test]
+    fn test_get_active_profile() {
+        let mut config = ResolvedConfig::default();
+        let profile = ProviderProfile {
+            name: "test".to_string(),
+            provider: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            api_url: None,
+            api_key: crate::config::Secret::Value(SecretString::new("key".to_string())),
+            max_input_tokens: crate::types::TokenCount::new_saturating(128000),
+            max_output_tokens: crate::types::TokenCount::new_saturating(2048),
+            azure_api_version: None,
+            azure_deployment_id: None,
+            temperature: None,
+        };
+
+        config.profiles.insert("test".to_string(), profile.clone());
+        config.active_profile = Some("test".to_string());
+
+        let active = config.get_active_profile();
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().name, "test");
+    }
+
+    #[test]
+    fn test_get_active_profile_missing() {
+        let config = ResolvedConfig::default();
+
+        let active = config.get_active_profile();
+        assert!(active.is_none());
+    }
+
+    #[test]
+    fn test_get_active_profile_not_found() {
+        let config = ResolvedConfig {
+            active_profile: Some("nonexistent".to_string()),
+            ..ResolvedConfig::default()
+        };
+
+        let active = config.get_active_profile();
+        assert!(active.is_none());
+    }
+
+    #[test]
+    fn test_get_profile() {
+        let mut config = ResolvedConfig::default();
+        let profile = ProviderProfile {
+            name: "myprofile".to_string(),
+            provider: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            api_url: None,
+            api_key: crate::config::Secret::Value(SecretString::new("key".to_string())),
+            max_input_tokens: crate::types::TokenCount::new_saturating(128000),
+            max_output_tokens: crate::types::TokenCount::new_saturating(2048),
+            azure_api_version: None,
+            azure_deployment_id: None,
+            temperature: None,
+        };
+
+        config
+            .profiles
+            .insert("myprofile".to_string(), profile.clone());
+
+        let found = config.get_profile("myprofile");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "myprofile");
+
+        let not_found = config.get_profile("other");
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_default_values() {
+        let config = ResolvedConfig::default();
+
+        assert_eq!(config.active_profile, None);
+        assert!(config.profiles.is_empty());
+        assert_eq!(config.commit_message_max_length, 72);
+        assert!(!config.include_file_diffs);
+        assert_eq!(config.ignore_files.len(), 5);
+
+        assert!(config.ignore_files.contains(&"Cargo.lock".to_string()));
+        assert!(config
+            .ignore_files
+            .contains(&"package-lock.json".to_string()));
+    }
+}

@@ -476,7 +476,10 @@ mod tests {
             reason: "test reason",
         };
         let msg = format!("{}", err);
-        assert_eq!(msg, "Invalid transition from Dashboard to Review: test reason");
+        assert_eq!(
+            msg,
+            "Invalid transition from Dashboard to Review: test reason"
+        );
     }
 
     #[test]

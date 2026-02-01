@@ -9,20 +9,26 @@ use crate::tui::{
 /// Handle config commands - routes between CLI and TUI based on subcommand.
 pub fn handle_config_command(command: ConfigCommands) -> Result<()> {
     match command {
-        ConfigCommands::Get { key } => handle_get(&key),
-        ConfigCommands::Set { key, value } => handle_set(&key, &value),
-        ConfigCommands::List => handle_list(),
-        ConfigCommands::Path => {
-            handle_path();
+        ConfigCommands::Get { key } => {
+            let config = Config::load()?;
+            handle_get_with_config(&config, &key)
+        }
+        ConfigCommands::Set { key, value } => {
+            let mut config = Config::load()?;
+            handle_set_with_config(&mut config, &key, &value)?;
+            config.save_to_global()
+        }
+        ConfigCommands::List => {
+            let config = Config::load()?;
+            handle_list_with_config(&config);
             Ok(())
         }
+        ConfigCommands::Path => handle_path(),
         ConfigCommands::Tui => handle_tui(),
     }
 }
 
-fn handle_get(key: &str) -> Result<()> {
-    let config = Config::load()?;
-
+fn handle_get_with_config(config: &Config, key: &str) -> Result<()> {
     match config.get(key) {
         Some(value) => {
             if key.contains("api_key") || key.contains("key") {
@@ -30,30 +36,21 @@ fn handle_get(key: &str) -> Result<()> {
             } else {
                 println!("{}: {}", key, value);
             }
+            Ok(())
         }
         None => {
-            eprintln!("Error: Unknown configuration key '{}'", key);
-            std::process::exit(1);
+            anyhow::bail!("Unknown configuration key '{}'", key);
         }
     }
-
-    Ok(())
 }
 
-fn handle_set(key: &str, value: &str) -> Result<()> {
-    let mut config = Config::load()?;
-
+fn handle_set_with_config(config: &mut Config, key: &str, value: &str) -> Result<()> {
     config.set(key, value)?;
-    config.save_to_global()?;
-
     println!("Set {} = {}", key, value);
-
     Ok(())
 }
 
-fn handle_list() -> Result<()> {
-    let config = Config::load()?;
-
+fn handle_list_with_config(config: &Config) {
     println!("Configuration values:");
     println!("  max_input_tokens: {}", config.max_input_tokens.get());
     println!("  max_output_tokens: {}", config.max_output_tokens.get());
@@ -134,16 +131,16 @@ fn handle_list() -> Result<()> {
             .cloned()
             .unwrap_or_else(|| "<none>".to_string())
     );
-
-    Ok(())
 }
 
-fn handle_path() {
+fn handle_path() -> Result<()> {
     match Config::global_config_path() {
-        Some(path) => println!("{}", path.display()),
+        Some(path) => {
+            println!("{}", path.display());
+            Ok(())
+        }
         None => {
-            eprintln!("Error: Could not determine config directory");
-            std::process::exit(1);
+            anyhow::bail!("Could not determine config directory");
         }
     }
 }
@@ -195,4 +192,123 @@ fn manage_profiles(config: &Config) -> Result<()> {
     };
 
     run_profile_tui(options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use christina_core::types::ProviderKind;
+
+    fn create_test_config() -> Config {
+        Config {
+            model: "gpt-4".into(),
+            model_provider: ProviderKind::OpenAI,
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_handle_get_existing_key() {
+        let config = create_test_config();
+        let result = handle_get_with_config(&config, "model");
+        assert!(result.is_ok(), "Should successfully get existing key");
+    }
+
+    #[test]
+    fn test_handle_get_api_key_hidden() {
+        let config = create_test_config();
+        let result = handle_get_with_config(&config, "api_key");
+        assert!(result.is_ok(), "Should successfully get api_key");
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn test_handle_get_missing_key() {
+        let config = create_test_config();
+        let result = handle_get_with_config(&config, "nonexistent_key");
+        assert!(result.is_err(), "Should error on missing key");
+        let error = result.expect_err("Expected error for missing key");
+        assert!(
+            error.to_string().contains("Unknown configuration key"),
+            "Error message should mention unknown key"
+        );
+    }
+
+    #[test]
+    fn test_handle_set_updates_config() {
+        let mut config = create_test_config();
+        let original_model = config.model.clone();
+
+        let result = handle_set_with_config(&mut config, "model", "gpt-3.5-turbo");
+        assert!(result.is_ok(), "Should successfully set config value");
+
+        assert_ne!(config.model, original_model, "Model should be updated");
+        assert_eq!(
+            config.model.as_str(),
+            "gpt-3.5-turbo",
+            "Model should be set to new value"
+        );
+    }
+
+    #[test]
+    fn test_handle_set_invalid_key() {
+        let mut config = create_test_config();
+        let result = handle_set_with_config(&mut config, "invalid_key", "value");
+        assert!(result.is_err(), "Should error on invalid key");
+    }
+
+    #[test]
+    fn test_handle_list_shows_config() {
+        let config = create_test_config();
+        handle_list_with_config(&config);
+    }
+
+    #[test]
+    fn test_handle_path_returns_path() {
+        let result = handle_path();
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                assert!(
+                    e.to_string()
+                        .contains("Could not determine config directory"),
+                    "Error should be about config directory"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_handle_get_key_with_key_in_name() {
+        let config = create_test_config();
+        let result = handle_get_with_config(&config, "api_key");
+        assert!(result.is_ok(), "Should handle key containing 'key'");
+    }
+
+    #[test]
+    fn test_handle_set_multiple_times() {
+        let mut config = create_test_config();
+
+        let result1 = handle_set_with_config(&mut config, "model", "gpt-3.5-turbo");
+        assert!(result1.is_ok());
+        assert_eq!(config.model.as_str(), "gpt-3.5-turbo");
+
+        let result2 = handle_set_with_config(&mut config, "model", "gpt-4");
+        assert!(result2.is_ok());
+        assert_eq!(config.model.as_str(), "gpt-4");
+    }
+
+    #[test]
+    fn test_handle_set_different_types() {
+        let mut config = create_test_config();
+
+        let result = handle_set_with_config(&mut config, "model_provider", "azure");
+        assert!(result.is_ok());
+        assert_eq!(config.model_provider, ProviderKind::Azure);
+
+        let result = handle_set_with_config(&mut config, "max_input_tokens", "2000");
+        assert!(result.is_ok());
+        assert_eq!(config.max_input_tokens.get(), 2000);
+    }
 }

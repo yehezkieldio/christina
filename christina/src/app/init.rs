@@ -212,3 +212,89 @@ pub fn initialize_app() -> InitResult {
         warnings,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use christina_core::GitFile;
+
+    #[test]
+    fn test_empty_repo() {
+        let staged = vec![];
+        let unstaged = vec![];
+        let (state, warnings) = determine_initial_state(&staged, &unstaged);
+        assert!(matches!(state, AppState::StagingSelection));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_staged_only() {
+        let staged = vec![GitFile::new(
+            "test.rs".to_string(),
+            "M".to_string(),
+            "diff content".to_string(),
+        )];
+        let unstaged = vec![];
+        let (state, warnings) = determine_initial_state(&staged, &unstaged);
+        assert!(matches!(state, AppState::Dashboard));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_unstaged_only() {
+        let staged = vec![];
+        let unstaged = vec![GitFile::new(
+            "test.rs".to_string(),
+            "M".to_string(),
+            "diff content".to_string(),
+        )];
+        let (state, warnings) = determine_initial_state(&staged, &unstaged);
+        assert!(matches!(state, AppState::StagingSelection));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_staged_binary_only() {
+        let staged = vec![GitFile::new(
+            "image.png".to_string(),
+            "M".to_string(),
+            "Binary files a/image.png and b/image.png differ".to_string(),
+        )];
+        let unstaged = vec![];
+        let (state, warnings) = determine_initial_state(&staged, &unstaged);
+        assert!(matches!(state, AppState::StagingSelection));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("binary"));
+    }
+
+    #[test]
+    fn test_mixed_staged_unstaged() {
+        let staged = vec![GitFile::new(
+            "test.rs".to_string(),
+            "M".to_string(),
+            "diff content".to_string(),
+        )];
+        let unstaged = vec![GitFile::new(
+            "other.rs".to_string(),
+            "M".to_string(),
+            "other diff".to_string(),
+        )];
+        let (state, warnings) = determine_initial_state(&staged, &unstaged);
+        assert!(matches!(state, AppState::StagingSelection));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_staged_empty_diff() {
+        let staged = vec![GitFile::new(
+            "test.rs".to_string(),
+            "M".to_string(),
+            "".to_string(),
+        )];
+        let unstaged = vec![];
+        let (state, warnings) = determine_initial_state(&staged, &unstaged);
+        assert!(matches!(state, AppState::StagingSelection));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("no diff content"));
+    }
+}

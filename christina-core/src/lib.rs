@@ -6,6 +6,8 @@ pub mod llm;
 pub mod profile;
 pub mod prompt;
 pub mod state;
+#[cfg(any(test, feature = "test-helpers"))]
+pub mod test_helpers;
 pub mod tokenizer;
 pub mod types;
 
