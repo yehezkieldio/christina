@@ -3,9 +3,18 @@ use anyhow::{Context, Result};
 use crate::cli::ProfileCommands;
 use crate::config::Config;
 use crate::tui::{run_profile_tui, ProfileTuiOptions};
-use christina_core::config::Secret;
+use christina_core::config::{Secret, SecretRef};
 use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};
+
+fn parse_secret_input(key: &str) -> Secret<String> {
+    match SecretRef::parse(key) {
+        Ok(SecretRef::EnvVar(name)) => Secret::EnvVar(name),
+        Ok(SecretRef::Keyring(key_name)) => Secret::Keyring(key_name),
+        Ok(SecretRef::Literal(value)) => Secret::Value(value),
+        Err(_) => Secret::Value(key.to_string()),
+    }
+}
 
 /// Handle profile commands - routes between CLI and TUI based on subcommand.
 pub fn handle_profile_command(command: ProfileCommands) -> Result<()> {
@@ -177,7 +186,7 @@ fn handle_create(
 
     // Apply optional fields
     if let Some(key) = api_key {
-        profile.api_key = Secret::Value(key);
+        profile.api_key = parse_secret_input(&key);
     }
 
     if let Some(url) = api_url {
@@ -240,7 +249,7 @@ fn handle_edit(
     }
 
     if let Some(key) = api_key {
-        profile.api_key = Secret::Value(key);
+        profile.api_key = parse_secret_input(&key);
     }
 
     if let Some(url) = api_url {

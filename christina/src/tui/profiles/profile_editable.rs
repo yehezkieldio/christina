@@ -133,6 +133,42 @@ impl Editable for ProviderProfile {
     }
 
     fn validate(&self) -> Result<()> {
-        self.validate()
+        if self.name.trim().is_empty() {
+            return Err(anyhow!("Profile name cannot be empty"));
+        }
+
+        if self.model.as_str().trim().is_empty() {
+            return Err(anyhow!("Model cannot be empty"));
+        }
+
+        let input_tokens = self.max_input_tokens.get();
+        if input_tokens == 0 || input_tokens > 128_000 {
+            return Err(anyhow!(
+                "Max input tokens must be between 1 and 128000, got {}",
+                input_tokens
+            ));
+        }
+
+        let output_tokens = self.max_output_tokens.get();
+        if output_tokens == 0 || output_tokens > 4096 {
+            return Err(anyhow!(
+                "Max output tokens must be between 1 and 4096, got {}",
+                output_tokens
+            ));
+        }
+
+        if self.provider == ProviderKind::Azure
+            && self
+                .azure_deployment_id
+                .as_ref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true)
+        {
+            return Err(anyhow!(
+                "Azure deployment ID is required when using Azure provider"
+            ));
+        }
+
+        Ok(())
     }
 }

@@ -133,8 +133,8 @@ impl FormState {
         if self.mode == FormMode::Editing && self.edit_cursor < self.edit_buffer.len() {
             self.edit_cursor = self.edit_buffer[self.edit_cursor..]
                 .char_indices()
-                .nth(1)
-                .map(|(i, _)| self.edit_cursor + i)
+                .next()
+                .map(|(i, c)| self.edit_cursor + i + c.len_utf8())
                 .unwrap_or(self.edit_buffer.len());
         }
     }
