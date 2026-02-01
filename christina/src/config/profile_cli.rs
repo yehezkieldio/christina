@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 
 use crate::cli::ProfileCommands;
 use crate::config::Config;
-use crate::tui::{run_profile_tui, ProfileTuiOptions};
+use crate::tui::{ProfileTuiOptions, run_profile_tui};
 use christina_core::config::Secret;
 use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};

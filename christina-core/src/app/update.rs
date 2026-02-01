@@ -51,35 +51,38 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
 
         Msg::GenerationCompleted { id, message } => {
             if let GenerationStatus::Running { id: current_id } = model.generation
-                && current_id == id {
-                    model.generation = GenerationStatus::Completed { id, message };
-                    model.route = Route::Review;
-                }
+                && current_id == id
+            {
+                model.generation = GenerationStatus::Completed { id, message };
+                model.route = Route::Review;
+            }
             vec![]
         }
 
         Msg::GenerationFailed { id, error } => {
             if let GenerationStatus::Running { id: current_id } = model.generation
-                && current_id == id {
-                    model.generation = GenerationStatus::Failed {
-                        id,
-                        error: error.clone(),
-                    };
-                    model.route = Route::Error;
-                    return vec![Cmd::ShowToast {
-                        message: error,
-                        severity: ToastSeverity::Error,
-                    }];
-                }
+                && current_id == id
+            {
+                model.generation = GenerationStatus::Failed {
+                    id,
+                    error: error.clone(),
+                };
+                model.route = Route::Error;
+                return vec![Cmd::ShowToast {
+                    message: error,
+                    severity: ToastSeverity::Error,
+                }];
+            }
             vec![]
         }
 
         Msg::GenerationCancelled { id } => {
             if let GenerationStatus::Running { id: current_id } = model.generation
-                && current_id == id {
-                    model.generation = GenerationStatus::Idle;
-                    model.route = Route::Dashboard;
-                }
+                && current_id == id
+            {
+                model.generation = GenerationStatus::Idle;
+                model.route = Route::Dashboard;
+            }
             vec![]
         }
 

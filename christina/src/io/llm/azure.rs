@@ -38,9 +38,12 @@ pub async fn execute_azure_request(
         .await
         .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
 
-    let content = response.text().ok_or_else(|| {
-        CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
-    })?.to_string();
+    let content = response
+        .text()
+        .ok_or_else(|| {
+            CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
+        })?
+        .to_string();
 
     Ok(LlmResponse {
         content,

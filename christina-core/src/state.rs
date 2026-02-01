@@ -116,137 +116,154 @@ mod tests {
     #[test]
     fn transition_staging_selection_to_dashboard() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::StagingSelection, &AppState::Dashboard)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::StagingSelection, &AppState::Dashboard)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_staging_selection_to_error() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::StagingSelection, &AppState::Error)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::StagingSelection, &AppState::Error)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_dashboard_to_staging_selection() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Dashboard, &AppState::StagingSelection)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Dashboard, &AppState::StagingSelection)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_dashboard_to_generating() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Dashboard, &AppState::Generating)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Dashboard, &AppState::Generating)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_dashboard_to_error() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Dashboard, &AppState::Error)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Dashboard, &AppState::Error)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_generating_to_review() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Generating, &AppState::Review)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Generating, &AppState::Review)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_generating_to_error() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Generating, &AppState::Error)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Generating, &AppState::Error)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_generating_to_dashboard() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Generating, &AppState::Dashboard)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Generating, &AppState::Dashboard)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_review_to_editing() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Review, &AppState::Editing)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Review, &AppState::Editing)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_review_to_dashboard() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Review, &AppState::Dashboard)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Review, &AppState::Dashboard)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_review_to_generating() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Review, &AppState::Generating)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Review, &AppState::Generating)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_review_to_error() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Review, &AppState::Error)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Review, &AppState::Error)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_editing_to_review() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Editing, &AppState::Review)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Editing, &AppState::Review)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_editing_to_dashboard() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Editing, &AppState::Dashboard)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Editing, &AppState::Dashboard)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_editing_to_error() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Editing, &AppState::Error)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Editing, &AppState::Error)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_error_to_dashboard() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Error, &AppState::Dashboard)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Error, &AppState::Dashboard)
+                .is_ok()
+        );
     }
 
     #[test]
     fn transition_error_to_staging_selection() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Error, &AppState::StagingSelection)
-            .is_ok());
+        assert!(
+            sm.can_transition(&AppState::Error, &AppState::StagingSelection)
+                .is_ok()
+        );
     }
 
     // ==================== Invalid Transition Tests (15 total) ====================
@@ -254,121 +271,136 @@ mod tests {
     #[test]
     fn invalid_transition_staging_selection_to_generating() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::StagingSelection, &AppState::Generating)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::StagingSelection, &AppState::Generating)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_staging_selection_to_review() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::StagingSelection, &AppState::Review)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::StagingSelection, &AppState::Review)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_staging_selection_to_editing() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::StagingSelection, &AppState::Editing)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::StagingSelection, &AppState::Editing)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_dashboard_to_review() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Dashboard, &AppState::Review)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Dashboard, &AppState::Review)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_dashboard_to_editing() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Dashboard, &AppState::Editing)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Dashboard, &AppState::Editing)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_generating_to_staging_selection() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Generating, &AppState::StagingSelection)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Generating, &AppState::StagingSelection)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_generating_to_editing() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Generating, &AppState::Editing)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Generating, &AppState::Editing)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_review_to_staging_selection() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Review, &AppState::StagingSelection)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Review, &AppState::StagingSelection)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_editing_to_staging_selection() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Editing, &AppState::StagingSelection)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Editing, &AppState::StagingSelection)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_editing_to_generating() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Editing, &AppState::Generating)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Editing, &AppState::Generating)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_error_to_generating() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Error, &AppState::Generating)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Error, &AppState::Generating)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_error_to_review() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Error, &AppState::Review)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Error, &AppState::Review)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_error_to_editing() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Error, &AppState::Editing)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Error, &AppState::Editing)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_same_state() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Dashboard, &AppState::Dashboard)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Dashboard, &AppState::Dashboard)
+                .is_err()
+        );
     }
 
     #[test]
     fn invalid_transition_generating_to_generating() {
         let sm = StateMachine::new();
-        assert!(sm
-            .can_transition(&AppState::Generating, &AppState::Generating)
-            .is_err());
+        assert!(
+            sm.can_transition(&AppState::Generating, &AppState::Generating)
+                .is_err()
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
-use crate::types::{CommitMessage, FilePath};
 use crate::AppState;
+use crate::types::{CommitMessage, FilePath};
 
 /// Commands represent side effect requests sent FROM the update function.
 ///

@@ -30,7 +30,10 @@ impl GenerationResult {
     }
 }
 
-#[expect(dead_code, reason = "Will be used when LLM generation is reimplemented")]
+#[expect(
+    dead_code,
+    reason = "Will be used when LLM generation is reimplemented"
+)]
 fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),
@@ -58,7 +61,7 @@ pub async fn generate_commit_message_with_progress(
 ) -> Result<GenerationResult> {
     // Stub implementation - christina_llm crate has been removed
     // This function needs to be reimplemented with the new architecture
-    
+
     let _ = progress_tx
         .send(Event::GenerationProgress {
             stage: "Placeholder: AI integration needs to be reimplemented".to_string(),
@@ -78,6 +81,8 @@ pub async fn generate_commit_message_with_progress(
 
     Ok(GenerationResult {
         message,
-        warnings: vec!["Stub implementation - actual AI integration not yet reimplemented".to_string()],
+        warnings: vec![
+            "Stub implementation - actual AI integration not yet reimplemented".to_string(),
+        ],
     })
 }

@@ -1,7 +1,7 @@
+use crate::AppState;
 use crate::git::GitFile;
 use crate::ids::GenerationId;
 use crate::types::{CommitMessage, FilePath};
-use crate::AppState;
 
 /// Messages represent I/O results or user events fed INTO the update function.
 ///

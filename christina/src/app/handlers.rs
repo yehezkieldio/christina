@@ -56,7 +56,10 @@ impl App {
             .find(|f| f.path == path)
         {
             // Stub - stage_files not yet implemented
-            self.data.base.toasts.error("Stage functionality not yet implemented".to_string());
+            self.data
+                .base
+                .toasts
+                .error("Stage functionality not yet implemented".to_string());
         } else {
             self.data
                 .base
@@ -73,7 +76,10 @@ impl App {
             return;
         };
 
-        self.data.base.toasts.error("Stage functionality not yet implemented".to_string());
+        self.data
+            .base
+            .toasts
+            .error("Stage functionality not yet implemented".to_string());
     }
 
     fn handle_unstage_file(&mut self, path: FilePath) {

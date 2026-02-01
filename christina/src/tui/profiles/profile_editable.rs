@@ -1,5 +1,5 @@
 use crate::tui::form::editable::{Editable, FieldDef, FieldType};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use christina_core::{profile::ProviderProfile, types::ProviderKind};
 
 impl Editable for ProviderProfile {

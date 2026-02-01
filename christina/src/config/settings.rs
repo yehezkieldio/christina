@@ -318,7 +318,9 @@ impl Config {
                     "model_api_url" => profile.api_url = Some(Url::parse(v)?),
                     "azure_api_version" => profile.azure_api_version = Some(v.to_string()),
                     "azure_deployment_id" => profile.azure_deployment_id = Some(v.to_string()),
-                     "api_key" | "model_api_key" => profile.api_key = christina_core::config::Secret::Value(v.to_string()),
+                    "api_key" | "model_api_key" => {
+                        profile.api_key = christina_core::config::Secret::Value(v.to_string())
+                    }
                     // Note: ignore_files are not in profile
                     _ => {}
                 }
@@ -552,7 +554,11 @@ impl crate::tui::form::editable::Editable for Config {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::field_reassign_with_default)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::field_reassign_with_default
+)]
 mod tests {
     use super::*;
 
@@ -701,7 +707,10 @@ mod tests {
             .set("model_api_url", "https://api.example.com/v1")
             .expect("should set valid URL");
         assert_eq!(
-            config.model_api_url.expect("model_api_url should be set").as_str(),
+            config
+                .model_api_url
+                .expect("model_api_url should be set")
+                .as_str(),
             "https://api.example.com/v1"
         );
     }
@@ -1127,7 +1136,10 @@ mod tests {
         assert_eq!(profile.name, "openai-profile");
         assert_eq!(profile.provider, ProviderKind::OpenAI);
         assert_eq!(profile.model, ModelName::from("gpt-5.2"));
-        assert_eq!(profile.api_key, christina_core::config::Secret::Value("sk-openai-test".to_string()));
+        assert_eq!(
+            profile.api_key,
+            christina_core::config::Secret::Value("sk-openai-test".to_string())
+        );
         assert_eq!(profile.max_input_tokens.get(), 16384);
         assert_eq!(profile.max_output_tokens.get(), 2048);
     }

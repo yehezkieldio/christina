@@ -91,8 +91,8 @@ impl App {
 
         match git2::Repository::discover(".") {
             Ok(new_repo) => {
-                let staged = Vec::new();  // Stub
-                let unstaged = Vec::new();  // Stub
+                let staged = Vec::new(); // Stub
+                let unstaged = Vec::new(); // Stub
                 let branch = new_repo.head().ok().and_then(|h| {
                     let name = h.shorthand()?;
                     Some(CompactString::new(name))

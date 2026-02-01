@@ -2,8 +2,8 @@ use christina_core::error::CompletionError;
 use christina_core::types::{CommitMessage, TokenCount};
 use compact_str::CompactString;
 
-use crate::app::state::GenerationState;
 use crate::app::App;
+use crate::app::state::GenerationState;
 use crate::tui::handle_key;
 use christina_core::{AppState, ReviewAction};
 
