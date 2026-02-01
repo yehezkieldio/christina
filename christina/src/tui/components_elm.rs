@@ -121,7 +121,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                     app.data
                         .base
                         .toasts
-                        .error("Generated message is invalid".to_string());
+                        .warning("Generated message is invalid".to_string());
                     return;
                 }
             }
@@ -135,7 +135,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                     app.data
                         .base
                         .toasts
-                        .error("Generated message is invalid".to_string());
+                        .warning("Generated message is invalid".to_string());
                     return;
                 }
                 state.review_action = app.data.base.review_action;
@@ -237,7 +237,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     app.data
                         .base
                         .toasts
-                        .error("Generated message is invalid".to_string());
+                        .warning("Generated message is invalid".to_string());
                 }
             }
 
@@ -251,7 +251,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     app.data
                         .base
                         .toasts
-                        .error("Generated message is invalid".to_string());
+                        .warning("Generated message is invalid".to_string());
                     return;
                 }
                 state.review_action = app.data.base.review_action;

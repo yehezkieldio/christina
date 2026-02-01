@@ -316,13 +316,12 @@ mod tests {
         let msgs = state.update(StagingMsg::StageFiles);
 
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::StageFiles(files) => {
-                assert_eq!(files.len(), 2);
-                assert_eq!(files[0], FilePath::from("file1.txt"));
-                assert_eq!(files[1], FilePath::from("file3.txt"));
-            }
-            other => panic!("Expected StageFiles message, got {:?}", other),
+        if let AppMsg::StageFiles(files) = &msgs[0] {
+            assert_eq!(files.len(), 2);
+            assert_eq!(files[0], FilePath::from("file1.txt"));
+            assert_eq!(files[1], FilePath::from("file3.txt"));
+        } else {
+            panic!("Expected StageFiles message");
         }
     }
 
@@ -333,9 +332,10 @@ mod tests {
 
         let msgs = state.update(StagingMsg::StageFiles);
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::Navigate(s) => assert_eq!(*s, christina_core::AppState::Dashboard),
-            other => panic!("Expected Navigate to Dashboard, got {:?}", other),
+        if let AppMsg::Navigate(state) = &msgs[0] {
+            assert_eq!(*state, christina_core::AppState::Dashboard);
+        } else {
+            panic!("Expected Navigate to Dashboard");
         }
     }
 

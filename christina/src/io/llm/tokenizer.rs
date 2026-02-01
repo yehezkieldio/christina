@@ -4,16 +4,15 @@ use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
 use christina_core::{
-    Tokenizer,
     error::{TokenizerError, TokenizerResult},
     types::TokenCount,
+    Tokenizer,
 };
 use parking_lot::Mutex;
 use tiktoken_rs::CoreBPE;
 
 pub type Result<T> = TokenizerResult<T>;
 
-#[allow(dead_code)]
 #[cfg(test)]
 static TOKENIZER: OnceLock<TokenizerService> = OnceLock::new();
 
@@ -21,9 +20,8 @@ static TOKENIZER: OnceLock<TokenizerService> = OnceLock::new();
 ///
 /// This initializes the tokenizer on first call and returns a reference
 /// to the same instance on subsequent calls.
-#[allow(dead_code)]
 #[cfg(test)]
-pub fn get_tokenizer() -> Result<&'static TokenizerService> {
+pub(crate) fn get_tokenizer() -> Result<&'static TokenizerService> {
     match TOKENIZER.get() {
         Some(t) => Ok(t),
         None => {
@@ -190,8 +188,7 @@ impl TokenBudget {
         }
     }
 
-    #[allow(dead_code)]
-    #[cfg_attr(not(test), expect(dead_code, reason = "preset for external use"))]
+    #[cfg(test)]
     pub fn small() -> Self {
         Self {
             max_input: TokenCount::new_saturating(32_000),
@@ -201,7 +198,6 @@ impl TokenBudget {
         }
     }
 
-    #[allow(dead_code)]
     pub fn medium() -> Self {
         Self {
             max_input: TokenCount::new_saturating(128_000),
@@ -211,8 +207,7 @@ impl TokenBudget {
         }
     }
 
-    #[allow(dead_code)]
-    #[cfg_attr(not(test), expect(dead_code, reason = "preset for external use"))]
+    #[cfg(test)]
     pub fn large() -> Self {
         Self {
             max_input: TokenCount::new_saturating(256_000),
@@ -222,8 +217,7 @@ impl TokenBudget {
         }
     }
 
-    #[allow(dead_code)]
-    #[cfg_attr(not(test), expect(dead_code, reason = "preset for external use"))]
+    #[cfg(test)]
     pub fn massive() -> Self {
         Self {
             max_input: TokenCount::new_saturating(1_000_000),
@@ -290,6 +284,7 @@ impl Tokenizer for TokenizerService {
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
+    use super::get_tokenizer;
     use super::*;
 
     #[test]

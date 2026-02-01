@@ -328,7 +328,6 @@ impl Config {
             "max_partial_failure_rate" => Some(self.max_partial_failure_rate.to_string()),
             "prompt_failure_rate_threshold" => Some(self.prompt_failure_rate_threshold.to_string()),
             "model_temperature" => Some(self.model_temperature.to_string()),
-            "experimental_placeholder" => Some("-".to_string()),
             _ => None,
         }
     }
@@ -491,7 +490,6 @@ impl Config {
                 self.model_temperature = parsed.clamp(0.0, 2.0);
                 update_active_profile(key, value)?;
             }
-            "experimental_placeholder" => (),
             _ => anyhow::bail!("Unknown configuration key: {}", key),
         }
         Ok(())
@@ -571,7 +569,7 @@ impl ConfigTab {
         match self {
             ConfigTab::General => "Basic settings for the AI model and commit generation",
             ConfigTab::Advanced => "Fine-tune performance, concurrency, and failure handling",
-            ConfigTab::Experimental => "Unstable features that may change or be removed",
+            ConfigTab::Experimental => "No experimental settings available",
         }
     }
 
@@ -689,11 +687,7 @@ impl Config {
                         max: Some(1.0),
                     }),
             ],
-            ConfigTab::Experimental => vec![
-                FieldDef::new("experimental_placeholder", "[No Experimental Options]")
-                    .help("No experimental features are currently available. Check back in future updates.")
-                    .read_only(),
-            ],
+            ConfigTab::Experimental => Vec::new(),
         }
     }
 }

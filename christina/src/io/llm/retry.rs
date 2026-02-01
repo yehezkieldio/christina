@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "retry policy is defined here but wired into providers later"
-)]
-
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -61,6 +56,7 @@ impl RetryPolicy {
     }
 
     /// Calculate delay with a specific seed for deterministic jitter.
+    #[cfg(test)]
     pub fn calculate_delay_with_seed(&self, attempt: u32, seed: u64) -> Duration {
         let max_delay_ms = self
             .base_delay_ms

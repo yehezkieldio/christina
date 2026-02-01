@@ -695,9 +695,10 @@ mod tests {
         let msgs = state.update(DashboardMsg::UnstageSelected);
 
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::UnstageFile(path) => assert_eq!(path.as_str(), "file1.rs"),
-            other => panic!("Expected UnstageFile message, got {:?}", other),
+        if let AppMsg::UnstageFile(path) = &msgs[0] {
+            assert_eq!(path.as_str(), "file1.rs");
+        } else {
+            panic!("Expected UnstageFile message");
         }
     }
 

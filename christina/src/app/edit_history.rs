@@ -102,7 +102,6 @@ impl EditHistory {
         }
     }
 
-    #[allow(dead_code)]
     pub fn load() -> Option<Self> {
         let path = Self::history_path().ok()?;
         if !path.exists() {

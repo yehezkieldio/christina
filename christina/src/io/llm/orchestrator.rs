@@ -152,7 +152,7 @@ pub struct AIOrchestrator {
 }
 
 impl AIOrchestrator {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new(provider: Arc<Provider>) -> Self {
         Self::with_config(provider, MAX_CONCURRENT_REQUESTS, 0.10, 0.05)
     }
@@ -1153,7 +1153,7 @@ fn try_extract_valid_commit(
 }
 
 #[cfg(test)]
-#[allow(clippy::panic, clippy::unwrap_used)]
+#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use christina_core::git::DiffChunk;
@@ -1757,14 +1757,20 @@ This is not JSON at all, just plain text
         let themes = orchestrator
             .aggregate_sub_themes(&sub_themes)
             .await
-            .unwrap();
+            .expect("aggregation should succeed");
 
         assert_eq!(themes.len(), 2);
 
-        let auth_theme = themes.iter().find(|t| t.scope == "auth").unwrap();
+        let auth_theme = themes
+            .iter()
+            .find(|t| t.scope == "auth")
+            .expect("auth theme present");
         assert_eq!(auth_theme.file_count, 5);
 
-        let api_theme = themes.iter().find(|t| t.scope == "api").unwrap();
+        let api_theme = themes
+            .iter()
+            .find(|t| t.scope == "api")
+            .expect("api theme present");
         assert_eq!(api_theme.file_count, 1);
     }
 
@@ -1809,7 +1815,7 @@ This is not JSON at all, just plain text
         let themes = orchestrator
             .aggregate_sub_themes(&sub_themes)
             .await
-            .unwrap();
+            .expect("aggregation should succeed");
 
         assert_eq!(themes.len(), 3);
         assert_eq!(themes[0].file_count, 10);

@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
@@ -88,8 +88,24 @@ fn render_form(frame: &mut Frame, area: Rect, app: &ConfigApp) {
     let modified_suffix = if app.has_changes { " [modified]" } else { "" };
     let title = format!(" {} Settings{} ", app.current_tab.name(), modified_suffix);
 
-    let form = FormWidget::new(app.current_form_state(), &app.config, &title);
-    frame.render_widget(form, area);
+    if app.current_form_state().fields().is_empty() {
+        let placeholder = Paragraph::new(Line::from(vec![Span::styled(
+            "No experimental settings are available.",
+            Style::default().fg(SUBTEXT0).italic(),
+        )]))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .title(title)
+                .title_style(Style::default().fg(SUBTEXT0)),
+        );
+        frame.render_widget(placeholder, area);
+    } else {
+        let form = FormWidget::new(app.current_form_state(), &app.config, &title);
+        frame.render_widget(form, area);
+    }
 }
 
 fn render_footer(frame: &mut Frame, area: Rect, app: &ConfigApp) {

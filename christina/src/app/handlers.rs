@@ -18,7 +18,6 @@ impl App {
     /// This is the central dispatcher for side effects requested by Elm components.
     pub fn handle_app_msg(&mut self, msg: AppMsg) {
         match msg {
-            AppMsg::StageFile(path) => self.handle_stage_file(path),
             AppMsg::StageFiles(paths) => self.handle_stage_files(paths),
             AppMsg::UnstageFile(path) => self.handle_unstage_file(path),
             AppMsg::Navigate(state) => self.transition_to(state),
@@ -26,61 +25,19 @@ impl App {
             AppMsg::EditMessage(message) => self.handle_edit_message(message),
             AppMsg::EditRawMessage(message) => self.handle_edit_raw_message(message),
             AppMsg::RegenerateMessage => self.transition_to(AppState::Generating),
-            AppMsg::GenerateMessage => self.transition_to(AppState::Generating),
             AppMsg::CancelGeneration => self.handle_cancel_generation(),
-            AppMsg::RefreshDiff => self.refresh_git_files(),
             AppMsg::ShowToast(message, level) => self.handle_show_toast(message, level),
             AppMsg::SaveEditedMessage(message) => self.handle_save_edited_message(message),
             AppMsg::CancelEdit => self.transition_to(AppState::Review),
             AppMsg::RestoreTextArea(text, cursor) => self.handle_restore_textarea(text, cursor),
             AppMsg::SetUserContext(context) => self.handle_set_user_context(context),
             AppMsg::Quit => self.should_quit = true,
-            AppMsg::None => {}
-        }
-    }
-
-    fn handle_stage_file(&mut self, path: FilePath) {
-        let Some(ref repo) = self.app_context.repo else {
-            self.data.base.toasts.error(
-                "No git repository found. Run from inside a git-initialized directory.".to_string(),
-            );
-            return;
-        };
-
-        let found = self
-            .data
-            .base
-            .unstaged_files
-            .iter()
-            .find(|f| f.path == path)
-            .is_some();
-
-        if !found {
-            self.data
-                .base
-                .toasts
-                .error(format!("File {} not found in unstaged list", path));
-            return;
-        }
-
-        let path_str = path.as_str().to_string();
-        match crate::io::git::adapter::stage_files(repo, &[path_str]) {
-            Ok(()) => {
-                self.data.base.toasts.success(format!("Staged {}", path));
-                self.refresh_git_files();
-            }
-            Err(e) => {
-                self.data
-                    .base
-                    .toasts
-                    .error(format!("Failed to stage {}: {}", path, e));
-            }
         }
     }
 
     fn handle_stage_files(&mut self, paths: Vec<FilePath>) {
         let Some(ref repo) = self.app_context.repo else {
-            self.data.base.toasts.error(
+            self.data.base.toasts.warning(
                 "No git repository found. Run from inside a git-initialized directory.".to_string(),
             );
             return;
@@ -93,7 +50,7 @@ impl App {
                 self.data
                     .base
                     .toasts
-                    .success(format!("Staged {} files", paths.len()));
+                    .info(format!("Staged {} files", paths.len()));
                 self.refresh_git_files();
                 self.transition_to(christina_core::AppState::Dashboard);
             }
@@ -101,7 +58,7 @@ impl App {
                 self.data
                     .base
                     .toasts
-                    .error(format!("Failed to stage files: {}", e));
+                    .warning(format!("Failed to stage files: {}", e));
             }
         }
     }
@@ -111,9 +68,9 @@ impl App {
             self.data
                 .base
                 .toasts
-                .error(format!("Failed to unstage file: {}", e));
+                .warning(format!("Failed to unstage file: {}", e));
         } else {
-            self.data.base.toasts.success("File unstaged".to_string());
+            self.data.base.toasts.info("File unstaged".to_string());
         }
     }
 
@@ -185,15 +142,13 @@ impl App {
     fn handle_show_toast(&mut self, message: String, level: ToastLevel) {
         match level {
             ToastLevel::Info => self.data.base.toasts.info(message),
-            ToastLevel::Success => self.data.base.toasts.success(message),
             ToastLevel::Warning => self.data.base.toasts.warning(message),
-            ToastLevel::Error => self.data.base.toasts.error(message),
         }
     }
 
     fn handle_save_edited_message(&mut self, message: CommitMessage) {
         self.data.base.generated_message = CompactString::new(message.as_ref());
-        self.data.base.toasts.success("Message saved".to_string());
+        self.data.base.toasts.info("Message saved".to_string());
         self.transition_to(AppState::Review);
     }
 
@@ -211,10 +166,10 @@ impl App {
     fn handle_set_user_context(&mut self, context: Option<String>) {
         self.data.base.user_context = context.clone();
         if context.is_some() {
-            self.data
-                .base
-                .toasts
-                .success("User context set".to_string());
+                self.data
+                    .base
+                    .toasts
+                    .info("User context set".to_string());
         } else {
             self.data
                 .base
@@ -275,17 +230,6 @@ mod tests {
         assert_eq!(visible.last().unwrap().message, "Info message");
     }
 
-    #[test]
-    fn test_handle_show_toast_success() {
-        let mut app = create_test_app();
-        let initial_count = app.data.base.toasts.get_visible().len();
-
-        app.handle_show_toast("Success message".to_string(), ToastLevel::Success);
-
-        let visible = app.data.base.toasts.get_visible();
-        assert_eq!(visible.len(), initial_count + 1);
-        assert_eq!(visible.last().unwrap().message, "Success message");
-    }
 
     #[test]
     fn test_handle_show_toast_warning() {
@@ -299,17 +243,6 @@ mod tests {
         assert_eq!(visible.last().unwrap().message, "Warning message");
     }
 
-    #[test]
-    fn test_handle_show_toast_error() {
-        let mut app = create_test_app();
-        let initial_count = app.data.base.toasts.get_visible().len();
-
-        app.handle_show_toast("Error message".to_string(), ToastLevel::Error);
-
-        let visible = app.data.base.toasts.get_visible();
-        assert_eq!(visible.len(), initial_count + 1);
-        assert_eq!(visible.last().unwrap().message, "Error message");
-    }
 
     #[test]
     fn test_handle_set_user_context_set() {
@@ -427,13 +360,4 @@ mod tests {
         assert!(app.should_quit);
     }
 
-    #[test]
-    fn test_handle_app_msg_none() {
-        let mut app = create_test_app();
-        let initial_state = app.state.clone();
-
-        app.handle_app_msg(AppMsg::None);
-
-        assert_eq!(app.state, initial_state);
-    }
 }

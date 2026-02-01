@@ -1,11 +1,9 @@
-#![allow(
-    dead_code,
-    reason = "rate limiting is defined here but wired into providers later"
-)]
-
+#[cfg(test)]
 use std::hash::{BuildHasher, Hasher};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{AcquireError, Mutex, Semaphore, SemaphorePermit};
 use tokio::time::Instant;
@@ -56,11 +54,6 @@ impl RequestLimiter {
         }
     }
 
-    /// Create a rate limiter with only concurrency control (no rate limiting).
-    pub fn with_concurrency_only(max_concurrent: usize) -> Self {
-        Self::new(max_concurrent, f64::INFINITY)
-    }
-
     /// Acquire a permit to make a request.
     ///
     /// Waits for both concurrency permit and rate limit token.
@@ -100,6 +93,7 @@ impl RequestLimiter {
     /// * `attempt` - Retry attempt number (0-indexed)
     /// * `base_delay_ms` - Base delay in milliseconds
     /// * `seed` - Unique seed for this request (e.g., content hash)
+    #[cfg(test)]
     pub fn calculate_retry_delay(attempt: u32, base_delay_ms: u64, seed: u64) -> Duration {
         let max_delay_ms = base_delay_ms.saturating_mul(2_u64.saturating_pow(attempt));
         let jitter = random_with_seed(max_delay_ms, seed);
@@ -177,6 +171,7 @@ pub struct RateLimitPermit<'a> {
 /// values across different seeds. This ensures concurrent requests
 /// with different content get different jitter even when retried
 /// at the same time.
+#[cfg(test)]
 fn random_with_seed(max: u64, seed: u64) -> u64 {
     if max == 0 {
         return 0;

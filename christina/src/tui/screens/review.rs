@@ -1,14 +1,14 @@
 use ratatui::{
-    Frame,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
+    Frame,
 };
 
-use christina_core::ReviewAction;
 use christina_core::types::CommitMessage;
+use christina_core::ReviewAction;
 
 use crate::tui::{elm::*, theme::*};
 
@@ -266,13 +266,12 @@ fn render_footer(frame: &mut Frame, area: Rect) {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic, clippy::unwrap_used)]
+#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     fn commit_msg(s: &str) -> CommitMessage {
-        CommitMessage::try_from(s.to_string())
-            .unwrap_or_else(|e| panic!("test: invalid commit message: {}", e))
+        CommitMessage::try_from(s.to_string()).expect("test commit message should be valid")
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 /// AI-powered commit message generator
 #[derive(Parser)]
@@ -133,15 +133,4 @@ pub enum ProfileCommands {
     },
     /// Open profile management TUI
     Tui,
-}
-
-/// Generate commit messages (default command when no subcommand provided)
-#[derive(Args)]
-pub struct GenerateArgs {
-    /// Dry run - generate without committing
-    #[arg(long)]
-    pub dry_run: bool,
-    /// Specify commit message directly
-    #[arg(short, long)]
-    pub message: Option<String>,
 }

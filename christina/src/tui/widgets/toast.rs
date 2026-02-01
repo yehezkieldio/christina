@@ -1,12 +1,12 @@
 use compact_str::CompactString;
 use parking_lot::Mutex;
 use ratatui::{
-    Frame,
     buffer::Buffer,
     layout::{Alignment, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget},
+    Frame,
 };
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -18,30 +18,22 @@ use super::super::theme::*;
 pub enum ToastLevel {
     /// Informational message.
     Info,
-    /// Success message.
-    Success,
     /// Warning message.
     Warning,
-    /// Error message.
-    Error,
 }
 
 impl ToastLevel {
     pub fn color(&self) -> Color {
         match self {
             ToastLevel::Info => BLUE,
-            ToastLevel::Success => GREEN,
             ToastLevel::Warning => Color::Rgb(249, 226, 175), // Yellow
-            ToastLevel::Error => RED,
         }
     }
 
     pub fn icon(&self) -> &'static str {
         match self {
             ToastLevel::Info => "ℹ",
-            ToastLevel::Success => "✓",
             ToastLevel::Warning => "⚠",
-            ToastLevel::Error => "✗",
         }
     }
 }
@@ -80,16 +72,8 @@ impl Toast {
         Self::new(message, ToastLevel::Info)
     }
 
-    pub fn success(message: impl Into<CompactString>) -> Self {
-        Self::new(message, ToastLevel::Success)
-    }
-
     pub fn warning(message: impl Into<CompactString>) -> Self {
         Self::new(message, ToastLevel::Warning)
-    }
-
-    pub fn error(message: impl Into<CompactString>) -> Self {
-        Self::new(message, ToastLevel::Error)
     }
 
     pub fn is_expired(&self) -> bool {
@@ -148,16 +132,8 @@ impl ToastManager {
         self.push(Toast::info(message));
     }
 
-    pub fn success(&self, message: impl Into<CompactString>) {
-        self.push(Toast::success(message));
-    }
-
     pub fn warning(&self, message: impl Into<CompactString>) {
         self.push(Toast::warning(message));
-    }
-
-    pub fn error(&self, message: impl Into<CompactString>) {
-        self.push(Toast::error(message));
     }
 
     /// Remove expired toasts and return visible ones.
@@ -296,10 +272,9 @@ mod tests {
         let manager = ToastManager::new();
 
         manager.info("info message");
-        manager.success("success message");
 
         let visible = manager.get_visible();
-        assert_eq!(visible.len(), 2);
+        assert_eq!(visible.len(), 1);
 
         // Clear and verify history is managed internally
         manager.clear_history();

@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    Frame,
 };
 
 use crate::tui::elm::{AppMsg, Component};
@@ -240,9 +240,9 @@ mod tests {
         let msgs = state.update(ErrorMsg::Dismiss);
 
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::Navigate(AppState::Dashboard) => (),
-            other => panic!("Expected Navigate to Dashboard, got {:?}", other),
+        if let AppMsg::Navigate(AppState::Dashboard) = &msgs[0] {
+        } else {
+            panic!("Expected Navigate to Dashboard");
         }
     }
 
@@ -253,9 +253,9 @@ mod tests {
         let msgs = state.update(ErrorMsg::Dismiss);
 
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::Navigate(AppState::StagingSelection) => (),
-            other => panic!("Expected Navigate to StagingSelection, got {:?}", other),
+        if let AppMsg::Navigate(AppState::StagingSelection) = &msgs[0] {
+        } else {
+            panic!("Expected Navigate to StagingSelection");
         }
     }
 
@@ -266,9 +266,9 @@ mod tests {
         let msgs = state.update(ErrorMsg::Retry);
 
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::Navigate(AppState::Dashboard) => (),
-            other => panic!("Expected Navigate to Dashboard, got {:?}", other),
+        if let AppMsg::Navigate(AppState::Dashboard) = &msgs[0] {
+        } else {
+            panic!("Expected Navigate to Dashboard");
         }
     }
 
@@ -293,9 +293,10 @@ mod tests {
         let msgs = state.update(ErrorMsg::UseAsIs);
 
         assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            AppMsg::EditRawMessage(msg) => assert_eq!(msg, "chore: invalid"),
-            other => panic!("Expected EditRawMessage, got {:?}", other),
+        if let AppMsg::EditRawMessage(msg) = &msgs[0] {
+            assert_eq!(msg, "chore: invalid");
+        } else {
+            panic!("Expected EditRawMessage");
         }
     }
 

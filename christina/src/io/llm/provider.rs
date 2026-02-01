@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -32,7 +33,6 @@ impl std::fmt::Debug for ApiKey {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(not(test), expect(dead_code, reason = "mock providers used in tests"))]
 pub enum Provider {
     OpenAI {
         model: ModelName,
@@ -57,10 +57,12 @@ pub enum Provider {
         max_tokens: TokenCount,
         temperature: f32,
     },
+    #[cfg(test)]
     Mock {
         response: String,
         delay_ms: u64,
     },
+    #[cfg(test)]
     MockSequence {
         responses: Arc<Mutex<Vec<Result<String, CompletionError>>>>,
         delay_ms: u64,
@@ -170,10 +172,12 @@ impl Provider {
                 .await?;
                 Ok(response.content)
             }
+            #[cfg(test)]
             Provider::Mock { response, delay_ms } => {
                 tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
                 Ok(response.clone())
             }
+            #[cfg(test)]
             Provider::MockSequence {
                 responses,
                 delay_ms,

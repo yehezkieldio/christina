@@ -2,11 +2,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastLevel {
     Info,
-    #[allow(dead_code)]
-    Success,
     Warning,
-    #[allow(dead_code)]
-    Error,
 }
 
 /// Application-level messages that trigger side effects.
@@ -14,13 +10,7 @@ pub enum ToastLevel {
 /// Components return these from their update functions to request
 /// actions that require I/O or interact with the application context.
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "All variants constructed and handled in app (false positive)"
-)]
 pub enum AppMsg {
-    /// Request file staging
-    StageFile(christina_core::types::FilePath),
     /// Request multiple files staging
     StageFiles(Vec<christina_core::types::FilePath>),
     /// Request file unstaging
@@ -35,12 +25,8 @@ pub enum AppMsg {
     EditRawMessage(String),
     /// Regenerate the message
     RegenerateMessage,
-    /// Request generation of commit message
-    GenerateMessage,
     /// Cancel ongoing generation
     CancelGeneration,
-    /// Request diff refresh
-    RefreshDiff,
     /// Show toast notification with level
     ShowToast(String, ToastLevel),
     /// Save edited message
@@ -53,8 +39,6 @@ pub enum AppMsg {
     SetUserContext(Option<String>),
     /// Quit application
     Quit,
-    /// No operation
-    None,
 }
 
 /// Trait for components that follow Elm architecture.

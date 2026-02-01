@@ -46,11 +46,6 @@ impl FieldDef {
         self.required = true;
         self
     }
-
-    pub fn read_only(mut self) -> Self {
-        self.read_only = true;
-        self
-    }
 }
 
 pub trait Editable {

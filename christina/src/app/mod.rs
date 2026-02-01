@@ -75,7 +75,7 @@ impl App {
                     self.data
                         .base
                         .toasts
-                        .error(format!("Failed to get staged files: {}", e));
+                        .warning(format!("Failed to get staged files: {}", e));
                     self.data.base.staged_files.clear();
                 }
             }
@@ -88,7 +88,7 @@ impl App {
                     self.data
                         .base
                         .toasts
-                        .error(format!("Failed to get unstaged files: {}", e));
+                        .warning(format!("Failed to get unstaged files: {}", e));
                     self.data.base.unstaged_files.clear();
                 }
             }
@@ -122,7 +122,7 @@ impl App {
                     return true;
                 }
                 Err(e) => {
-                    self.data.base.toasts.error(format!(
+                    self.data.base.toasts.warning(format!(
                         "Repository is no longer accessible: {}. Attempting re-discovery...",
                         e
                     ));
@@ -157,11 +157,11 @@ impl App {
                 self.data
                     .base
                     .toasts
-                    .success("Repository discovered and loaded".to_string());
+                    .info("Repository discovered and loaded".to_string());
                 true
             }
             Err(e) => {
-                self.data.base.toasts.error(format!(
+                self.data.base.toasts.warning(format!(
                     "Could not discover git repository: {}. Commit functionality disabled.",
                     e
                 ));
@@ -194,7 +194,7 @@ impl App {
             self.data
                 .base
                 .toasts
-                .error(format!("Invalid state transition: {}", e));
+                .warning(format!("Invalid state transition: {}", e));
             return;
         }
 

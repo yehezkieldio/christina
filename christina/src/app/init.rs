@@ -202,7 +202,10 @@ pub fn initialize_app() -> InitResult {
 
     // Initialize UI and session data
     let ui = init_ui_state();
-    let data = init_session_data(staged_files, unstaged_files);
+    let mut data = init_session_data(staged_files, unstaged_files);
+    if let Some(history) = EditHistory::load() {
+        data.base.edit_history = history;
+    }
 
     InitResult {
         context,
