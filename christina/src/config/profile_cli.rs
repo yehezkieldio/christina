@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use crate::cli::ProfileCommands;
 use crate::config::Config;
 use crate::tui::{run_profile_tui, ProfileTuiOptions};
+use christina_core::config::Secret;
 use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};
 
@@ -96,11 +97,9 @@ fn handle_show(name: &str) -> Result<()> {
             println!("  Model: {}", profile.model);
             println!(
                 "  API Key: {}",
-                profile
-                    .api_key
-                    .as_ref()
-                    .map(|_| "<set>")
-                    .unwrap_or("<not set>")
+                match &profile.api_key {
+                    Secret::Value(_) => "<set>",
+                }
             );
             println!(
                 "  API URL: {}",
@@ -178,7 +177,7 @@ fn handle_create(
 
     // Apply optional fields
     if let Some(key) = api_key {
-        profile.api_key = Some(key);
+        profile.api_key = Secret::Value(key);
     }
 
     if let Some(url) = api_url {
@@ -241,7 +240,7 @@ fn handle_edit(
     }
 
     if let Some(key) = api_key {
-        profile.api_key = Some(key);
+        profile.api_key = Secret::Value(key);
     }
 
     if let Some(url) = api_url {

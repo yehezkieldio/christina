@@ -7,11 +7,15 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 compact_str = { workspace = true }
-git2 = { workspace = true }
+git2 = { workspace = true, optional = true }
 regex = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
+
+[features]
+default = []
+git2-support = ["git2"]
 
 [lints]
 workspace = true

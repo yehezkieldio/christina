@@ -13,9 +13,21 @@ pub enum GitError {
     #[error("Git error: {0}")]
     Git(String),
 
-    /// Error from the git2 library
-    #[error("Git2 error: {0}")]
-    Git2(#[from] git2::Error),
+    /// Repository resource not found
+    #[error("Resource not found")]
+    NotFound,
+
+    /// Authentication failed
+    #[error("Authentication failed")]
+    AuthFailed,
+
+    /// Repository is locked
+    #[error("Repository is locked")]
+    Locked,
+
+    /// Other git-related error with details
+    #[error("Git operation failed: {0}")]
+    Other(String),
 
     /// Invalid GPG configuration
     #[error("GPG config invalid: {0}")]
@@ -34,10 +46,17 @@ impl GitError {
             GitError::GpgConfigInvalid(_) | GitError::GpgSigningFailed(_)
         )
     }
+}
 
-    /// Check if this is a git2 library error
-    pub fn is_git2_error(&self) -> bool {
-        matches!(self, GitError::Git2(_))
+#[cfg(feature = "git2-support")]
+impl From<git2::Error> for GitError {
+    fn from(e: git2::Error) -> Self {
+        match e.code() {
+            git2::ErrorCode::NotFound => GitError::NotFound,
+            git2::ErrorCode::Auth => GitError::AuthFailed,
+            git2::ErrorCode::Locked => GitError::Locked,
+            _ => GitError::Other(e.to_string()),
+        }
     }
 }
 
@@ -199,7 +218,7 @@ impl AppError {
     pub fn is_transient(&self) -> bool {
         match self {
             AppError::Completion(e) => e.is_transient(),
-            AppError::Git(e) => e.is_git2_error(), // git2 errors are often transient
+            AppError::Git(e) => matches!(e, GitError::Locked),
             _ => false,
         }
     }

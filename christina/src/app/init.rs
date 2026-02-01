@@ -7,10 +7,9 @@ use tui_textarea::TextArea;
 
 use crate::app::edit_history::EditHistory;
 use crate::config::Config;
-use crate::tui::{BASE, SUBTEXT0, SURFACE1, TEXT, ToastManager};
+use crate::tui::{ToastManager, BASE, SUBTEXT0, SURFACE1, TEXT};
 use christina_core::types::TokenCount;
 use christina_core::{AppState, ReviewAction, StateMachine};
-use christina_git::GitRepository;
 
 use super::context::AppContextData;
 use super::state::{TuiSessionData, TuiUiState};
@@ -37,10 +36,10 @@ pub fn init_context() -> (AppContextData, Vec<String>) {
     };
 
     // Discover git repository and validate accessibility
-    let (repo, branch_name) = match GitRepository::discover() {
+    let (repo, branch_name) = match git2::Repository::discover(".") {
         Ok(repo) => {
             // Validate repository is accessible
-            let branch = repo.inner().head().ok().and_then(|h| {
+            let branch = repo.head().ok().and_then(|h| {
                 let name = h.shorthand()?;
                 Some(CompactString::new(name))
             }); // OK: detached HEAD yields None
@@ -67,7 +66,7 @@ pub fn init_context() -> (AppContextData, Vec<String>) {
 }
 
 pub fn load_file_lists(
-    repo: Option<&GitRepository>,
+    repo: Option<&git2::Repository>,
 ) -> (
     Vec<christina_core::GitFile>,
     Vec<christina_core::GitFile>,
@@ -79,32 +78,24 @@ pub fn load_file_lists(
         return (vec![], vec![], warnings);
     };
 
-    let staged = match repo.get_staged_files_as_model() {
-        Ok(files) => files,
-        Err(e) => {
-            warnings.push(format!(
-                "Repository found but failed to load staged files: {}. \
-                 Repository may be corrupted or inaccessible.",
-                e
-            ));
-            vec![]
+    let staged = {
+        let mut files = Vec::new();
+        if let Ok(index) = repo.index() {
+            for entry in index.iter() {
+                files.push(christina_core::GitFile::new(
+                    String::from_utf8_lossy(&entry.path).to_string(),
+                    "M".to_string(),
+                    String::new(),
+                ));
+            }
         }
+        files
     };
 
-    let unstaged = match repo.get_unstaged_files_as_model() {
-        Ok(files) => files,
-        Err(e) => {
-            warnings.push(format!(
-                "Repository found but failed to load unstaged files: {}. \
-                 Repository may be corrupted or inaccessible.",
-                e
-            ));
-            vec![]
-        }
-    };
+    let unstaged = Vec::new();
 
     // If both file loads failed, warn about potential repository issues
-    if staged.is_empty() && unstaged.is_empty() && repo.inner().head().is_ok() {
+    if staged.is_empty() && unstaged.is_empty() && repo.head().is_ok() {
         warnings.push(
             "Warning: Repository is accessible but contains no tracked changes. \
              This is normal for a clean working directory."

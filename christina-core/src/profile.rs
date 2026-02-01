@@ -3,39 +3,29 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{
-    token_count::{MAX_INPUT, MAX_OUTPUT},
-    ModelName, ProviderKind, TokenCount,
+use crate::{
+    config::Secret,
+    types::{
+        token_count::{MAX_INPUT, MAX_OUTPUT},
+        ModelName, ProviderKind, TokenCount,
+    },
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ProviderProfile {
+pub struct ProviderProfile<S = String> {
     pub name: String,
     pub provider: ProviderKind,
     pub model: ModelName,
     pub api_url: Option<url::Url>,
-    pub api_key: Option<String>,
+    pub api_key: Secret<S>,
     pub max_input_tokens: TokenCount,
     pub max_output_tokens: TokenCount,
     pub azure_api_version: Option<String>,
     pub azure_deployment_id: Option<String>,
+    pub temperature: Option<f32>,
 }
 
-impl ProviderProfile {
-    pub fn new(name: String, provider: ProviderKind, model: ModelName) -> Self {
-        Self {
-            name,
-            provider,
-            model,
-            api_url: None,
-            api_key: None,
-            max_input_tokens: TokenCount::new_saturating(128000),
-            max_output_tokens: TokenCount::new_saturating(2048),
-            azure_api_version: Some("2024-12-01-preview".to_string()),
-            azure_deployment_id: None,
-        }
-    }
-
+impl<S> ProviderProfile<S> {
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
             return Err(anyhow!("Profile name cannot be empty"));
@@ -53,15 +43,32 @@ impl ProviderProfile {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct Profiles {
-    pub active: Option<String>,
-    #[serde(flatten)]
-    pub definitions: HashMap<String, ProviderProfile>,
+impl ProviderProfile<String> {
+    pub fn new(name: String, provider: ProviderKind, model: ModelName) -> Self {
+        Self {
+            name,
+            provider,
+            model,
+            api_url: None,
+            api_key: Secret::Value(String::new()),
+            max_input_tokens: TokenCount::new_saturating(128000),
+            max_output_tokens: TokenCount::new_saturating(2048),
+            azure_api_version: Some("2024-12-01-preview".to_string()),
+            azure_deployment_id: None,
+            temperature: None,
+        }
+    }
 }
 
-impl Profiles {
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Profiles<S = String> {
+    pub active: Option<String>,
+    #[serde(flatten)]
+    pub definitions: HashMap<String, ProviderProfile<S>>,
+}
+
+impl<S> Profiles<S> {
     pub fn new() -> Self {
         Self {
             active: None,
@@ -77,7 +84,7 @@ impl Profiles {
         }
     }
 
-    pub fn add(&mut self, profile: ProviderProfile) -> Result<()> {
+    pub fn add(&mut self, profile: ProviderProfile<S>) -> Result<()> {
         profile.validate()?;
 
         if self.definitions.contains_key(&profile.name) {
@@ -102,11 +109,11 @@ impl Profiles {
         Ok(())
     }
 
-    pub fn get(&self, name: &str) -> Option<&ProviderProfile> {
+    pub fn get(&self, name: &str) -> Option<&ProviderProfile<S>> {
         self.definitions.get(name)
     }
 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut ProviderProfile> {
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut ProviderProfile<S>> {
         self.definitions.get_mut(name)
     }
 
@@ -118,7 +125,7 @@ impl Profiles {
         Ok(())
     }
 
-    pub fn get_active(&self) -> Option<&ProviderProfile> {
+    pub fn get_active(&self) -> Option<&ProviderProfile<S>> {
         self.active.as_ref().and_then(|name| self.get(name))
     }
 
@@ -132,7 +139,7 @@ impl Profiles {
         self.definitions.contains_key(name)
     }
 
-    pub fn update(&mut self, name: &str, profile: ProviderProfile) -> Result<()> {
+    pub fn update(&mut self, name: &str, profile: ProviderProfile<S>) -> Result<()> {
         profile.validate()?;
 
         if !self.definitions.contains_key(name) {

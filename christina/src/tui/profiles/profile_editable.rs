@@ -1,5 +1,5 @@
 use crate::tui::form::editable::{Editable, FieldDef, FieldType};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use christina_core::{profile::ProviderProfile, types::ProviderKind};
 
 impl Editable for ProviderProfile {
@@ -54,7 +54,9 @@ impl Editable for ProviderProfile {
             "provider" => Some(self.provider.to_string()),
             "model" => Some(self.model.as_str().to_string()),
             "api_url" => self.api_url.as_ref().map(|u| u.to_string()),
-            "api_key" => self.api_key.clone(),
+            "api_key" => match &self.api_key {
+                christina_core::config::Secret::Value(key) => Some(key.clone()),
+            },
             "max_input_tokens" => Some(self.max_input_tokens.get().to_string()),
             "max_output_tokens" => Some(self.max_output_tokens.get().to_string()),
             "azure_api_version" => self.azure_api_version.clone(),
@@ -92,9 +94,9 @@ impl Editable for ProviderProfile {
             }
             "api_key" => {
                 if value.is_empty() {
-                    self.api_key = None;
+                    self.api_key = christina_core::config::Secret::Value(String::new());
                 } else {
-                    self.api_key = Some(value.to_string());
+                    self.api_key = christina_core::config::Secret::Value(value.to_string());
                 }
             }
             "max_input_tokens" => {

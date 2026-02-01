@@ -29,7 +29,10 @@ mod cli;
 mod config;
 mod event_loop;
 mod generate;
+mod io;
 mod tui;
+
+use git2 as _;
 
 use app::App;
 use bootstrap::TerminalHandle;
