@@ -611,12 +611,12 @@ impl<'repo> StagedDiff<'repo> {
             };
 
             let status = match delta.status() {
-                git2::Delta::Added => FileStatus::Added,
-                git2::Delta::Deleted => FileStatus::Deleted,
-                git2::Delta::Modified => FileStatus::Modified,
-                git2::Delta::Renamed => FileStatus::Renamed,
-                git2::Delta::Copied => FileStatus::Copied,
-                _ => FileStatus::Other,
+                git2::Delta::Added => GitFileStatus::Added,
+                git2::Delta::Deleted => GitFileStatus::Deleted,
+                git2::Delta::Modified => GitFileStatus::Modified,
+                git2::Delta::Renamed => GitFileStatus::Renamed,
+                git2::Delta::Copied => GitFileStatus::Copied,
+                _ => GitFileStatus::Unknown,
             };
 
             FilePatch {
@@ -642,66 +642,7 @@ pub struct FilePatch {
     /// Old path (only different for renames/copies).
     pub old_path: Option<FilePath>,
     /// Status of the file change.
-    pub status: FileStatus,
-}
-
-/// Status of a file in the diff.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileStatus {
-    Added,
-    Deleted,
-    Modified,
-    Renamed,
-    Copied,
-    Other,
-}
-
-impl FileStatus {
-    /// Get a single-character representation of the status.
-    pub fn as_char(&self) -> char {
-        match self {
-            FileStatus::Added => 'A',
-            FileStatus::Deleted => 'D',
-            FileStatus::Modified => 'M',
-            FileStatus::Renamed => 'R',
-            FileStatus::Copied => 'C',
-            FileStatus::Other => '?',
-        }
-    }
-}
-
-impl std::fmt::Display for FileStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_char())
-    }
-}
-
-// Bidirectional conversion between FileStatus and christina_core::GitFileStatus
-impl From<FileStatus> for christina_core::GitFileStatus {
-    fn from(status: FileStatus) -> Self {
-        match status {
-            FileStatus::Added => christina_core::GitFileStatus::Added,
-            FileStatus::Deleted => christina_core::GitFileStatus::Deleted,
-            FileStatus::Modified => christina_core::GitFileStatus::Modified,
-            FileStatus::Renamed => christina_core::GitFileStatus::Renamed,
-            FileStatus::Copied => christina_core::GitFileStatus::Copied,
-            FileStatus::Other => christina_core::GitFileStatus::Unknown,
-        }
-    }
-}
-
-impl From<christina_core::GitFileStatus> for FileStatus {
-    fn from(status: christina_core::GitFileStatus) -> Self {
-        match status {
-            christina_core::GitFileStatus::Added => FileStatus::Added,
-            christina_core::GitFileStatus::Deleted => FileStatus::Deleted,
-            christina_core::GitFileStatus::Modified => FileStatus::Modified,
-            christina_core::GitFileStatus::Renamed => FileStatus::Renamed,
-            christina_core::GitFileStatus::Copied => FileStatus::Copied,
-            christina_core::GitFileStatus::Untracked => FileStatus::Other,
-            christina_core::GitFileStatus::Unknown => FileStatus::Other,
-        }
-    }
+    pub status: GitFileStatus,
 }
 
 #[cfg(test)]
@@ -765,18 +706,18 @@ mod tests {
 
     #[test]
     fn file_status_as_char() {
-        assert_eq!(FileStatus::Added.as_char(), 'A');
-        assert_eq!(FileStatus::Deleted.as_char(), 'D');
-        assert_eq!(FileStatus::Modified.as_char(), 'M');
-        assert_eq!(FileStatus::Renamed.as_char(), 'R');
-        assert_eq!(FileStatus::Copied.as_char(), 'C');
-        assert_eq!(FileStatus::Other.as_char(), '?');
+        assert_eq!(GitFileStatus::Added.as_char(), 'A');
+        assert_eq!(GitFileStatus::Deleted.as_char(), 'D');
+        assert_eq!(GitFileStatus::Modified.as_char(), 'M');
+        assert_eq!(GitFileStatus::Renamed.as_char(), 'R');
+        assert_eq!(GitFileStatus::Copied.as_char(), 'C');
+        assert_eq!(GitFileStatus::Unknown.as_char(), '?');
     }
 
     #[test]
     fn file_status_display() {
-        assert_eq!(format!("{}", FileStatus::Added), "A");
-        assert_eq!(format!("{}", FileStatus::Modified), "M");
+        assert_eq!(format!("{}", GitFileStatus::Added), "A");
+        assert_eq!(format!("{}", GitFileStatus::Modified), "M");
     }
 
     /// Test unstaging behavior when HEAD doesn't exist (initial commit scenario).
