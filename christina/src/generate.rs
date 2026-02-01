@@ -30,6 +30,7 @@ impl GenerationResult {
     }
 }
 
+#[expect(dead_code, reason = "Will be used when LLM generation is reimplemented")]
 fn config_to_profile(config: &Config) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),

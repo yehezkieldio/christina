@@ -9,6 +9,10 @@ use christina_core::git::{GitFile, GitFileStatus, RepoSnapshot};
 /// This adapter function discovers the git repository from the current directory
 /// and returns a `RepoSnapshot` containing information about files
 /// and repository status.
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn status() -> Result<RepoSnapshot> {
     // Discover repository from current directory
     let repo = Repository::discover(".").context("Failed to discover git repository")?;
@@ -57,6 +61,10 @@ pub fn status() -> Result<RepoSnapshot> {
 }
 
 /// Open a repository at a specific path or discover from current directory
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn open(path: Option<&std::path::Path>) -> Result<Repository> {
     match path {
         Some(p) => Repository::open(p).context("Failed to open repository"),
@@ -94,6 +102,10 @@ fn convert_status(status: git2::Status) -> GitFileStatus {
 }
 
 /// Get staged files (changes between HEAD and index)
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let head_tree = match repo.head() {
         Ok(head) => Some(head.peel_to_tree()?),
@@ -151,6 +163,10 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
 }
 
 /// Get unstaged files (changes between index and workdir)
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut opts = DiffOptions::new();
     opts.include_untracked(true)
@@ -199,6 +215,10 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
 }
 
 /// Stage files by path
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let mut index = repo.index()?;
 
@@ -216,6 +236,10 @@ pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
 }
 
 /// Unstage files by path
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let path_refs: Vec<&std::path::Path> = paths.iter().map(|p| p.as_ref()).collect();
 
@@ -238,6 +262,10 @@ pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
 }
 
 /// Create a commit with the given message
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
     let signature = repo.signature()?;
     let mut index = repo.index()?;
@@ -282,6 +310,10 @@ pub fn has_staged_changes(repo: &Repository) -> Result<bool> {
 }
 
 /// Validate that the repository is ready for commit
+#[expect(
+    dead_code,
+    reason = "Will be used when Cmd executor is wired to event loop"
+)]
 pub fn validate_for_commit(repo: &Repository) -> Result<()> {
     // Check for staged changes
     if !has_staged_changes(repo)? {

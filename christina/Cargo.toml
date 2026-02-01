@@ -30,7 +30,6 @@ cap = { version = "0.1.2" }
 parking_lot = { workspace = true }
 compact_str = { workspace = true }
 url = { workspace = true }
-tracing = { version = "0.1.41", default-features = false, features = ["std"] }
 dhat = { version = "0.3.3", optional = true }
 
 [lints]
