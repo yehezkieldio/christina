@@ -1,7 +1,16 @@
-//! Unified error types for the Christina workspace
+//! Unified error types for the Christina workspace.
 //!
-//! This module provides a centralized error handling system that standardizes
-//! error types across christina-git and christina-llm crates.
+//! WHY single error module: Centralizes error handling across christina-core, christina-git,
+//! and christina-llm crates. Prevents duplication, ensures consistent retry/transient logic,
+//! and simplifies error propagation across subsystem boundaries.
+//!
+//! WHY IsTransient trait: Separates transient (retryable) from permanent errors at the
+//! type level. Enables generic retry logic without inspecting error details. Each error
+//! type implements its own transient classification based on domain knowledge.
+//!
+//! WHY AppError enum: Application-level error that can represent any subsystem error.
+//! Acts as error boundary between internal subsystems and user-facing code. Implements
+//! automatic From conversions to reduce boilerplate.
 
 use std::fmt;
 use thiserror::Error;
@@ -129,7 +138,15 @@ impl CompletionError {
         )
     }
 
-    /// Parse an API error message to create appropriate error variant
+    /// Parse an API error message to create appropriate error variant.
+    ///
+    /// WHY string parsing: API providers return errors as unstructured text/HTML.
+    /// No standardized error schema across OpenAI/Azure/Groq. Regex would be
+    /// brittle; simple substring matching is sufficient and maintainable.
+    ///
+    /// WHY default to ServerError: Unknown errors assumed retryable. False
+    /// positive (retrying permanent error) wastes time but preserves correctness.
+    /// False negative (not retrying transient error) surfaces user-visible failures.
     pub fn from_api_error(msg: &str) -> Self {
         let msg_lower = msg.to_lowercase();
 
