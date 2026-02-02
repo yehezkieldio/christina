@@ -145,8 +145,10 @@ mod tests {
         assert_eq!(config.ignore_files.len(), 5);
 
         assert!(config.ignore_files.contains(&"Cargo.lock".to_string()));
-        assert!(config
-            .ignore_files
-            .contains(&"package-lock.json".to_string()));
+        assert!(
+            config
+                .ignore_files
+                .contains(&"package-lock.json".to_string())
+        );
     }
 }

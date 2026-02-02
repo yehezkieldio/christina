@@ -291,8 +291,8 @@ impl Config {
             toml::to_string_pretty(self).context("Failed to serialize configuration")?;
 
         {
-            let mut temp_file = File::create(&temp_path)
-                .context("Failed to create temporary config file")?;
+            let mut temp_file =
+                File::create(&temp_path).context("Failed to create temporary config file")?;
             temp_file
                 .write_all(toml_content.as_bytes())
                 .context("Failed to write to temporary config file")?;
@@ -301,8 +301,8 @@ impl Config {
                 .context("Failed to sync temporary config file")?;
         }
 
-        let target_file = File::create(&config_path)
-            .context("Failed to open target config file for locking")?;
+        let target_file =
+            File::create(&config_path).context("Failed to open target config file for locking")?;
         target_file
             .lock_exclusive()
             .context("Failed to acquire exclusive lock on config file")?;
@@ -524,11 +524,9 @@ impl Config {
             christina_core::config::Secret::Value(key) => Some(key.clone()),
             christina_core::config::Secret::EnvVar(name) => std::env::var(name).ok(),
             #[cfg(feature = "keyring-support")]
-            christina_core::config::Secret::Keyring(key) => {
-                keyring::Entry::new("christina", key)
-                    .and_then(|e| e.get_password())
-                    .ok()
-            }
+            christina_core::config::Secret::Keyring(key) => keyring::Entry::new("christina", key)
+                .and_then(|e| e.get_password())
+                .ok(),
             #[cfg(not(feature = "keyring-support"))]
             christina_core::config::Secret::Keyring(_) => None,
         };

@@ -58,10 +58,7 @@ pub enum Provider {
         temperature: f32,
     },
     #[cfg(test)]
-    Mock {
-        response: String,
-        delay_ms: u64,
-    },
+    Mock { response: String, delay_ms: u64 },
     #[cfg(test)]
     MockSequence {
         responses: Arc<Mutex<Vec<Result<String, CompletionError>>>>,

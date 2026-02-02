@@ -1,12 +1,12 @@
 use compact_str::CompactString;
 use parking_lot::Mutex;
 use ratatui::{
+    Frame,
     buffer::Buffer,
     layout::{Alignment, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget},
-    Frame,
 };
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};

@@ -1,14 +1,14 @@
 use ratatui::{
+    Frame,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
-    Frame,
 };
 
-use christina_core::types::CommitMessage;
 use christina_core::ReviewAction;
+use christina_core::types::CommitMessage;
 
 use crate::tui::{elm::*, theme::*};
 

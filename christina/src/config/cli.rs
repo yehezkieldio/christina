@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::cli::ConfigCommands;
 use crate::config::Config;
 use crate::tui::{
-    run_config_tui, run_profile_tui, ConfigTuiOptions, ConfigTuiResult, ProfileTuiOptions,
+    ConfigTuiOptions, ConfigTuiResult, ProfileTuiOptions, run_config_tui, run_profile_tui,
 };
 
 /// Handle config commands - routes between CLI and TUI based on subcommand.

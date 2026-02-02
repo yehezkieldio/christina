@@ -1015,7 +1015,6 @@ impl AIOrchestrator {
     fn max_failure_rate(&self) -> f64 {
         self.max_partial_failure_rate
     }
-
 }
 
 fn debug_enabled() -> bool {
@@ -1064,9 +1063,11 @@ async fn generate_with_retry(
     }
 
     // Fallback if all retries exhausted without recording an error (logic bug guard)
-    Err(last_error.unwrap_or_else(|| CompletionError::UnknownError(
-        "All retry attempts exhausted without error details".to_string(),
-    )))
+    Err(last_error.unwrap_or_else(|| {
+        CompletionError::UnknownError(
+            "All retry attempts exhausted without error details".to_string(),
+        )
+    }))
 }
 
 fn validate_commit_message(

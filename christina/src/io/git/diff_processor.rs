@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use christina_core::{
+    Tokenizer,
     error::DiffError,
     git::{DiffChunk, MAX_DIFF_SIZE},
     types::TokenCount,
-    Tokenizer,
 };
 
 use crate::io::git::{
@@ -542,7 +542,10 @@ mod tests {
         let huge_diff = "a".repeat(MAX_DIFF_SIZE + 1000);
         let result = processor.process_safe(&huge_diff);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), DiffError::SizeExceeded { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            DiffError::SizeExceeded { .. }
+        ));
     }
 
     #[test]

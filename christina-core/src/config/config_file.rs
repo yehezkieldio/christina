@@ -101,9 +101,11 @@ mod tests {
         let config = ConfigFile::default();
 
         assert!(config.ignore_files.contains(&"Cargo.lock".to_string()));
-        assert!(config
-            .ignore_files
-            .contains(&"package-lock.json".to_string()));
+        assert!(
+            config
+                .ignore_files
+                .contains(&"package-lock.json".to_string())
+        );
         assert!(config.ignore_files.contains(&"yarn.lock".to_string()));
         assert!(config.ignore_files.contains(&"pnpm-lock.yaml".to_string()));
         assert!(config.ignore_files.contains(&"*.lock".to_string()));

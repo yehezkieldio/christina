@@ -78,8 +78,8 @@ pub struct TuiSessionData {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
     #[tokio::test]
@@ -92,9 +92,9 @@ mod tests {
 
         let handle = tokio::spawn(async move {
             started.store(true, Ordering::SeqCst);
-            
+
             tokio::time::sleep(Duration::from_secs(10)).await;
-            
+
             aborted.store(false, Ordering::SeqCst);
         });
 
@@ -106,7 +106,7 @@ mod tests {
         }
 
         tokio::time::sleep(Duration::from_millis(10)).await;
-        
+
         assert!(!task_aborted.load(Ordering::SeqCst));
     }
 
@@ -131,7 +131,9 @@ mod tests {
         };
 
         match state {
-            GenerationState::Running { generation_id: id, .. } => {
+            GenerationState::Running {
+                generation_id: id, ..
+            } => {
                 assert_eq!(id, 42);
             }
             GenerationState::Idle => panic!("Expected Running variant"),

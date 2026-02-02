@@ -163,10 +163,7 @@ impl App {
     fn handle_set_user_context(&mut self, context: Option<String>) {
         self.data.base.user_context = context.clone();
         if context.is_some() {
-                self.data
-                    .base
-                    .toasts
-                    .info("User context set".to_string());
+            self.data.base.toasts.info("User context set".to_string());
         } else {
             self.data
                 .base
@@ -227,7 +224,6 @@ mod tests {
         assert_eq!(visible.last().unwrap().message, "Info message");
     }
 
-
     #[test]
     fn test_handle_show_toast_warning() {
         let mut app = create_test_app();
@@ -239,7 +235,6 @@ mod tests {
         assert_eq!(visible.len(), initial_count + 1);
         assert_eq!(visible.last().unwrap().message, "Warning message");
     }
-
 
     #[test]
     fn test_handle_set_user_context_set() {
@@ -356,5 +351,4 @@ mod tests {
 
         assert!(app.should_quit);
     }
-
 }

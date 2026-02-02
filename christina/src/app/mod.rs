@@ -40,8 +40,6 @@ impl App {
         }
     }
 
-
-
     pub fn refresh_git_files(&mut self) {
         if let Some(ref repo) = self.app_context.repo {
             // Call git adapter to get staged and unstaged files
@@ -264,14 +262,17 @@ impl App {
     pub fn validate_configuration(&self) -> Result<(), String> {
         let config = &self.app_context.config;
 
-        if config.api_key.as_ref().map(|k| k.is_empty()).unwrap_or(true) {
-            return Err(
-                "API key is not configured. Set it via:\n\
+        if config
+            .api_key
+            .as_ref()
+            .map(|k| k.is_empty())
+            .unwrap_or(true)
+        {
+            return Err("API key is not configured. Set it via:\n\
                  - Config: christina config set api_key <key>\n\
                  - Environment: CHRISTINA_MODEL_API_KEY=<key>\n\
                  - Keyring: Set api_key to 'keyring:christina.api_key' and store via system keyring"
-                    .to_string(),
-            );
+                .to_string());
         }
 
         Ok(())

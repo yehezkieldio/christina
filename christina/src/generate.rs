@@ -492,10 +492,12 @@ mod tests {
         let provider = FailingCommitHistoryProvider;
         let result = provider.get_commit_history(Path::new("/fake/path"), 10);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to retrieve commit history"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to retrieve commit history")
+        );
     }
 
     #[tokio::test]
@@ -583,10 +585,12 @@ mod tests {
         .await;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No processable diff content found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No processable diff content found")
+        );
     }
 
     #[tokio::test]

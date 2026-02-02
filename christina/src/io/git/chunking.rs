@@ -19,9 +19,9 @@
 use std::sync::Arc;
 
 use christina_core::{
+    Tokenizer,
     git::{DiffChunk, FileDiff},
     types::{FilePath, TokenCount},
-    Tokenizer,
 };
 
 use crate::io::git::buffer_pool;

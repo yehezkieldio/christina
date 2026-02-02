@@ -4,9 +4,9 @@ use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
 use christina_core::{
+    Tokenizer,
     error::{TokenizerError, TokenizerResult},
     types::TokenCount,
-    Tokenizer,
 };
 use parking_lot::Mutex;
 use tiktoken_rs::CoreBPE;

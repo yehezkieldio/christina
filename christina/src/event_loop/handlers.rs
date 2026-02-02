@@ -2,8 +2,8 @@ use christina_core::error::CompletionError;
 use christina_core::types::{CommitMessage, TokenCount};
 use compact_str::CompactString;
 
-use crate::app::state::GenerationState;
 use crate::app::App;
+use crate::app::state::GenerationState;
 use crate::tui::handle_key;
 use christina_core::{AppState, ReviewAction};
 
@@ -235,7 +235,10 @@ mod tests {
         // State should not change
         assert_eq!(app.data.base.generated_message, initial_message);
         assert!(matches!(app.state, AppState::Generating));
-        assert!(matches!(app.generation_state, GenerationState::Running { .. }));
+        assert!(matches!(
+            app.generation_state,
+            GenerationState::Running { .. }
+        ));
     }
 
     #[tokio::test]
@@ -249,10 +252,7 @@ mod tests {
 
         handle_generation_error(&mut app, "test error".to_string(), 42);
 
-        assert_eq!(
-            app.data.base.error_message,
-            Some("test error".to_string())
-        );
+        assert_eq!(app.data.base.error_message, Some("test error".to_string()));
         assert!(matches!(app.state, AppState::Error));
         assert!(matches!(app.generation_state, GenerationState::Idle));
     }
@@ -271,7 +271,10 @@ mod tests {
         // State should not change
         assert_eq!(app.data.base.error_message, None);
         assert!(matches!(app.state, AppState::Generating));
-        assert!(matches!(app.generation_state, GenerationState::Running { .. }));
+        assert!(matches!(
+            app.generation_state,
+            GenerationState::Running { .. }
+        ));
     }
 
     #[test]

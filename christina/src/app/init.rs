@@ -7,7 +7,7 @@ use tui_textarea::TextArea;
 
 use crate::app::edit_history::EditHistory;
 use crate::config::Config;
-use crate::tui::{ToastManager, BASE, SUBTEXT0, SURFACE1, TEXT};
+use crate::tui::{BASE, SUBTEXT0, SURFACE1, TEXT, ToastManager};
 use christina_core::types::TokenCount;
 use christina_core::{AppState, ReviewAction, StateMachine};
 

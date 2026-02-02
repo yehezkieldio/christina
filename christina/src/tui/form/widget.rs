@@ -98,11 +98,7 @@ impl<T: Editable> FormWidget<'_, T> {
                 };
 
                 let marker = if is_current {
-                    if is_editing {
-                        "▶ "
-                    } else {
-                        "› "
-                    }
+                    if is_editing { "▶ " } else { "› " }
                 } else {
                     "  "
                 };

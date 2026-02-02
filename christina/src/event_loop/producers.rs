@@ -252,7 +252,7 @@ mod tests {
                 *ticks += 1;
                 *ticks
             };
-            
+
             if tick_value >= self.max_ticks {
                 tokio::time::sleep(Duration::from_secs(3600)).await;
             } else {
@@ -410,8 +410,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
 
         let mut events = vec![];
-        while let Ok(Some(event)) =
-            tokio::time::timeout(Duration::from_millis(50), rx.recv()).await
+        while let Ok(Some(event)) = tokio::time::timeout(Duration::from_millis(50), rx.recv()).await
         {
             events.push(event);
             if events.len() >= 3 {
@@ -441,8 +440,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let result =
-            tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
+        let result = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
         assert!(result.is_err() || matches!(result.unwrap(), Some(Event::Tick)));
 
         producers.shutdown().await;
