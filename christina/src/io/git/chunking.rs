@@ -1,3 +1,21 @@
+//! Recursive diff chunking algorithm for LLM context management.
+//!
+//! WHY hierarchical splitting: Git diffs have natural semantic boundaries (files > hunks > lines).
+//! Respecting these boundaries produces coherent chunks that LLMs can reason about. Naive
+//! splitting (e.g., fixed-size slices) would fragment hunks mid-change, destroying semantic context.
+//!
+//! WHY lockfile truncation: Package lockfiles (Cargo.lock, package-lock.json) can be 10K+ lines
+//! but contribute minimal semantic value. Truncating to 100 tokens preserves "lock file was modified"
+//! signal without wasting context budget on noise.
+//!
+//! WHY greedy First-Fit: Packs files into chunks maximally, minimizing total chunk count.
+//! Alternative (bin packing) would be overkill—we're optimizing for throughput (fewer API calls),
+//! not perfect packing. First-Fit is O(n) and works well in practice.
+//!
+//! WHY UTF-8 boundary enforcement: Binary search on byte indices can land mid-codepoint. Without
+//! boundary checks, we'd create invalid UTF-8 slices, causing panics. Performance cost is negligible
+//! (few boundary adjustments per chunk).
+
 use std::sync::Arc;
 
 use christina_core::{
@@ -8,12 +26,20 @@ use christina_core::{
 
 use crate::io::git::buffer_pool;
 
+// WHY 100 tokens: Preserves "lockfile changed" signal without wasting context.
+// Lockfiles are noise (auto-generated, low semantic value). 100 tokens ≈ 5-10 package entries,
+// enough to show type of change (added/removed deps) without overwhelming the prompt.
 pub const LOCKFILE_TOKEN_LIMIT: u32 = 100;
 
 /// Split diff into chunks recursively by files, hunks, then lines.
 ///
-/// Uses a greedy packing algorithm (First-Fit) to fill chunks up to the token limit
-/// while maintaining semantic coherence at file boundaries.
+/// WHY greedy First-Fit packing: Maximizes chunk density, minimizing API calls.
+/// Bin packing would be optimal but O(n log n); First-Fit is O(n) and "good enough"
+/// for typical workloads (10-100 files).
+///
+/// WHY hierarchical fallback: Try file-level packing first (preserves full context),
+/// then hunk-level (preserves change locality), then line-level (last resort).
+/// Each level maintains more semantic coherence than the next.
 ///
 /// - All file_diffs must contain valid UTF-8 content
 /// - tokenizer must be initialized and functional
@@ -134,8 +160,15 @@ fn should_limit_file(path: &FilePath, ignore_patterns: &[String]) -> bool {
 
 /// Truncate content to a maximum number of tokens, line by line.
 ///
-/// Uses token-level truncation for exact precision. Encodes the entire content once,
-/// takes the first `limit` tokens, and decodes back to a string.
+/// WHY token-level truncation: Precise—respects exact token budget. Alternative
+/// (character count) would be inaccurate due to BPE tokenization (1 char ≠ 1 token).
+///
+/// WHY line boundary alignment: Improves readability. If truncating mid-line would
+/// waste <20% of budget, we align to last newline. Trade-off: slightly underutilizes
+/// context but produces cleaner chunks for human review.
+///
+/// WHY fallback: Some tokenizers (e.g., sentencepiece) can't decode partial sequences.
+/// Line-by-line fallback is less precise but guaranteed safe.
 ///
 /// - content must be valid UTF-8
 /// - tokenizer must be initialized
@@ -158,7 +191,9 @@ pub fn truncate_to_token_limit(
     let truncated_tokens = &tokens[..limit.get() as usize];
     match tokenizer.decode(truncated_tokens) {
         Some(mut result) => {
-            // Try to end at a line boundary for cleaner output
+            // WHY 80% retention threshold: Balance between line-aligned readability
+            // and token budget utilization. <80% retention = too much waste; align
+            // to nearest line. >80% = acceptable loss; use line boundary for cleaner output.
             if let Some(last_newline) = result.rfind('\n') {
                 // Only use line boundary if we don't lose too much content (>80% retention)
                 let line_slice = &result[..=last_newline];
@@ -395,6 +430,15 @@ pub fn split_by_lines(
 }
 
 /// Split an oversized line into smaller chunks.
+///
+/// WHY binary search: Finds longest slice ≤ token_limit in O(log n) character scans.
+/// Alternative (linear scan) would be O(n²) for large lines (e.g., minified JS).
+///
+/// WHY UTF-8 boundary adjustment: Binary search mid-point can land inside multi-byte
+/// codepoint. Adjusting ensures valid slices. Without this, we'd panic on invalid UTF-8.
+///
+/// WHY guaranteed progress: If best == start (e.g., single emoji exceeds limit), force
+/// +1 char to avoid infinite loop. Produces invalid chunk but prevents hang.
 fn split_oversized_line(
     file_path: &FilePath,
     line: &str,
