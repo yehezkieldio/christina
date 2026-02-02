@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
 
+pub mod commit;
+pub mod ui;
+
 /// AI-powered commit message generator
 #[derive(Parser)]
 #[command(
@@ -11,6 +14,15 @@ pub struct Cli {
     /// Increase logging verbosity (-v, -vv, -vvv, etc.)
     #[arg(short, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    #[arg(long)]
+    pub tui: bool,
+
+    #[arg(long)]
+    pub yes: bool,
+
+    #[arg(short, long)]
+    pub context: Option<String>,
 
     #[command(subcommand)]
     pub command: Option<Commands>,

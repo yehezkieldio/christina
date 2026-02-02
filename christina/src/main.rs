@@ -23,6 +23,11 @@ use clap::Parser;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use tokio::sync::mpsc;
 
+// Satisfy unused_crate_dependencies lint for CLI UI crates
+use console as _;
+use dialoguer as _;
+use indicatif as _;
+
 mod app;
 mod bootstrap;
 mod cli;
@@ -55,7 +60,13 @@ async fn main() -> Result<()> {
             config::profile_cli::handle_profile_command(cmd)?;
             Ok(())
         }
-        None => run_tui().await,
+        None => {
+            if cli.tui {
+                run_tui().await
+            } else {
+                cli::commit::run(cli.yes, cli.context).await
+            }
+        }
     }
 }
 

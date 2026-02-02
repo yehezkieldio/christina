@@ -38,6 +38,9 @@ keyring = { version = "3", optional = true }
 lru = "0.12.5"
 tiktoken-rs = "0.9.1"
 tracing = "0.1.41"
+console = "0.15"
+indicatif = "0.17"
+dialoguer = "0.11"
 
 [dev-dependencies]
 christina-core = { path = "../christina-core", features = ["test-helpers"] }

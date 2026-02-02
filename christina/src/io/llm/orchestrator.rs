@@ -690,7 +690,7 @@ impl AIOrchestrator {
             merged_themes.push(Theme::new(title, description, total_files, scope));
         }
 
-        merged_themes.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+        merged_themes.sort_by_key(|theme| std::cmp::Reverse(theme.file_count));
         merged_themes.truncate(3);
 
         debug!(
