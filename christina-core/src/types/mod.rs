@@ -1,3 +1,15 @@
+//! Core domain types with enforced invariants.
+//!
+//! WHY these types exist: Each type in this module represents a value with
+//! constraints that cannot be expressed by primitive types alone. By making
+//! invalid states unrepresentable, we push validation to construction time
+//! and eliminate defensive checks elsewhere in the codebase.
+//!
+//! All types here are:
+//! - Immutable after construction (no setters)
+//! - Validated at creation (invalid values rejected)
+//! - Cheap to clone (either Copy or using CompactString/NonZero optimizations)
+
 pub mod commit_message;
 pub mod file_path;
 pub mod model_name;

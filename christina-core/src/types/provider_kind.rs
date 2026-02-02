@@ -1,7 +1,20 @@
+//! LLM provider discriminator for API client selection.
+//!
+//! WHY enum instead of trait: The set of supported providers is fixed and known
+//! at compile time. An enum gives us exhaustive matching, zero overhead dispatch,
+//! and clear error messages when an unsupported provider is specified.
+//!
+//! WHY case-insensitive parsing: User-facing config (TOML, CLI args) should be
+//! forgiving. "OpenAI", "openai", "OPENAI" all mean the same thing.
+
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
+/// Supported LLM API providers.
+///
+/// This enum drives client instantiation and request formatting.
+/// Each variant corresponds to a distinct API contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {

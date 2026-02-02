@@ -2,9 +2,24 @@ use std::{num::NonZeroU32, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
+// WHY these specific limits: MAX_INPUT reflects typical LLM context windows (256K tokens
+// is common for models like GPT-4 and Claude 3+). MAX_OUTPUT is conservative to prevent
+// runaway generation costs - commit messages should be concise, not essays.
 pub const MAX_INPUT: u32 = 256_000;
 pub const MAX_OUTPUT: u32 = 4_096;
 
+/// Count of tokens in text, guaranteed to be non-zero.
+///
+/// WHY NonZeroU32: Empty text is never valid input for token-counting operations.
+/// By using NonZeroU32, we:
+/// 1. Eliminate defensive checks for zero throughout the codebase
+/// 2. Enable compiler optimizations (Option<TokenCount> is the same size as u32)
+/// 3. Make the domain constraint explicit in the type system
+///
+/// WHY saturating arithmetic: When token counts are computed from potentially malicious
+/// or corrupted input, clamping to NonZeroU32::MIN (1) is safer than panicking or
+/// wrapping. This ensures the system remains operational even with bad data, trading
+/// precision for resilience.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u32", into = "u32")]
 pub struct TokenCount(NonZeroU32);

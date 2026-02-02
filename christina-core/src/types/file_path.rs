@@ -3,6 +3,19 @@ use std::path::Path;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+/// Relative file path within a Git repository.
+///
+/// WHY CompactString: Most repository file paths are short (≤16 bytes on average:
+/// "src/main.rs" = 11 bytes), and CompactString stores these inline without heap
+/// allocation. This eliminates pointer indirection for the common case while still
+/// gracefully handling longer paths via the heap.
+///
+/// WHY relative paths only: Absolute paths break portability across different
+/// checkout directories and deployment environments. By enforcing relative paths,
+/// we ensure diffs and file references work consistently regardless of where
+/// the repository is cloned. The invariant is enforced via debug_assert in
+/// release builds to catch violations during development without runtime overhead
+/// in production.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FilePath(CompactString);

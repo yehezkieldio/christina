@@ -1,6 +1,12 @@
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+/// LLM model identifier.
+///
+/// WHY CompactString: Model names like "gpt-4", "claude-3-opus" are typically short
+/// (5-20 bytes) and benefit from inline storage. This is a frequently cloned type
+/// in the LLM orchestration pipeline, so avoiding heap allocation reduces pressure
+/// on the allocator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModelName(CompactString);
