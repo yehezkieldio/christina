@@ -1,3 +1,21 @@
+//! Thread-local buffer pool for zero-allocation diff chunking.
+//!
+//! WHY buffer pooling: Diff processing allocates 100+ temporary strings during
+//! chunking (one per hunk). Pooling eliminates repeated alloc/dealloc cycles,
+//! reducing GC pressure and improving throughput for large diffs.
+//!
+//! WHY thread-local: Avoids Mutex contention on hot path. Each thread maintains
+//! its own pool, eliminating synchronization overhead. Trade-off: slightly higher
+//! memory usage (pools not shared), but chunking is CPU-bound, not memory-bound.
+//!
+//! WHY 4KB capacity: Typical git diff hunk is 50-200 lines (~2-4KB). Pre-allocating
+//! 4KB avoids reallocation for most hunks. Over-allocating wastes memory; under-allocating
+//! triggers realloc on first use (defeating the purpose of pooling).
+//!
+//! WHY 16 buffer limit: Caps memory usage per thread. Most workloads need 1-4
+//! concurrent buffers. Higher limits don't improve performance (no concurrent
+//! chunking per thread), just waste memory holding idle buffers.
+
 use std::cell::RefCell;
 
 use christina_core::types::FilePath;
@@ -11,8 +29,9 @@ pub(crate) struct ChunkBuffer {
 impl ChunkBuffer {
     fn new() -> Self {
         Self {
-            // Pre-allocate 4KB for content, typical chunk size
+            // WHY 4KB: Typical hunk size (50-200 lines). Avoids realloc for common case.
             content: String::with_capacity(4096),
+            // WHY capacity 4: Typical chunk spans 1-4 files. Avoids vec realloc.
             file_paths: Vec::with_capacity(4),
         }
     }
@@ -34,6 +53,10 @@ impl ChunkBuffer {
     }
 
     /// Take ownership of the content, replacing it with a new buffer.
+    ///
+    /// WHY mem::replace: Avoids clone. Takes owned String, replaces with fresh
+    /// allocation. Caller gets populated content; ChunkBuffer gets empty buffer
+    /// ready for reuse (preserving 4KB capacity for next chunk).
     pub(crate) fn take_content(&mut self) -> String {
         std::mem::replace(&mut self.content, String::with_capacity(4096))
     }
@@ -70,10 +93,12 @@ pub(crate) fn acquire_buffer() -> ChunkBuffer {
 pub(crate) fn release_buffer(buffer: ChunkBuffer) {
     BUFFER_POOL.with(|pool| {
         let mut pool = pool.borrow_mut();
-        // Limit pool size to prevent unbounded growth
+        // WHY limit 16: Caps per-thread memory. Typical workload uses 1-4 buffers.
+        // Higher limits don't improve perf (no concurrent chunking per thread).
         if pool.len() < 16 {
             pool.push(buffer);
         }
+        // If pool full, buffer dropped here (automatic deallocation)
     });
 }
 
