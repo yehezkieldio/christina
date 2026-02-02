@@ -1,3 +1,17 @@
+//! Exponential backoff retry logic with full jitter.
+//!
+//! WHY exponential backoff: Prevents thundering herd after transient failures (e.g., API outage).
+//! Linear backoff (1s, 2s, 3s) still causes synchronized retries; exponential (1s, 2s, 4s, 8s)
+//! spreads load over time as failed requests exponentially diverge.
+//!
+//! WHY full jitter: Randomizes delay in [0, max] instead of fixed exponential. When N requests
+//! fail simultaneously (e.g., rate limit), they retry at different times, preventing synchronized
+//! storms. Without jitter, all requests retry at exactly 1s, 2s, 4s—defeating backoff purpose.
+//!
+//! WHY IsTransient trait bound: Type-safe retry classification. Only errors marked transient
+//! (rate limits, timeouts, server errors) are retried. Permanent errors (auth failures, invalid
+//! requests) fail fast. Alternative (runtime check) would be error-prone and harder to verify.
+
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -43,6 +57,10 @@ impl RetryPolicy {
     }
 
     /// Calculate delay for a given retry attempt (0-indexed).
+    ///
+    /// WHY saturating arithmetic: Prevents overflow on large attempt numbers.
+    /// 2^32 * base_delay would overflow u64; saturating_pow/saturating_mul cap at u64::MAX,
+    /// producing very long (but finite) delays instead of panicking.
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
         let max_delay_ms = self
             .base_delay_ms
@@ -71,6 +89,12 @@ impl RetryPolicy {
 }
 
 /// Retry a fallible operation with exponential backoff.
+///
+/// WHY loop instead of recursion: Rust doesn't optimize tail recursion. Recursive implementation
+/// would blow stack after ~1000 retries. Loop is stack-safe and clearer for imperative retry logic.
+///
+/// WHY check transient first: Fail fast on permanent errors (auth, validation). Avoids wasting
+/// time/delays on errors that will never succeed. Transient check is cheap (enum match).
 pub async fn retry_with_backoff<F, Fut, T, E>(policy: &RetryPolicy, operation: F) -> Result<T, E>
 where
     F: Fn() -> Fut,
@@ -100,6 +124,13 @@ where
 }
 
 /// Generate random jitter in range [0, max] using a seed for distribution.
+///
+/// WHY seed + time: Seed alone would produce identical jitter for same content retried
+/// simultaneously. Time (nanoseconds) adds entropy, ensuring different jitter even for
+/// duplicate requests. Combines determinism (seed) with randomness (time).
+///
+/// WHY hash-based: Avoids `rand` crate dependency for simple jitter. Hash distribution
+/// is sufficient for retry timing (doesn't need cryptographic quality). Fast and simple.
 pub fn rand_jitter_with_seed(max: u64, seed: u64) -> u64 {
     if max == 0 {
         return 0;
