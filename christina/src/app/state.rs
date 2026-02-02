@@ -3,6 +3,17 @@ use crate::tui::{DataState, UiState};
 use christina_core::StateMachine;
 
 /// Prevents orphaned background tasks from continuing to run after state transitions.
+///
+/// WHY RAII abort pattern: LLM generation tasks are async and long-running (5-30s).
+/// If the user cancels or an error occurs, we must terminate the task immediately.
+/// Without this, tasks would continue running and potentially mutate state after the
+/// user has moved to a different screen. Drop-based abort guarantees cleanup on:
+/// - Explicit transition to another state
+/// - Error handling unwinding the stack
+/// - User cancellation via input
+///
+/// This prevents race conditions where stale generation results arrive after we've
+/// already started a new generation or returned to the dashboard.
 pub struct AbortOnDrop(pub tokio::task::JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
@@ -12,6 +23,18 @@ impl Drop for AbortOnDrop {
 }
 
 /// Bundles task handle and generation ID to prevent invalid states.
+///
+/// WHY bundle task + generation_id: Generation tasks run asynchronously and send
+/// results via channels. Without version tracking, we can't distinguish between:
+/// - Results from the current generation (should be displayed)
+/// - Results from a cancelled/stale generation (should be ignored)
+///
+/// Bundling them together enforces the invariant: "if a task exists, its ID is known".
+/// This prevents the impossible state of (task=Some, generation_id=None) which would
+/// require error-prone runtime checks throughout the codebase.
+///
+/// The enum also makes the state machine explicit: you're either Idle (no task, no ID)
+/// or Running (both task and ID present). This eliminates an entire class of bugs.
 pub enum GenerationState {
     Idle,
     Running {
@@ -26,6 +49,18 @@ pub struct TuiUiState {
     pub should_redraw: bool,
 }
 
+/// WHY Option for each screen state: Each TUI screen has unique ephemeral state
+/// (cursor positions, scroll offsets, user input). Only one screen is active at a time.
+///
+/// Alternative considered: enum ScreenState { Dashboard(DashboardState), ... }
+/// Rejected because transitions require moving data out of the enum (ownership issues)
+/// and reconstructing the entire enum variant. With Options, we can:
+/// - `.take()` old state without cloning
+/// - Initialize new state independently
+/// - Keep inactive state around for potential "back" navigation (future optimization)
+///
+/// Memory cost: ~200 bytes per Option when None (negligible for 6 screens).
+/// Benefit: Zero-copy state transitions and simplified transition logic.
 pub struct TuiSessionData {
     pub base: DataState,
     pub state_machine: StateMachine,

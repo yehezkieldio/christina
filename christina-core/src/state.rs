@@ -61,7 +61,9 @@ impl StateMachine {
 
     /// Validate a state transition
     pub fn can_transition(&self, from: &AppState, to: &AppState) -> Result<(), TransitionError> {
-        // Same state transitions are never valid
+        // WHY reject same-state transitions: They indicate programmer error (forgetting
+        // to update state) or redundant logic. Early rejection prevents silent bugs where
+        // state updates fail to trigger necessary side effects.
         if from == to {
             return Err(TransitionError {
                 from: from.clone(),
