@@ -13,9 +13,14 @@ pub type Error = AcquireError;
 
 /// Token bucket rate limiter for proactive API rate limiting.
 ///
-/// Combines a semaphore for concurrency control with a token bucket
-/// for rate limiting. This prevents thundering herd by spacing out
-/// requests proactively rather than reactively retrying.
+/// WHY combine semaphore + token bucket: Semaphore prevents resource exhaustion
+/// (limits concurrent in-flight requests), while token bucket enforces API rate
+/// limits (requests per second). Both are needed: semaphore alone can't prevent
+/// rate limit violations, token bucket alone can't prevent memory/connection exhaustion.
+///
+/// WHY proactive rate limiting: Prevents thundering herd by spacing out requests
+/// before they hit the API. Reactive retry-after-failure creates bursty traffic
+/// that can cascade (all requests fail, all retry at once, repeat).
 #[derive(Clone)]
 pub struct RequestLimiter {
     semaphore: Arc<Semaphore>,
@@ -85,9 +90,14 @@ impl RequestLimiter {
 
     /// Calculate backoff delay with full jitter for retries.
     ///
-    /// Uses full jitter (random delay between 0 and max) to prevent
-    /// thundering herd on retries. Each request gets a unique seed
-    /// based on content hash for better distribution.
+    /// WHY full jitter: When multiple requests fail simultaneously (API outage),
+    /// they'll retry at different times, preventing synchronized retry storms.
+    /// Half jitter (base + random) still creates thundering herd at `base` boundary.
+    ///
+    /// WHY per-request seed: Each request's jitter is reproducible but unique.
+    /// Without seeding, all concurrent requests sample the same random state,
+    /// defeating the purpose of jitter. Content hash ensures different payloads
+    /// get different jitter patterns.
     ///
     /// # Arguments
     /// * `attempt` - Retry attempt number (0-indexed)
@@ -103,7 +113,14 @@ impl RequestLimiter {
 
 impl TokenBucket {
     fn new(requests_per_second: f64) -> Self {
+        // WHY capacity = requests_per_second * 2.0: Allows short bursts (2 seconds worth)
+        // while maintaining long-term rate limits. Pure 1:1 ratio would prevent any bursts,
+        // making the limiter overly strict for bursty workloads (typical in user-driven tools).
         let capacity = requests_per_second * 2.0;
+
+        // WHY separate min_delay: Token bucket refill is continuous (floating point),
+        // but API rate limits are often discrete (per-second). min_delay enforces a
+        // hard floor to prevent sub-millisecond bursts that could violate API contracts.
         let min_delay = if requests_per_second.is_finite() && requests_per_second > 0.0 {
             Duration::from_secs_f64(1.0 / requests_per_second)
         } else {
@@ -167,10 +184,12 @@ pub struct RateLimitPermit<'a> {
 
 /// Generate a random number in [0, max] using a seed.
 ///
-/// Uses hash-based randomization for deterministic but distributed
-/// values across different seeds. This ensures concurrent requests
-/// with different content get different jitter even when retried
-/// at the same time.
+/// WHY hash-based: Combines seed (content-specific) with current time (prevents
+/// collisions even if seed repeats). Result is deterministic per (seed, time) pair
+/// but uniformly distributed across the range.
+///
+/// WHY not rand crate: Avoids heavy dependency for simple jitter. Hash-based
+/// randomization is sufficient for retry timing (doesn't need cryptographic quality).
 #[cfg(test)]
 fn random_with_seed(max: u64, seed: u64) -> u64 {
     if max == 0 {
