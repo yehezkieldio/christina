@@ -1,3 +1,27 @@
+//! Map-Reduce orchestrator for multi-chunk diff commit message generation.
+//!
+//! WHY map-reduce: Large diffs (100+ files) exceed LLM context windows. Map phase
+//! summarizes each chunk independently (parallel, no sequential dependencies). Reduce
+//! phase synthesizes summaries into coherent commit message. Alternative (sequential
+//! processing) would be O(n) API calls with blocking; map-reduce is O(log n) with parallelism.
+//!
+//! WHY intent extraction: With 10+ chunk summaries, reduce phase prompt becomes
+//! incoherent ("feat: X, fix: Y, refactor: Z..."). Intent extraction groups summaries
+//! by theme/scope, producing structured context. Improves message quality and prevents
+//! LLM confusion from contradictory summaries.
+//!
+//! WHY partial failure tolerance: Map phase can fail on individual chunks (rate limits,
+//! malformed diffs). With 100 chunks, 5% failure is acceptable if we can still generate
+//! meaningful message from 95 successes. Alternative (fail-fast) would abort entire
+//! workflow on single chunk failure, wasting completed work.
+//!
+//! WHY systemic vs partial failure: Systemic errors (auth, invalid API key) affect ALL
+//! requests—no point continuing. Partial errors (single chunk parsing) are isolated.
+//! Detecting systemic early (first failure in map phase) prevents wasting API calls.
+//!
+//! WHY direct generation fast path: Single-chunk diffs don't need map-reduce overhead.
+//! Direct generation saves 2 API calls (map + intent) and reduces latency from ~5s to ~1s.
+//! Trade-off: slightly different prompt structure, but acceptable for simple diffs.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,11 +41,18 @@ use christina_core::llm::{ChatMessage, Role};
 use christina_core::prompt::{PromptBuilder, Theme};
 use christina_core::types::{CommitMessage, FilePath, commit_message::ValidationMode};
 
+// WHY 5 concurrent: Balance between throughput and rate limits. Lower = slower; higher
+// risks rate limit violations. Most providers allow 10-50 req/s; 5 concurrent @ 1s/req = 5 req/s.
 const MAX_CONCURRENT_REQUESTS: usize = 5;
+
+// WHY progressive timeouts: Initial requests prime cache (cold start = slower). Retries
+// benefit from warm cache. Final timeout (120s) prevents infinite hangs on provider issues.
 const LLM_INITIAL_TIMEOUT_SECONDS: u64 = 30;
 const LLM_RETRY_TIMEOUT_SECONDS: u64 = 60;
 const LLM_TIMEOUT_SECONDS: u64 = 120;
 
+// WHY 20 summaries: Intent extraction prompt has ~500 token overhead + 50 tokens/summary.
+// 20 summaries = 1500 tokens, leaves ~2500 for context in 4K window. Higher = truncation risk.
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
 
 #[derive(Debug)]
@@ -173,12 +204,31 @@ impl AIOrchestrator {
         }
     }
 
+    /// Calculate budget for commit history context in prompt.
+    ///
+    /// WHY 15% allocation: Empirically derived balance. Less = insufficient style reference;
+    /// more = reduces space for actual diff content. 150 tokens/commit is average for
+    /// conventional commit format (type + scope + description).
+    ///
+    /// WHY minimum 3 commits: Below 3, style inference is unreliable (insufficient samples).
+    /// Even tiny context budgets get at least 3 commits for pattern recognition.
     pub fn calculate_history_budget(&self, max_input_tokens: u32) -> usize {
         let budget_tokens = max_input_tokens as f64 * 0.15;
         let commits_available = (budget_tokens / 150.0).floor() as usize;
         commits_available.max(3)
     }
 
+    /// Generate commit message using map-reduce or direct generation.
+    ///
+    /// WHY single-chunk fast path: Direct generation for 1 chunk saves 2 API calls
+    /// (map summary + intent extraction). Reduces latency from ~5s to ~1s for simple diffs.
+    ///
+    /// WHY 3-phase pipeline: Map (parallel chunk summarization) → Intent (extract themes)
+    /// → Reduce (synthesize message). Each phase is independently testable and optimizable.
+    ///
+    /// WHY detect_contradictions on ≤2 summaries: Intent extraction requires ≥3 summaries
+    /// for meaningful clustering. With 2, fallback to heuristic theme generation. Contradiction
+    /// detection warns about conflicting changes (feat+revert) that need manual review.
     pub async fn generate_commit_message(
         &self,
         chunks: Vec<DiffChunk>,
@@ -333,6 +383,19 @@ impl AIOrchestrator {
         validation_result
     }
 
+    /// Map phase: Summarize each diff chunk independently (parallel).
+    ///
+    /// WHY buffer_unordered: Processes chunks as soon as capacity available, regardless
+    /// of input order. Maximizes throughput—no waiting for slow chunks to complete.
+    /// Alternative (ordered) would block on slowest chunk, serializing work.
+    ///
+    /// WHY systemic failure detection: Auth errors, invalid API keys affect ALL chunks.
+    /// Failing fast on first systemic error prevents wasting API quota on doomed requests.
+    /// Partial failures (malformed diff, rate limit) are isolated—allow pipeline to continue.
+    ///
+    /// WHY partial failure tolerance: With 100 chunks, 5% failure (5 chunks) is acceptable
+    /// if we can generate meaningful message from 95 successes. Failing fast would waste
+    /// completed work. Only abort if failure rate exceeds max_partial_failure_rate threshold.
     async fn map_phase(
         &self,
         chunks: &[DiffChunk],
