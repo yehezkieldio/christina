@@ -106,6 +106,21 @@ pub fn load_file_lists(
     (staged, unstaged, warnings)
 }
 
+/// WHY multi-condition state determination: Avoids forcing user through unnecessary screens.
+///
+/// We want to skip StagingSelection (file picker) and go directly to Dashboard when:
+/// 1. User has already staged processable files (not binary, not empty diff)
+/// 2. There are no unstaged files to offer for selection
+///
+/// This optimizes the happy path: `git add files && christina` immediately shows Dashboard.
+///
+/// WHY processable check matters: Binary files and empty diffs cannot be sent to LLMs.
+/// If all staged files are binary (e.g., images), forcing Dashboard would show an empty
+/// diff and fail generation. Better to send user to StagingSelection with a warning so
+/// they can stage text files.
+///
+/// Rejected alternative: Always start at StagingSelection for consistency. Problem: adds
+/// friction to the common case where user has already staged exactly what they want.
 pub fn determine_initial_state(
     staged_files: &[christina_core::GitFile],
     unstaged_files: &[christina_core::GitFile],

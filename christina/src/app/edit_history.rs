@@ -2,6 +2,15 @@ use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+/// WHY 50 entries: Balances memory usage vs undo depth. Each entry stores:
+/// - String: ~100 bytes avg (commit message)
+/// - Cursor: 16 bytes (two usize)
+///
+///   Total: ~116 bytes/entry * 50 = 5.8 KB for full undo stack.
+///
+/// 50 undos cover extreme editing sessions (typical is <10). Beyond 50, memory
+/// cost grows linearly with no practical UX benefit. User editing commit messages
+/// is rare; user editing 50+ times is vanishingly rare.
 const MAX_HISTORY_SIZE: usize = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +32,17 @@ impl HistoryEntry {
     }
 }
 
+/// WHY VecDeque for undo + Vec for redo: Asymmetric access patterns demand it.
+///
+/// Undo stack: Needs efficient pop_back (undo) AND pop_front (eviction when full).
+/// VecDeque provides O(1) for both. Vec would be O(n) for pop_front (shift all elements).
+///
+/// Redo stack: Only needs push/pop at the end. Vec is simpler and slightly faster (better
+/// cache locality, no ring buffer wraparound). VecDeque would add complexity with no benefit.
+///
+/// Rejected alternatives:
+/// - Vec for undo: O(n) pop_front unacceptable (50 element shift on every new edit)
+/// - VecDeque for redo: Over-engineering, redo is always LIFO (stack semantics)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditHistory {
     undo_stack: VecDeque<HistoryEntry>,
@@ -48,6 +68,10 @@ impl EditHistory {
                 self.undo_stack.pop_front();
             }
         }
+        // WHY clear redo on push: Standard undo/redo invariant. Once user makes a new
+        // edit, the "future" timeline (redo stack) is invalidated. Without this, user
+        // could undo, make edits, then redo to a state that never existed in their
+        // actual edit sequence - creating impossible/confusing state branches.
         self.redo_stack.clear();
         self.current = Some(entry);
     }

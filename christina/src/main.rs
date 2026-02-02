@@ -92,7 +92,10 @@ async fn run_tui() -> Result<()> {
     match event_loop_result {
         Ok(event_loop_result) => event_loop_result,
         Err(panic_payload) => {
-            // Try to extract panic message for better error reporting
+            // WHY downcast attempts: Rust panics use `Any` trait for payload, which can be
+            // &str (panic!("message")), String (panic!(format!(...)), or arbitrary types.
+            // We attempt both common string types to provide actionable error messages.
+            // Without this, users would only see "unknown panic" which hides the root cause.
             let panic_msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
                 s.to_string()
             } else if let Some(s) = panic_payload.downcast_ref::<String>() {
