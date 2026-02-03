@@ -11,7 +11,7 @@ use crate::generate::generate_commit_message_with_progress;
 use crate::io::git::adapter;
 use christina_core::GitFile;
 
-pub async fn run(yes: bool, context: Option<String>) -> Result<()> {
+pub async fn run(yes: bool, context: Option<&str>, dry_run: bool) -> Result<()> {
     ui::print_header();
     ui::print_divider();
 
@@ -33,7 +33,7 @@ pub async fn run(yes: bool, context: Option<String>) -> Result<()> {
 
     display_changes(&files);
 
-    let message = match generate_commit(diff, context).await {
+    let message = match generate_commit(diff, context.map(|s| s.to_string())).await {
         Ok(message) => message,
         Err(err) => {
             ui::print_error(&format!("Commit message generation failed: {}", err));
@@ -51,6 +51,15 @@ pub async fn run(yes: bool, context: Option<String>) -> Result<()> {
 
     if !confirmed {
         ui::print_info("Commit cancelled.");
+        return Ok(());
+    }
+
+    if dry_run {
+        println!("\n{}", "═".repeat(60));
+        println!("DRY RUN MODE - Commit NOT created");
+        println!("{}\n", "═".repeat(60));
+        println!("The following commit message would have been used:\n");
+        println!("{}", message);
         return Ok(());
     }
 

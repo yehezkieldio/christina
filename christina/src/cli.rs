@@ -25,6 +25,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub context: Option<String>,
 
+    /// Generate commit message without creating the commit (preview mode)
+    #[arg(long)]
+    pub dry_run: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

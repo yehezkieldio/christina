@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
             if cli.tui {
                 run_tui().await
             } else {
-                cli::commit::run(cli.yes, cli.context).await
+                cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run).await
             }
         }
     }
