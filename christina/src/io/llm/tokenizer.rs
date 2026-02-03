@@ -384,13 +384,12 @@ mod tests {
     #[test]
     fn token_budget_invalid_returns_error() {
         // max_output + reserved exceeds max_input
-        let budget = TokenBudget::new(
+        let result = TokenBudget::try_new(
             TokenCount::new_saturating(4_096),
             TokenCount::new_saturating(3_000),
             TokenCount::new_saturating(1_000),
             TokenCount::new_saturating(500),
         );
-        let result = budget.remaining_for_diff();
 
         assert!(result.is_err());
         if let Err(err) = result {
