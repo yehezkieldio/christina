@@ -15,6 +15,11 @@ use christina_core::{
 };
 use url::Url;
 
+/// Default schema version for config files
+fn default_schema_version() -> u32 {
+    1
+}
+
 /// Application configuration with layered loading.
 ///
 /// Precedence (highest to lowest):
@@ -99,6 +104,10 @@ pub struct Config {
     /// Failure rate threshold for prompting user confirmation (0.0-1.0, default: 0.05)
     #[serde(default)]
     pub prompt_failure_rate_threshold: f64,
+
+    /// Schema version for config file format migrations
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
 }
 
 impl Default for Config {
@@ -131,6 +140,7 @@ impl Default for Config {
             max_concurrent_requests: 4,
             max_partial_failure_rate: 0.10,
             prompt_failure_rate_threshold: 0.05,
+            schema_version: default_schema_version(),
         }
     }
 }
