@@ -22,6 +22,7 @@ parking_lot = "0.12.5"
 regex = { version = "1.12.2", default-features = false, features = ["std", "perf"] }
 url = { version = "2.5.8", features = ["serde"] }
 tempfile = "3.10.1"
+tracing = "0.1.44"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

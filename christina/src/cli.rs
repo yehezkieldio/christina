@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 
 pub mod commit;
 pub mod ui;
@@ -36,6 +37,12 @@ pub enum Commands {
     /// Profile management
     #[command(subcommand)]
     Profile(ProfileCommands),
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]

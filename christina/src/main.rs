@@ -44,6 +44,7 @@ use git2 as _;
 use app::App;
 use bootstrap::TerminalHandle;
 use cli::{Cli, Commands};
+use clap::CommandFactory;
 use event_loop::{events::Event, run_event_loop};
 
 fn init_tracing(verbose: u8) {
@@ -90,6 +91,11 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Profile(cmd)) => {
             config::profile_cli::handle_profile_command(cmd)?;
+            Ok(())
+        }
+        Some(Commands::Completions { shell }) => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "christina", &mut std::io::stdout());
             Ok(())
         }
         None => {
