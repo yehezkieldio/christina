@@ -216,7 +216,11 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
 
         current_path = new_path;
 
-        // Append line content to current diff
+        // Include origin character for context/add/delete lines
+        let origin = line.origin();
+        if matches!(origin, '+' | '-' | ' ') {
+            current_diff.push(origin);
+        }
         if let Ok(content) = std::str::from_utf8(line.content()) {
             current_diff.push_str(content);
         }
@@ -304,7 +308,11 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
 
         current_path = new_path;
 
-        // Append line content to current diff
+        // Include origin character for context/add/delete lines
+        let origin = line.origin();
+        if matches!(origin, '+' | '-' | ' ') {
+            current_diff.push(origin);
+        }
         if let Ok(content) = std::str::from_utf8(line.content()) {
             current_diff.push_str(content);
         }
@@ -332,10 +340,14 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
 /// Stage files by path
 pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let mut index = repo.index()?;
+    let workdir = repo
+        .workdir()
+        .context("Cannot stage files in bare repository")?;
 
     for path in paths {
         let path_buf = std::path::Path::new(path);
-        if path_buf.exists() {
+        let full_path = workdir.join(path_buf);
+        if full_path.exists() {
             index.add_path(path_buf)?;
         } else {
             index.remove_path(path_buf)?;
@@ -528,6 +540,11 @@ pub fn build_staged_diff(repo: &Repository) -> Result<String> {
     let mut diff_string = String::new();
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
         use std::fmt::Write;
+        // Include origin character for context/add/delete lines
+        let origin = line.origin();
+        if matches!(origin, '+' | '-' | ' ') {
+            let _ = write!(&mut diff_string, "{}", origin);
+        }
         let _ = write!(
             &mut diff_string,
             "{}",
