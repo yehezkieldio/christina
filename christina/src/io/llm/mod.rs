@@ -7,4 +7,4 @@ pub mod provider;
 pub mod retry;
 pub mod tokenizer;
 pub use orchestrator::{AIOrchestrator, GenerationResult};
-pub use tokenizer::{TokenBudget, TokenizerService};
+pub use tokenizer::TokenBudget;

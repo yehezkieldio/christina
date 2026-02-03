@@ -9,7 +9,8 @@ use crate::config::Config;
 use crate::event_loop::Event;
 use crate::io::git::diff_processor::DiffProcessor;
 use crate::io::llm::provider::Provider;
-use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget, TokenizerService};
+use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
+use crate::io::llm::tokenizer::get_tokenizer;
 use christina_core::ProviderProfile;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::TokenCount;
@@ -117,7 +118,7 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
-    let tokenizer: Arc<dyn christina_core::Tokenizer> = Arc::new(TokenizerService::new()?);
+    let tokenizer: Arc<dyn christina_core::Tokenizer> = Arc::clone(&get_tokenizer()?);
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);

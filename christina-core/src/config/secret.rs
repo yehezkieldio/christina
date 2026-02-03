@@ -1,5 +1,6 @@
 use std::fmt;
 use thiserror::Error;
+use tracing;
 
 /// Errors that can occur during secret resolution
 #[derive(Debug, Error)]
@@ -114,6 +115,12 @@ impl SecretRef {
             Ok(SecretRef::Literal(rest.to_string()))
         } else {
             // Treat as literal value
+            // Warn if this looks like an API key stored as plaintext
+            if s.len() > 20 && !s.contains(' ') {
+                tracing::warn!(
+                    "API key stored as plaintext in config file. Consider using env:VAR_NAME or keyring:KEY_NAME for better security."
+                );
+            }
             Ok(SecretRef::Literal(s.to_string()))
         }
     }

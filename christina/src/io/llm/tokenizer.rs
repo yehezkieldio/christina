@@ -1,7 +1,5 @@
 use std::num::NonZeroUsize;
-
-#[cfg(test)]
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use christina_core::{
     error::{TokenizerError, TokenizerResult},
@@ -13,29 +11,24 @@ use tiktoken_rs::CoreBPE;
 
 pub type Result<T> = TokenizerResult<T>;
 
-#[cfg(test)]
-static TOKENIZER: OnceLock<TokenizerService> = OnceLock::new();
+static TOKENIZER: OnceLock<Arc<TokenizerService>> = OnceLock::new();
 
 /// Get the global tokenizer service instance.
 ///
 /// This initializes the tokenizer on first call and returns a reference
 /// to the same instance on subsequent calls.
-#[cfg(test)]
-pub(crate) fn get_tokenizer() -> Result<&'static TokenizerService> {
+pub fn get_tokenizer() -> Result<Arc<TokenizerService>> {
     match TOKENIZER.get() {
-        Some(t) => Ok(t),
+        Some(t) => Ok(Arc::clone(t)),
         None => {
-            let tokenizer = TokenizerService::new()?;
-            match TOKENIZER.set(tokenizer) {
-                // After successful set(), get() is guaranteed to return Some.
-                // After failed set() (Err case), another thread succeeded, so get() returns Some.
-                #[expect(clippy::unwrap_used, reason = "OnceLock guarantees value after set")]
-                Ok(_) => Ok(TOKENIZER.get().unwrap()),
+            let tokenizer = Arc::new(TokenizerService::new()?);
+            match TOKENIZER.set(Arc::clone(&tokenizer)) {
+                Ok(_) => Ok(tokenizer),
                 #[expect(
                     clippy::unwrap_used,
                     reason = "Another thread set it, so get() is Some"
                 )]
-                Err(_) => Ok(TOKENIZER.get().unwrap()),
+                Err(_) => Ok(Arc::clone(TOKENIZER.get().unwrap())),
             }
         }
     }
