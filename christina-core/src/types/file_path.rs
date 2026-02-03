@@ -13,9 +13,7 @@ use serde::{Deserialize, Serialize};
 /// WHY relative paths only: Absolute paths break portability across different
 /// checkout directories and deployment environments. By enforcing relative paths,
 /// we ensure diffs and file references work consistently regardless of where
-/// the repository is cloned. The invariant is enforced via debug_assert in
-/// release builds to catch violations during development without runtime overhead
-/// in production.
+/// the repository is cloned. The invariant is enforced in all builds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FilePath(CompactString);
@@ -23,7 +21,7 @@ pub struct FilePath(CompactString);
 impl FilePath {
     pub fn new(path: impl Into<CompactString>) -> Self {
         let compact = path.into();
-        debug_assert!(
+        assert!(
             !compact.starts_with('/'),
             "FilePath must be relative, got: {}",
             compact
@@ -125,8 +123,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "FilePath must be relative")]
-    #[cfg(debug_assertions)]
-    fn filepath_absolute_panics_debug() {
+    fn filepath_absolute_panics() {
         FilePath::new("/absolute/path");
     }
 
