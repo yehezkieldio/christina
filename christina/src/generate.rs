@@ -123,16 +123,15 @@ async fn generate_commit_message_with_progress_impl(
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);
     let reserved_for_messages = TokenCount::new_saturating(500);
 
-    let budget = TokenBudget::new(
+    let budget = TokenBudget::try_new(
         config.max_input_tokens,
         config.max_output_tokens,
         reserved_for_prompt,
         reserved_for_messages,
-    );
+    ).map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
 
-    let token_limit = budget
-        .remaining_for_diff()
-        .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
+    let token_limit = budget.remaining_for_diff()
+        .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
 
     let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
         .with_ignore_files(config.ignore_files.clone());

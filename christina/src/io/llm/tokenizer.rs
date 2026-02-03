@@ -4,9 +4,9 @@ use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
 use christina_core::{
-    Tokenizer,
     error::{TokenizerError, TokenizerResult},
     types::TokenCount,
+    Tokenizer,
 };
 use parking_lot::Mutex;
 use tiktoken_rs::CoreBPE;
@@ -174,18 +174,58 @@ pub struct TokenBudget {
 }
 
 impl TokenBudget {
+    /// Create a new TokenBudget with upfront validation.
+    ///
+    /// Returns an error if the budget configuration is invalid (reserved > max_input).
+    pub fn try_new(
+        max_input: TokenCount,
+        max_output: TokenCount,
+        reserved_for_prompt: TokenCount,
+        reserved_for_messages: TokenCount,
+    ) -> std::result::Result<Self, String> {
+        let reserved = max_output
+            .get()
+            .checked_add(reserved_for_prompt.get())
+            .and_then(|sum| sum.checked_add(reserved_for_messages.get()))
+            .ok_or_else(|| "Token budget overflow during calculation".to_string())?;
+
+        if reserved > max_input.get() {
+            return Err(format!(
+                "Invalid token budget: max_output ({}) + reserved_for_prompt ({}) + reserved_for_messages ({}) = {} exceeds max_input ({})",
+                max_output.get(),
+                reserved_for_prompt.get(),
+                reserved_for_messages.get(),
+                reserved,
+                max_input.get()
+            ));
+        }
+
+        Ok(Self {
+            max_input,
+            max_output,
+            reserved_for_prompt,
+            reserved_for_messages,
+        })
+    }
+
+    #[allow(dead_code, reason = "Public API for creating valid TokenBudgets")]
+    #[allow(
+        clippy::expect_used,
+        reason = "Programming errors during invariant violations panic per design"
+    )]
     pub fn new(
         max_input: TokenCount,
         max_output: TokenCount,
         reserved_for_prompt: TokenCount,
         reserved_for_messages: TokenCount,
     ) -> Self {
-        Self {
+        Self::try_new(
             max_input,
             max_output,
             reserved_for_prompt,
             reserved_for_messages,
-        }
+        )
+        .expect("Invalid TokenBudget configuration")
     }
 
     #[cfg(test)]
