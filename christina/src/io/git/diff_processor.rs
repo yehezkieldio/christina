@@ -8,6 +8,7 @@ use christina_core::{
     git::{DiffChunk, MAX_DIFF_SIZE},
     types::TokenCount,
 };
+use memchr::memchr;
 
 use crate::io::git::{
     chunking,
@@ -37,25 +38,16 @@ impl DiffProcessor {
         self
     }
 
-    /// Sampling interval for NUL byte detection in large files.
-    /// Checks every Nth byte to reduce CPU usage while maintaining accuracy.
-    const NUL_BYTE_SAMPLING_INTERVAL: usize = 16;
-
     /// Detects binary content in diff output.
     ///
     /// Detection strategy (applied in order):
     /// 1. Check for git's binary markers ("Binary files" or "GIT binary patch")
     /// 2. For small files (<8KB): scan all bytes for NUL
-    /// 3. For larger files: sample content for NUL bytes at regular intervals (every 16th byte)
+    /// 3. For larger files: scan content for NUL bytes using a fast memchr search
     /// 4. Check file extension against known binary types
     ///
     /// **NUL byte detection**: Small files are fully scanned for accuracy.
-    /// Larger files use sampling (every 16th byte up to 65,536 samples) to balance
-    /// performance and accuracy without memory overhead.
-    ///
-    /// **Known limitation**: Large files with NUL bytes only in unsampled positions
-    /// (very rare in practice) may be misclassified. Extension checking provides
-    /// a secondary defense for known binary types.
+    /// Larger files use a fast byte search to avoid false negatives from sampling.
     fn is_binary_content(&self, content: &str) -> bool {
         if content.is_empty() {
             return false;
@@ -66,7 +58,7 @@ impl DiffProcessor {
         }
 
         // For small files, do a full scan for accuracy
-        // For larger files, use sampling to reduce CPU usage
+        // For larger files, use fast memchr scanning
         let content_bytes = content.as_bytes();
         let use_full_scan = content_bytes.len() < 8192;
 
@@ -74,7 +66,7 @@ impl DiffProcessor {
             if content_bytes.contains(&0) {
                 return true;
             }
-        } else if has_nul_bytes_sampled(content_bytes) {
+        } else if has_nul_bytes(content_bytes) {
             return true;
         }
 
@@ -274,15 +266,8 @@ impl DiffProcessor {
     }
 }
 
-fn has_nul_bytes_sampled(bytes: &[u8]) -> bool {
-    let sample_count = (bytes.len() / DiffProcessor::NUL_BYTE_SAMPLING_INTERVAL).min(65_536);
-    for i in 0..sample_count {
-        let idx = i * DiffProcessor::NUL_BYTE_SAMPLING_INTERVAL;
-        if idx < bytes.len() && bytes[idx] == 0 {
-            return true;
-        }
-    }
-    false
+fn has_nul_bytes(bytes: &[u8]) -> bool {
+    memchr(0, bytes).is_some()
 }
 
 #[cfg(test)]
@@ -602,7 +587,7 @@ mod tests {
         let processor = create_processor(1000);
         let mut content = String::with_capacity(2_000_000);
         content.push_str("diff --git a/large.bin b/large.bin\n");
-        content.push_str(&"a".repeat(DiffProcessor::NUL_BYTE_SAMPLING_INTERVAL));
+        content.push_str(&"a".repeat(16));
         content.push('\0');
         content.push_str(&"a".repeat(2_000_000 - content.len()));
         assert!(processor.is_binary_content(&content));

@@ -66,7 +66,7 @@ async fn execute_groq_request_inner(
         .api_key(api_key)
         .model(model)
         .max_tokens(request.max_tokens.get())
-        .temperature(request.temperature);
+        .temperature(request.temperature.value());
 
     if let Some(url) = base_url {
         builder = builder.base_url(url);

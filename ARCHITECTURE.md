@@ -58,6 +58,11 @@ Profiles are stored in `~/.config/christina/profiles.json` (or OS equivalent), w
 - **CLI Errors**: Handled in `christina` using `anyhow` for flexible reporting.
 - **Panics**: Used strictly for invariant violations and unrecoverable programming errors.
 
+## Prompt Safety
+
+- User-provided context is treated as untrusted data and wrapped in explicit delimiters.
+- Context length is capped to 500 bytes to prevent prompt overflows and injection attempts.
+
 ## Performance Considerations
 
 - **Memory**: Uses `mimalloc` for better allocation performance in multi-threaded environments.

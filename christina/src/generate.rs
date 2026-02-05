@@ -111,7 +111,7 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
-    let tokenizer: Arc<dyn christina_core::Tokenizer> = Arc::clone(&get_tokenizer()?);
+    let tokenizer: Arc<dyn christina_core::Tokenizer> = get_tokenizer();
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);

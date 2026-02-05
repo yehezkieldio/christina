@@ -1,6 +1,6 @@
 use crate::config::AzureEndpoint;
 use crate::error::ProviderError;
-use crate::types::{ModelName, ProviderKind, TokenCount};
+use crate::types::{ModelName, ProviderKind, Temperature, TokenCount};
 use url::Url;
 
 /// Configuration for an LLM provider
@@ -15,13 +15,12 @@ pub struct ProviderSpec {
     /// Maximum tokens to generate
     pub max_tokens: TokenCount,
     /// Temperature for sampling
-    pub temperature: f32,
+    pub temperature: Temperature,
 }
 
 impl ProviderSpec {
     pub fn validate(&self) -> Result<(), ProviderError> {
         self.validate_endpoint_consistency()?;
-        self.validate_temperature()?;
         self.validate_url_scheme()?;
         Ok(())
     }
@@ -36,21 +35,6 @@ impl ProviderSpec {
                 kind, endpoint
             ))),
         }
-    }
-
-    fn validate_temperature(&self) -> Result<(), ProviderError> {
-        if self.temperature.is_nan() {
-            return Err(ProviderError::InvalidConfig(
-                "Temperature must be a valid number".to_string(),
-            ));
-        }
-        if self.temperature < 0.0 || self.temperature > 2.0 {
-            return Err(ProviderError::InvalidConfig(format!(
-                "Temperature must be between 0.0 and 2.0, got {}",
-                self.temperature
-            )));
-        }
-        Ok(())
     }
 
     fn validate_url_scheme(&self) -> Result<(), ProviderError> {
@@ -104,11 +88,11 @@ mod tests {
             model,
             endpoint: ProviderEndpoint::OpenAi { base_url },
             max_tokens,
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         assert_eq!(spec.kind, ProviderKind::OpenAI);
-        assert_eq!(spec.temperature, 0.7);
+        assert_eq!(spec.temperature.value(), 0.7);
     }
 
     #[test]
@@ -146,7 +130,7 @@ mod tests {
                 base_url: Url::parse("https://api.openai.com/v1").unwrap(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         assert!(spec.validate().is_ok());
@@ -154,92 +138,23 @@ mod tests {
 
     #[test]
     fn validate_temperature_nan() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: f32::NAN,
-        };
-
-        assert!(spec.validate().is_err());
-        assert!(
-            spec.validate()
-                .unwrap_err()
-                .to_string()
-                .contains("valid number")
-        );
+        assert!(Temperature::try_new(f32::NAN).is_err());
     }
 
     #[test]
     fn validate_temperature_out_of_range_low() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: -0.5,
-        };
-
-        let result = spec.validate();
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("between 0.0 and 2.0")
-        );
+        assert!(Temperature::try_new(-0.5).is_err());
     }
 
     #[test]
     fn validate_temperature_out_of_range_high() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 3.0,
-        };
-
-        let result = spec.validate();
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("between 0.0 and 2.0")
-        );
+        assert!(Temperature::try_new(3.0).is_err());
     }
 
     #[test]
     fn validate_temperature_boundary_values() {
-        let spec_min = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.0,
-        };
-        assert!(spec_min.validate().is_ok());
-
-        let spec_max = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 2.0,
-        };
-        assert!(spec_max.validate().is_ok());
+        assert!(Temperature::try_new(0.0).is_ok());
+        assert!(Temperature::try_new(2.0).is_ok());
     }
 
     #[test]
@@ -251,7 +166,7 @@ mod tests {
                 base_url: Url::parse("https://api.openai.com/v1").unwrap(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         assert!(spec.validate().is_ok());
@@ -272,7 +187,7 @@ mod tests {
                 deployment_id: "gpt-4".to_string(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         assert!(spec.validate().is_ok());
@@ -287,7 +202,7 @@ mod tests {
                 base_url: Url::parse("https://api.groq.com/v1").unwrap(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         assert!(spec.validate().is_ok());
@@ -303,7 +218,7 @@ mod tests {
                 base_url: Url::parse("https://api.openai.com/v1").unwrap(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         let result = spec.validate();
@@ -320,7 +235,7 @@ mod tests {
                 base_url: Url::parse("https://api.openai.com/v1").unwrap(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         assert!(spec.validate().is_ok());
@@ -335,7 +250,7 @@ mod tests {
                 base_url: Url::parse("http://api.openai.com/v1").unwrap(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
         };
 
         let result = spec.validate();

@@ -1,6 +1,6 @@
 use crate::error::ProviderError;
 use crate::ids::GenerationId;
-use crate::types::TokenCount;
+use crate::types::{Temperature, TokenCount};
 
 /// Represents a single message in a chat conversation
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ pub struct LlmRequest {
     /// Maximum tokens to generate in the response
     pub max_tokens: TokenCount,
     /// Temperature for sampling (0.0 to 2.0, typically)
-    pub temperature: f32,
+    pub temperature: Temperature,
     /// Optional system prompt to prepend to messages
     pub system_prompt: Option<String>,
 }
@@ -64,19 +64,6 @@ impl LlmRequest {
             return Err(ProviderError::InvalidConfig(
                 "LlmRequest must contain at least one message".to_string(),
             ));
-        }
-
-        if self.temperature.is_nan() {
-            return Err(ProviderError::InvalidConfig(
-                "Temperature must be a valid number".to_string(),
-            ));
-        }
-
-        if self.temperature < 0.0 || self.temperature > 2.0 {
-            return Err(ProviderError::InvalidConfig(format!(
-                "Temperature must be between 0.0 and 2.0, got {}",
-                self.temperature
-            )));
         }
 
         if self.max_tokens.get() == 0 {
@@ -135,12 +122,12 @@ mod tests {
             id,
             messages,
             max_tokens,
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
         };
 
         assert_eq!(req.id, id);
-        assert_eq!(req.temperature, 0.7);
+        assert_eq!(req.temperature.value(), 0.7);
         assert!(req.system_prompt.is_none());
     }
 
@@ -182,7 +169,7 @@ mod tests {
             id: GenerationId::new(1),
             messages: vec![ChatMessage::user("test")],
             max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
         };
 
@@ -195,7 +182,7 @@ mod tests {
             id: GenerationId::new(1),
             messages: vec![],
             max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
         };
 
@@ -211,78 +198,23 @@ mod tests {
 
     #[test]
     fn validate_request_temperature_nan() {
-        let req = LlmRequest {
-            id: GenerationId::new(1),
-            messages: vec![ChatMessage::user("test")],
-            max_tokens: TokenCount::new(100).unwrap(),
-            temperature: f32::NAN,
-            system_prompt: None,
-        };
-
-        let result = req.validate();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("valid number"));
+        assert!(Temperature::try_new(f32::NAN).is_err());
     }
 
     #[test]
     fn validate_request_temperature_negative() {
-        let req = LlmRequest {
-            id: GenerationId::new(1),
-            messages: vec![ChatMessage::user("test")],
-            max_tokens: TokenCount::new(100).unwrap(),
-            temperature: -0.5,
-            system_prompt: None,
-        };
-
-        let result = req.validate();
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("between 0.0 and 2.0")
-        );
+        assert!(Temperature::try_new(-0.5).is_err());
     }
 
     #[test]
     fn validate_request_temperature_too_high() {
-        let req = LlmRequest {
-            id: GenerationId::new(1),
-            messages: vec![ChatMessage::user("test")],
-            max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 3.0,
-            system_prompt: None,
-        };
-
-        let result = req.validate();
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("between 0.0 and 2.0")
-        );
+        assert!(Temperature::try_new(3.0).is_err());
     }
 
     #[test]
     fn validate_request_temperature_boundaries() {
-        let req_min = LlmRequest {
-            id: GenerationId::new(1),
-            messages: vec![ChatMessage::user("test")],
-            max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 0.0,
-            system_prompt: None,
-        };
-        assert!(req_min.validate().is_ok());
-
-        let req_max = LlmRequest {
-            id: GenerationId::new(1),
-            messages: vec![ChatMessage::user("test")],
-            max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 2.0,
-            system_prompt: None,
-        };
-        assert!(req_max.validate().is_ok());
+        assert!(Temperature::try_new(0.0).is_ok());
+        assert!(Temperature::try_new(2.0).is_ok());
     }
 
     #[test]
@@ -291,7 +223,7 @@ mod tests {
             id: GenerationId::new(1),
             messages: vec![ChatMessage::user("test")],
             max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: Some("You are a helpful assistant".to_string()),
         };
 
@@ -309,7 +241,7 @@ mod tests {
                 ChatMessage::user("Follow-up"),
             ],
             max_tokens: TokenCount::new(100).unwrap(),
-            temperature: 0.7,
+            temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
         };
 

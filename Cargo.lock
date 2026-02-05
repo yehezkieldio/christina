@@ -227,6 +227,7 @@ dependencies = [
  "indicatif",
  "keyring",
  "llm",
+ "memchr",
  "mimalloc",
  "moka",
  "proptest",

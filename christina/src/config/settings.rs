@@ -281,6 +281,13 @@ impl Config {
         Ok(config)
     }
 
+    /// Async-friendly configuration loader that offloads blocking work.
+    pub async fn load_async() -> Result<Self> {
+        tokio::task::spawn_blocking(Self::load)
+            .await
+            .map_err(|e| anyhow::anyhow!("Config load task failed: {}", e))?
+    }
+
     /// Validate and clamp token values to hard limits.
     /// Also validates provider name against the registry.
     fn validate(&mut self) -> Vec<String> {

@@ -9,39 +9,69 @@ use christina_core::{
 };
 use moka::sync::Cache;
 use tiktoken_rs::CoreBPE;
+use tracing::warn;
 
 pub type Result<T> = TokenizerResult<T>;
 
-static TOKENIZER: OnceLock<Arc<TokenizerService>> = OnceLock::new();
+static TOKENIZER: OnceLock<Arc<dyn Tokenizer>> = OnceLock::new();
 
 /// Get the global tokenizer service instance.
 ///
 /// This initializes the tokenizer on first call and caches successful results.
-/// If initialization fails, the error is not cached, allowing subsequent calls
-/// to retry. This prevents transient failures (e.g., temporary file system issues)
-/// from becoming permanent.
-///
-/// # Errors
-/// Returns `TokenizerError` if tiktoken_rs::o200k_base fails to initialize.
-/// Common causes include missing tokenizer data files or I/O errors.
-pub fn get_tokenizer() -> Result<Arc<TokenizerService>> {
+/// If the primary tokenizer fails to initialize, a whitespace-based fallback is
+/// installed and a warning is logged.
+pub fn get_tokenizer() -> Arc<dyn Tokenizer> {
     match TOKENIZER.get() {
-        Some(cached) => Ok(Arc::clone(cached)),
+        Some(cached) => Arc::clone(cached),
         None => {
-            let service = TokenizerService::new()?;
-            let service = Arc::new(service);
+            let service: Arc<dyn Tokenizer> = match TokenizerService::new() {
+                Ok(service) => Arc::new(service),
+                Err(err) => {
+                    warn!(
+                        "Tokenizer initialization failed, falling back to whitespace tokenizer: {}",
+                        err
+                    );
+                    Arc::new(WhitespaceTokenizer)
+                }
+            };
 
             // Try to cache the successful result. If another thread won the race,
             // use their result instead.
             match TOKENIZER.set(Arc::clone(&service)) {
-                Ok(_) => Ok(service),
+                Ok(_) => service,
                 #[expect(
                     clippy::unwrap_used,
                     reason = "Another thread set it, so get() is Some"
                 )]
-                Err(_) => Ok(Arc::clone(TOKENIZER.get().unwrap())),
+                Err(_) => Arc::clone(TOKENIZER.get().unwrap()),
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WhitespaceTokenizer;
+
+impl Tokenizer for WhitespaceTokenizer {
+    fn count_tokens(&self, text: &str) -> TokenCount {
+        let count = text.split_whitespace().count() as u32;
+        TokenCount::new_at_least_one(count)
+    }
+
+    fn encoding_name(&self) -> &str {
+        "fallback-whitespace"
+    }
+
+    fn encode(&self, text: &str) -> Vec<u32> {
+        text.chars().map(|c| c as u32).collect()
+    }
+
+    fn decode(&self, tokens: &[u32]) -> Option<String> {
+        tokens
+            .iter()
+            .filter_map(|&token| char::from_u32(token))
+            .collect::<String>()
+            .into()
     }
 }
 
@@ -330,7 +360,7 @@ mod tests {
 
     #[test]
     fn tokenizer_count_tokens() {
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
 
         // Simple text should have tokens
         let count = tokenizer.count_tokens("Hello, world!");
@@ -340,7 +370,7 @@ mod tests {
 
     #[test]
     fn tokenizer_slice_to_limit() {
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let text = "Hello, world! This is a longer text that has many tokens.";
 
         // Slicing to 3 tokens should return less text
@@ -355,7 +385,7 @@ mod tests {
 
     #[test]
     fn tokenizer_slice_empty() {
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
 
         // Zero limit should return empty string
         let slice = tokenizer.slice_to_token_limit("Hello", TokenCount::new_at_least_one(1));
@@ -416,7 +446,7 @@ mod tests {
     #[tokio::test]
     async fn tokenizer_concurrent_access() {
         // Verify TokenizerService can be safely accessed from multiple tokio tasks
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let test_texts = vec![
             "Hello, world!",
             "This is a longer text with multiple sentences. It should have more tokens.",
@@ -461,7 +491,7 @@ mod tests {
     #[tokio::test]
     async fn tokenizer_concurrent_cache_behavior() {
         // Verify cache behaves correctly under concurrent load
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let test_text = "This text will be cached and accessed concurrently".repeat(10);
 
         let mut handles = Vec::new();
@@ -495,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn tokenizer_slice_concurrent() {
         // Verify slice_to_token_limit is thread-safe
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let long_text = "This is a long text that will be sliced. ".repeat(100);
         let limit = TokenCount::new_at_least_one(50);
 
@@ -540,7 +570,7 @@ mod tests {
         // Spawn many tasks that all call get_tokenizer()
         for _ in 0..20 {
             let handle = tokio::spawn(async {
-                get_tokenizer().expect("tokenizer initialization failed")
+                get_tokenizer()
             });
 
             handles.push(handle);
@@ -564,7 +594,7 @@ mod tests {
 
     #[test]
     fn count_tokens_cache_bypass_small() {
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let small_text = "hi"; // <50 bytes, should bypass cache
 
         let count1 = tokenizer.count_tokens(small_text);
@@ -576,7 +606,7 @@ mod tests {
 
     #[test]
     fn count_tokens_cache_bypass_large() {
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let large_text = "word ".repeat(25_000); // >100KB, should bypass cache
 
         let count1 = tokenizer.count_tokens(&large_text);
@@ -589,7 +619,7 @@ mod tests {
 
     #[test]
     fn count_tokens_cache_used_medium() {
-        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let tokenizer = get_tokenizer();
         let medium_text = "word ".repeat(1000); // ~5KB, should use cache
 
         let count1 = tokenizer.count_tokens(&medium_text);

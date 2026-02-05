@@ -121,7 +121,7 @@ fn display_changes(files: &[GitFile]) {
 
 async fn generate_commit(diff: String, context: Option<String>, repo_path: PathBuf) -> Result<String> {
     let spinner = ui::create_spinner("Analyzing changes...");
-    let config = Config::load()?;
+    let config = Config::load_async().await?;
 
     let (progress_tx, mut _progress_rx) = mpsc::channel::<Event>(100);
     let _progress_spinner = spinner.clone();

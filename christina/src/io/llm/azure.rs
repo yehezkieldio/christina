@@ -95,7 +95,7 @@ async fn execute_azure_request_inner(
         .api_version(api_version)
         .model(model)
         .max_tokens(request.max_tokens.get())
-        .temperature(request.temperature);
+        .temperature(request.temperature.value());
 
     if let Some(system) = system_prompt {
         builder = builder.system(system);

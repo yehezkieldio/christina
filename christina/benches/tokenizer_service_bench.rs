@@ -80,7 +80,7 @@ fn generate_long_line(tokens: usize) -> String {
 }
 
 fn bench_count_tokens_short_text(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("count_tokens/short_text");
 
     for size in [10, 20, 30, 40, 50].iter() {
@@ -100,7 +100,7 @@ fn bench_count_tokens_short_text(c: &mut Criterion) {
 }
 
 fn bench_count_tokens_medium_text(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("count_tokens/medium_text");
 
     for size in [100, 500, 1000, 5000].iter() {
@@ -120,7 +120,7 @@ fn bench_count_tokens_medium_text(c: &mut Criterion) {
 }
 
 fn bench_count_tokens_large_text(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("count_tokens/large_text");
 
     for size in [10_000, 50_000, 100_000].iter() {
@@ -140,7 +140,7 @@ fn bench_count_tokens_large_text(c: &mut Criterion) {
 }
 
 fn bench_count_tokens_with_cache(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("count_tokens/with_cache");
 
     let texts: Vec<String> = (0..100).map(|i| generate_text(100 + i * 10)).collect();
@@ -162,7 +162,7 @@ fn bench_count_tokens_with_cache(c: &mut Criterion) {
 }
 
 fn bench_count_tokens_cache_miss(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("count_tokens/cache_miss");
 
     // Generate unique texts for each iteration
@@ -181,7 +181,7 @@ fn bench_count_tokens_cache_miss(c: &mut Criterion) {
 }
 
 fn bench_encode(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("encode");
 
     for size in [100, 1000, 10_000, 50_000].iter() {
@@ -201,7 +201,7 @@ fn bench_encode(c: &mut Criterion) {
 }
 
 fn bench_decode(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("decode");
 
     for size in [100, 1000, 10_000, 50_000].iter() {
@@ -222,7 +222,7 @@ fn bench_decode(c: &mut Criterion) {
 }
 
 fn bench_encode_decode_roundtrip(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("encode_decode_roundtrip");
 
     for size in [100, 1000, 10_000].iter() {
@@ -245,7 +245,7 @@ fn bench_encode_decode_roundtrip(c: &mut Criterion) {
 }
 
 fn bench_slice_to_token_limit_small(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("slice_to_token_limit/small");
 
     for size in [100, 500, 1000].iter() {
@@ -266,7 +266,7 @@ fn bench_slice_to_token_limit_small(c: &mut Criterion) {
 }
 
 fn bench_slice_to_token_limit_large(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("slice_to_token_limit/large");
 
     for size in [5000, 10_000, 50_000].iter() {
@@ -287,7 +287,7 @@ fn bench_slice_to_token_limit_large(c: &mut Criterion) {
 }
 
 fn bench_slice_to_token_limit_fast_path(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("slice_to_token_limit/fast_path");
 
     for size in [100, 1000, 10_000].iter() {
@@ -308,7 +308,7 @@ fn bench_slice_to_token_limit_fast_path(c: &mut Criterion) {
 }
 
 fn bench_slice_to_token_limit_tight(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("slice_to_token_limit/tight");
 
     for size in [100, 1000, 10_000].iter() {
@@ -329,7 +329,7 @@ fn bench_slice_to_token_limit_tight(c: &mut Criterion) {
 }
 
 fn bench_slice_long_line(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("slice_to_token_limit/long_line");
 
     for size in [1000, 5000, 10_000].iter() {
@@ -371,7 +371,7 @@ fn bench_token_budget_remaining(c: &mut Criterion) {
 }
 
 fn bench_unicode_tokenization(c: &mut Criterion) {
-    let tokenizer = get_tokenizer().expect("Failed to initialize tokenizer");
+    let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("tokenization/unicode");
 
     // Emoji heavy text

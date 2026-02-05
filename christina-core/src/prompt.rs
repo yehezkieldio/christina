@@ -265,6 +265,9 @@ Output: chore(build): update minimum supported rust version
 GIT DIFF:
 {diff}"#;
 
+/// Maximum number of bytes allowed for user-provided context.
+pub const USER_CONTEXT_MAX_LEN: usize = 500;
+
 // SECURITY: This template includes strong delimiters and explicit instructions to prevent
 // prompt injection attacks. The user context is wrapped in XML-style markers with clear
 // boundaries, and the LLM is instructed to treat it as untrusted data that may contain
@@ -343,8 +346,18 @@ impl<'a> PromptBuilder<'a> {
     }
 
     pub fn with_user_context(mut self, ctx: &'a str) -> Self {
+        let ctx = ctx.trim();
         if !ctx.is_empty() {
-            self.user_context = Some(ctx);
+            let truncated = if ctx.len() > USER_CONTEXT_MAX_LEN {
+                let mut end = USER_CONTEXT_MAX_LEN;
+                while end > 0 && !ctx.is_char_boundary(end) {
+                    end -= 1;
+                }
+                &ctx[..end]
+            } else {
+                ctx
+            };
+            self.user_context = Some(truncated);
         }
         self
     }
@@ -578,5 +591,18 @@ mod tests {
 
         assert!(prompt.contains("some diff"));
         assert!(prompt.contains("This fixes issue #123"));
+    }
+
+    #[test]
+    fn user_context_truncates() {
+        let long_context = "x".repeat(USER_CONTEXT_MAX_LEN + 10);
+        let builder = PromptBuilder::new()
+            .with_diff("some diff")
+            .with_user_context(&long_context);
+        let prompt = builder.build_direct_prompt();
+
+        assert!(prompt.contains("some diff"));
+        assert!(!prompt.contains(&long_context));
+        assert!(prompt.contains(&"x".repeat(USER_CONTEXT_MAX_LEN)));
     }
 }

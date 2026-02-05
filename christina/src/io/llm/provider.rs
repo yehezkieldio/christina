@@ -10,7 +10,7 @@ use christina_core::{
     ids::GenerationId,
     llm::{ChatMessage, LlmRequest},
     profile::ProviderProfile,
-    types::{ModelName, ProviderKind, TokenCount},
+    types::{ModelName, ProviderKind, Temperature, TokenCount},
 };
 
 use crate::io::llm::{azure, groq, openai};
@@ -46,19 +46,6 @@ fn parse_azure_endpoint(url: &url::Url) -> (Option<String>, Option<String>) {
     }
 
     (api_version, deployment_id)
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Temperature(f32);
-
-impl Temperature {
-    pub fn new(value: f32) -> Self {
-        Self(value.clamp(0.0, 2.0))
-    }
-
-    pub fn value(self) -> f32 {
-        self.0
-    }
 }
 
 /// API key wrapper with secure defaults.
@@ -125,7 +112,7 @@ pub enum Provider {
 
 impl Provider {
     pub fn from_profile(profile: &ProviderProfile, api_key: &str) -> Result<Self> {
-        let temperature = Temperature::new(profile.temperature.unwrap_or(0.3));
+        let temperature = Temperature::new_clamped(profile.temperature.unwrap_or(0.3));
 
         match profile.provider {
             ProviderKind::OpenAI => Ok(Provider::OpenAI {
@@ -205,7 +192,7 @@ impl Provider {
             | Provider::Azure {
                 model, max_tokens, temperature, ..
             } => {
-                let req = request_from_messages(messages, *max_tokens, temperature.value());
+                let req = request_from_messages(messages, *max_tokens, *temperature);
                 let gen_id = req.id;
                 let span = tracing::info_span!(
                     "llm_generate",
@@ -228,7 +215,7 @@ impl Provider {
                     max_tokens,
                     temperature,
                 } => {
-                    let request = request_from_messages(messages, *max_tokens, temperature.value());
+                    let request = request_from_messages(messages, *max_tokens, *temperature);
                     let response = openai::execute_openai_request(
                         &request,
                         api_key.as_str(),
@@ -247,7 +234,7 @@ impl Provider {
                     max_tokens,
                     temperature,
                 } => {
-                    let request = request_from_messages(messages, *max_tokens, temperature.value());
+                    let request = request_from_messages(messages, *max_tokens, *temperature);
                     let response = azure::execute_azure_request(
                         &request,
                         api_key.as_str(),
@@ -266,7 +253,7 @@ impl Provider {
                     max_tokens,
                     temperature,
                 } => {
-                    let request = request_from_messages(messages, *max_tokens, temperature.value());
+                    let request = request_from_messages(messages, *max_tokens, *temperature);
                     let response = groq::execute_groq_request(
                         &request,
                         api_key.as_str(),
@@ -349,7 +336,7 @@ impl Provider {
 fn request_from_messages(
     messages: &[ChatMessage],
     max_tokens: TokenCount,
-    temperature: f32,
+    temperature: Temperature,
 ) -> LlmRequest {
     let mut mapped = Vec::with_capacity(messages.len());
     for msg in messages {
@@ -439,13 +426,13 @@ mod tests {
 
     #[test]
     fn test_temperature_new_clamps() {
-        let temp = Temperature::new(-1.0);
+        let temp = Temperature::new_clamped(-1.0);
         assert_eq!(temp.value(), 0.0);
 
-        let temp = Temperature::new(3.0);
+        let temp = Temperature::new_clamped(3.0);
         assert_eq!(temp.value(), 2.0);
 
-        let temp = Temperature::new(1.0);
+        let temp = Temperature::new_clamped(1.0);
         assert_eq!(temp.value(), 1.0);
     }
 
@@ -603,11 +590,15 @@ mod tests {
         ];
         let max_tokens = TokenCount::new_at_least_one(100);
 
-        let request = request_from_messages(&messages, max_tokens, 0.7);
+        let request = request_from_messages(
+            &messages,
+            max_tokens,
+            Temperature::try_new(0.7).unwrap(),
+        );
 
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.max_tokens, max_tokens);
-        assert_eq!(request.temperature, 0.7);
+        assert_eq!(request.temperature.value(), 0.7);
     }
 
     #[tokio::test]
