@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
+use tracing::Instrument;
 
 use christina_core::{
     error::{CompletionError, ProviderError},
@@ -183,83 +184,126 @@ impl Provider {
     }
 
     pub async fn generate(&self, messages: &[ChatMessage]) -> Result<String, CompletionError> {
-        match self {
+        let request = match self {
             Provider::OpenAI {
-                model,
-                api_key,
-                base_url,
-                max_tokens,
-                temperature,
-            } => {
-                let request = request_from_messages(messages, *max_tokens, temperature.value());
-                let response = openai::execute_openai_request(
-                    &request,
-                    api_key.as_str(),
-                    base_url.as_ref().map(|u| u.as_str()),
-                    model.as_str(),
-                )
-                .await?;
-                Ok(response.content)
+                model, max_tokens, temperature, ..
             }
-            Provider::Azure {
-                model,
-                api_key,
-                endpoint,
-                api_version,
-                deployment_id,
-                max_tokens,
-                temperature,
-            } => {
-                let request = request_from_messages(messages, *max_tokens, temperature.value());
-                let response = azure::execute_azure_request(
-                    &request,
-                    api_key.as_str(),
-                    endpoint,
-                    deployment_id,
-                    api_version,
-                    model.as_str(),
-                )
-                .await?;
-                Ok(response.content)
+            | Provider::Groq {
+                model, max_tokens, temperature, ..
             }
-            Provider::Groq {
-                model,
-                api_key,
-                base_url,
-                max_tokens,
-                temperature,
+            | Provider::Azure {
+                model, max_tokens, temperature, ..
             } => {
-                let request = request_from_messages(messages, *max_tokens, temperature.value());
-                let response = groq::execute_groq_request(
-                    &request,
-                    api_key.as_str(),
-                    base_url.as_ref().map(|u| u.as_str()),
-                    model.as_str(),
-                )
-                .await?;
-                Ok(response.content)
+                let req = request_from_messages(messages, *max_tokens, temperature.value());
+                let gen_id = req.id;
+                let span = tracing::info_span!(
+                    "llm_generate",
+                    generation_id = %gen_id,
+                    model = %model.as_str(),
+                    provider = ?self.provider_kind()
+                );
+                Some((req, span))
             }
             #[cfg(test)]
-            Provider::Mock { response, delay_ms } => {
-                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
-                Ok(response.clone())
-            }
-            #[cfg(test)]
-            Provider::MockSequence {
-                responses,
-                delay_ms,
-            } => {
-                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
-                let mut guard = responses
-                    .lock()
-                    .map_err(|_| CompletionError::NetworkError("mock lock poisoned".into()))?;
-                if guard.is_empty() {
-                    return Err(CompletionError::InvalidResponse(
-                        "mock sequence exhausted".into(),
-                    ));
+            _ => None,
+        };
+
+        let generate_impl = async {
+            match self {
+                Provider::OpenAI {
+                    model,
+                    api_key,
+                    base_url,
+                    max_tokens,
+                    temperature,
+                } => {
+                    let request = request_from_messages(messages, *max_tokens, temperature.value());
+                    let response = openai::execute_openai_request(
+                        &request,
+                        api_key.as_str(),
+                        base_url.as_ref().map(|u| u.as_str()),
+                        model.as_str(),
+                    )
+                    .await?;
+                    Ok(response.content)
                 }
-                guard.remove(0)
+                Provider::Azure {
+                    model,
+                    api_key,
+                    endpoint,
+                    api_version,
+                    deployment_id,
+                    max_tokens,
+                    temperature,
+                } => {
+                    let request = request_from_messages(messages, *max_tokens, temperature.value());
+                    let response = azure::execute_azure_request(
+                        &request,
+                        api_key.as_str(),
+                        endpoint,
+                        deployment_id,
+                        api_version,
+                        model.as_str(),
+                    )
+                    .await?;
+                    Ok(response.content)
+                }
+                Provider::Groq {
+                    model,
+                    api_key,
+                    base_url,
+                    max_tokens,
+                    temperature,
+                } => {
+                    let request = request_from_messages(messages, *max_tokens, temperature.value());
+                    let response = groq::execute_groq_request(
+                        &request,
+                        api_key.as_str(),
+                        base_url.as_ref().map(|u| u.as_str()),
+                        model.as_str(),
+                    )
+                    .await?;
+                    Ok(response.content)
+                }
+                #[cfg(test)]
+                Provider::Mock { response, delay_ms } => {
+                    tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+                    Ok(response.clone())
+                }
+                #[cfg(test)]
+                Provider::MockSequence {
+                    responses,
+                    delay_ms,
+                } => {
+                    tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+                    let mut guard = responses
+                        .lock()
+                        .map_err(|_| CompletionError::NetworkError("mock lock poisoned".into()))?;
+                    if guard.is_empty() {
+                        return Err(CompletionError::InvalidResponse(
+                            "mock sequence exhausted".into(),
+                        ));
+                    }
+                    guard.remove(0)
+                }
             }
+        };
+
+        match request {
+            Some((_, span)) => generate_impl.instrument(span).await,
+            None => generate_impl.await,
+        }
+    }
+
+    fn provider_kind(&self) -> &'static str {
+        match self {
+            Provider::OpenAI { .. } => "openai",
+            Provider::Azure { .. } => "azure",
+            Provider::Groq { .. } => "groq",
+            #[cfg(test)]
+            Provider::Mock { .. } => "mock",
+            #[cfg(test)]
+            Provider::MockSequence { .. } => "mock_sequence",
         }
     }
 

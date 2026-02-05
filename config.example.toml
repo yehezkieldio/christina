@@ -1,0 +1,113 @@
+# Christina Configuration Example
+#
+# This file demonstrates all available configuration options for Christina.
+# Copy this file to ~/.config/christina/config.toml (Linux/macOS) or
+# %APPDATA%\christina\config.toml (Windows) and customize as needed.
+
+# Active profile to use by default
+# If not set, you must specify --profile when running christina
+active_profile = "default"
+
+# Maximum length for commit messages (default: 72 characters)
+# Set to null or omit to use the default
+commit_message_max_length = 72
+
+# Whether to include file diffs in the output (default: false)
+# When true, shows the actual diff content for each file
+include_file_diffs = false
+
+# Files to exclude from AI processing
+# These patterns support:
+# - Exact filename matches: "Cargo.lock"
+# - Wildcard suffixes: "*.lock"
+# - Directory prefixes: "vendor/"
+ignore_files = [
+    "Cargo.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "*.lock",
+    "dist/",
+    "build/",
+    "target/",
+]
+
+# Provider Profiles
+#
+# Each profile defines a connection to an LLM provider.
+# You can define multiple profiles and switch between them.
+
+# OpenAI Example
+[profiles.default]
+name = "default"
+provider = "openai"
+model = "gpt-4o"
+# API key can be:
+# - Inline: api_key = { value = "sk-..." }
+# - From keyring: api_key = { keyring = { service = "christina", username = "openai-key" } }
+# - From environment: api_key = { env = "OPENAI_API_KEY" }
+api_key = { env = "OPENAI_API_KEY" }
+max_input_tokens = 128000
+max_output_tokens = 4096
+temperature = 0.3
+# Optional: Override API base URL (for proxies or compatible endpoints)
+# api_url = "https://api.openai.com/v1"
+
+# Azure OpenAI Example
+[profiles.azure]
+name = "azure"
+provider = "azure"
+model = "gpt-4"
+api_key = { env = "AZURE_OPENAI_API_KEY" }
+# For Azure, api_url must include the deployment endpoint
+api_url = "https://your-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions"
+azure_api_version = "2024-12-01-preview"
+azure_deployment_id = "gpt-4"
+max_input_tokens = 128000
+max_output_tokens = 4096
+temperature = 0.3
+
+# Groq Example
+[profiles.groq]
+name = "groq"
+provider = "groq"
+model = "llama-3.1-70b-versatile"
+api_key = { env = "GROQ_API_KEY" }
+max_input_tokens = 128000
+max_output_tokens = 4096
+temperature = 0.3
+# Optional: Override API base URL
+# api_url = "https://api.groq.com/openai/v1"
+
+# Alternative OpenAI-compatible provider example
+[profiles.custom]
+name = "custom"
+provider = "openai"
+model = "custom-model"
+api_key = { value = "your-api-key" }
+api_url = "https://custom-provider.example.com/v1"
+max_input_tokens = 32000
+max_output_tokens = 2048
+temperature = 0.5
+
+# High-token model for large diffs
+[profiles.large-context]
+name = "large-context"
+provider = "openai"
+model = "gpt-4o"
+api_key = { env = "OPENAI_API_KEY" }
+max_input_tokens = 256000
+max_output_tokens = 4096
+temperature = 0.3
+
+# API Key Reference Options:
+#
+# 1. Environment Variable (recommended for security):
+#    api_key = { env = "OPENAI_API_KEY" }
+#
+# 2. System Keyring (most secure):
+#    api_key = { keyring = { service = "christina", username = "my-key" } }
+#    Note: Store the key using: christina config keyring set --service christina --username my-key
+#
+# 3. Direct Value (not recommended for production):
+#    api_key = { value = "sk-..." }

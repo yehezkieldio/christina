@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// in the LLM orchestration pipeline, so avoiding heap allocation reduces pressure
 /// on the allocator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct ModelName(CompactString);
 

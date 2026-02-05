@@ -6,6 +6,7 @@ use crate::{config::SecretRef, profile::ProviderProfile};
 
 /// On-disk configuration representation (serde-friendly)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct ConfigFile {
     /// Active profile name
@@ -109,5 +110,35 @@ mod tests {
         assert!(config.ignore_files.contains(&"yarn.lock".to_string()));
         assert!(config.ignore_files.contains(&"pnpm-lock.yaml".to_string()));
         assert!(config.ignore_files.contains(&"*.lock".to_string()));
+    }
+
+    #[test]
+    fn test_generate_json_schema() {
+        use schemars::schema_for;
+
+        let schema = schema_for!(ConfigFile);
+        let schema_json = serde_json::to_string_pretty(&schema).unwrap();
+
+        // Write to file for distribution
+        let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("config.schema.json");
+
+        // Only write if the test is run with --ignored or the file doesn't exist
+        // This prevents CI from failing when the file doesn't exist yet
+        if !schema_path.exists() || std::env::var("UPDATE_SCHEMA").is_ok() {
+            std::fs::write(&schema_path, &schema_json).unwrap();
+        }
+
+        // Validate that the schema is valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&schema_json).unwrap();
+        assert!(parsed.is_object());
+
+        // Check that the schema contains expected fields
+        let obj = parsed.as_object().unwrap();
+        assert!(obj.contains_key("$schema"));
+        assert!(obj.contains_key("title"));
+        assert!(obj.contains_key("type"));
     }
 }

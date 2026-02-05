@@ -77,14 +77,8 @@
 ### E-001: AzureEndpoint Accepts Non-Standard Paths
 
 **Finding**: AzureEndpoint::try_from in azure_endpoint.rs only validates that path contains "/openai/deployments/", but accepts any suffix after deployment_id.
-**Status**: Open
-**Rationale**: Non-standard Azure URLs (e.g., with typos like "/openai/deploymets/") will silently fail at the wrong validation point.
-
-**Assumptions**: Azure URLs follow a predictable pattern.
-
-**Approach**:
-1. Add validation that the path follows the expected pattern: /openai/deployments/{id}/chat/completions
-2. Emit a warning if the path deviates from expected structure
+**Status**: Resolved
+**Resolution**: Added validation to ensure Azure URL paths follow the expected pattern: `/openai/deployments/{id}/chat/completions`. Non-standard paths (e.g., with wrong suffixes) now return a NonStandardPath error. Added comprehensive tests for non-standard paths, typos, and minimal deployment-only URLs. The validation now properly rejects invalid paths at the correct validation point.
 
 ---
 
@@ -148,15 +142,8 @@
 ### B-003: Tokenizer Initialization Failure is Cached Forever
 
 **Finding**: In tokenizer.rs, get_tokenizer uses OnceLock to cache the result, including errors. If tiktoken fails once, all subsequent calls fail.
-**Status**: Open
-**Rationale**: Transient initialization failures (e.g., temp file issues) become permanent.
-
-**Assumptions**: Tiktoken initialization is deterministic and will always fail if it fails once.
-
-**Approach**:
-1. Verify tiktoken_rs::o200k_base is pure and deterministic
-2. If transient failures are possible, use a retry on subsequent calls
-3. Add explicit error message suggesting restart if initialization fails
+**Status**: Resolved
+**Resolution**: Modified get_tokenizer to only cache successful initializations, not errors. If initialization fails due to a transient issue (e.g., temporary file system problems), subsequent calls will retry. Updated documentation to clarify the retry behavior and error conditions. The function now properly handles transient failures without permanently caching errors.
 
 ---
 
@@ -222,15 +209,8 @@
 ### I-003: GenerationId is a Simple u64 Wrapper
 
 **Finding**: GenerationId in ids.rs is just a newtype over u64 with new() method.
-**Status**: Open
-**Rationale**: The ID is created via atomic counter in provider.rs but never used for correlation or logging.
-
-**Assumptions**: IDs were intended for request tracking.
-
-**Approach**:
-1. Add tracing spans that include GenerationId
-2. Use GenerationId in error messages for debugging
-3. Or simplify if tracking is not needed
+**Status**: Resolved
+**Resolution**: Added Display trait implementation for GenerationId and integrated it into tracing spans throughout the LLM provider system. The generate() function now creates info-level tracing spans that include generation_id, model, and provider for every LLM request. This enables request correlation across logs and better debugging. Added provider_kind() helper method to identify provider types in logs.
 
 ---
 
@@ -362,15 +342,8 @@
 ### D-002: TOML Config Format Not Documented
 
 **Finding**: Config loading supports TOML but no example config file exists.
-**Status**: Open
-**Rationale**: Users don't know available options.
-
-**Assumptions**: CLI help is sufficient.
-
-**Approach**:
-1. Add example config.toml with all fields documented
-2. Generate config docs from struct annotations
-3. Add config path command output example in README
+**Status**: Resolved
+**Resolution**: Created comprehensive config.example.toml in the project root that documents all available configuration options. The example includes: active profile selection, commit message length limits, file diff inclusion, ignore patterns, and detailed provider profile examples for OpenAI, Azure, Groq, and custom providers. Documented all three API key reference methods (environment variables, system keyring, direct values) with security recommendations. Added comments explaining token limits, temperature settings, and ignore pattern syntax.
 
 ### D-003: Generate JSON Schema for Config
 

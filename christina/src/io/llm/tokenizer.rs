@@ -12,34 +12,34 @@ use tiktoken_rs::CoreBPE;
 
 pub type Result<T> = TokenizerResult<T>;
 
-static TOKENIZER: OnceLock<Result<Arc<TokenizerService>>> = OnceLock::new();
+static TOKENIZER: OnceLock<Arc<TokenizerService>> = OnceLock::new();
 
 /// Get the global tokenizer service instance.
 ///
-/// This initializes the tokenizer on first call and caches the result (success or error).
-/// Subsequent calls return the cached result, avoiding repeated initialization attempts.
-/// If initialization failed on first call, all subsequent calls will return the same error.
+/// This initializes the tokenizer on first call and caches successful results.
+/// If initialization fails, the error is not cached, allowing subsequent calls
+/// to retry. This prevents transient failures (e.g., temporary file system issues)
+/// from becoming permanent.
+///
+/// # Errors
+/// Returns `TokenizerError` if tiktoken_rs::o200k_base fails to initialize.
+/// Common causes include missing tokenizer data files or I/O errors.
 pub fn get_tokenizer() -> Result<Arc<TokenizerService>> {
     match TOKENIZER.get() {
-        Some(cached) => match cached {
-            Ok(t) => Ok(Arc::clone(t)),
-            Err(e) => Err(e.clone()),
-        },
+        Some(cached) => Ok(Arc::clone(cached)),
         None => {
-            let init_result = TokenizerService::new().map(Arc::new);
-            match TOKENIZER.set(init_result.clone()) {
-                Ok(_) => init_result,
+            let service = TokenizerService::new()?;
+            let service = Arc::new(service);
+
+            // Try to cache the successful result. If another thread won the race,
+            // use their result instead.
+            match TOKENIZER.set(Arc::clone(&service)) {
+                Ok(_) => Ok(service),
                 #[expect(
                     clippy::unwrap_used,
                     reason = "Another thread set it, so get() is Some"
                 )]
-                Err(_) => {
-                    let cached = TOKENIZER.get().unwrap();
-                    match cached {
-                        Ok(t) => Ok(Arc::clone(t)),
-                        Err(e) => Err(e.clone()),
-                    }
-                }
+                Err(_) => Ok(Arc::clone(TOKENIZER.get().unwrap())),
             }
         }
     }

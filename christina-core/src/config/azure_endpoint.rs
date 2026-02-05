@@ -24,6 +24,8 @@ pub enum AzureEndpointError {
     NotAzureEndpoint,
     #[error("Missing deployment ID in URL path")]
     MissingDeploymentId,
+    #[error("Non-standard Azure URL path: {0}. Expected /openai/deployments/{{id}}/chat/completions")]
+    NonStandardPath(String),
 }
 
 impl TryFrom<Url> for AzureEndpoint {
@@ -48,17 +50,30 @@ impl TryFrom<Url> for AzureEndpoint {
 
         // Extract deployment_id from path "/openai/deployments/{id}"
         let path = url.path();
-        let deployment_id = path
+        let path_after_prefix = path
             .strip_prefix("/openai/deployments/")
-            .ok_or(AzureEndpointError::MissingDeploymentId)?
-            .split('/')
-            .next()
-            .ok_or(AzureEndpointError::MissingDeploymentId)?
-            .to_string();
+            .ok_or(AzureEndpointError::MissingDeploymentId)?;
+
+        let parts: Vec<&str> = path_after_prefix.split('/').collect();
+
+        // First part is the deployment ID
+        let deployment_id = parts
+            .first()
+            .ok_or(AzureEndpointError::MissingDeploymentId)?;
 
         if deployment_id.is_empty() {
             return Err(AzureEndpointError::MissingDeploymentId);
         }
+
+        // Validate the expected Azure URL pattern: /openai/deployments/{id}/chat/completions
+        // Warn if the path deviates from the standard pattern
+        let expected_suffix = "/chat/completions";
+        let remaining_path = &path_after_prefix[deployment_id.len()..];
+        if !remaining_path.is_empty() && remaining_path != expected_suffix {
+            return Err(AzureEndpointError::NonStandardPath(path.to_string()));
+        }
+
+        let deployment_id = deployment_id.to_string();
 
         // Extract api-version from query params (default: "2024-12-01-preview")
         let api_version = url
@@ -176,5 +191,37 @@ mod tests {
         );
         assert_eq!(endpoint.deployment_id, "gpt-4");
         assert_eq!(endpoint.api_version, "2024-12-01-preview");
+    }
+
+    #[test]
+    fn test_parse_azure_url_non_standard_path() {
+        let url = "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4/wrong/path";
+        let result: Result<AzureEndpoint, _> = url.try_into();
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(AzureEndpointError::NonStandardPath(_))
+        ));
+    }
+
+    #[test]
+    fn test_parse_azure_url_typo_in_path() {
+        let url = "https://myresource.cognitiveservices.azure.com/openai/deploymets/gpt-4/chat/completions";
+        let result: Result<AzureEndpoint, _> = url.try_into();
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(AzureEndpointError::MissingDeploymentId)
+        ));
+    }
+
+    #[test]
+    fn test_parse_azure_url_deployment_only() {
+        let url = "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4";
+        let endpoint: AzureEndpoint = url.try_into().expect("Valid minimal Azure URL should parse");
+
+        assert_eq!(endpoint.deployment_id, "gpt-4");
     }
 }

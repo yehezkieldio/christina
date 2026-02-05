@@ -12,6 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct ProviderProfile<S = String> {
     pub name: String,
     pub provider: ProviderKind,

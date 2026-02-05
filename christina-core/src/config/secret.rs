@@ -25,6 +25,7 @@ pub enum SecretError {
 /// **Important**: This type implements a custom Debug impl that redacts all secrets
 /// for security. To access secret values, use `expose_secret()` or resolver methods.
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub enum Secret<S> {
     Value(S),
     #[serde(rename = "env")]
@@ -92,6 +93,7 @@ impl Secret<String> {
 
 /// On-disk reference (env var or keyring)
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "value")]
 pub enum SecretRef {
     #[serde(rename = "env")]

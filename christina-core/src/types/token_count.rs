@@ -21,6 +21,7 @@ pub const MAX_OUTPUT: u32 = 4_096;
 /// wrapping. This ensures the system remains operational even with bad data, trading
 /// precision for resilience.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(try_from = "u32", into = "u32")]
 pub struct TokenCount(NonZeroU32);
 
