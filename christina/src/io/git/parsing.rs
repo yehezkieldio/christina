@@ -106,7 +106,7 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
     let (path_b_raw, _) = parse_path(remaining)?;
 
     let (_path_a, path_b) = normalize_paths(path_a_raw, path_b_raw);
-    
+
     // Use try_new at parsing boundary to gracefully reject malformed paths.
     // Git diff should never produce absolute paths, but we validate defensively.
     FilePath::try_new(path_b).ok()

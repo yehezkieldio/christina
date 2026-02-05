@@ -881,12 +881,12 @@ mod tests {
     #[test]
     fn should_limit_file_exact_filename_match() {
         let patterns = vec!["Cargo.lock".to_string(), "package.json".to_string()];
-        
+
         // Should match exact filename
         assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
         assert!(should_limit_file(&FilePath::from("path/to/Cargo.lock"), &patterns));
         assert!(should_limit_file(&FilePath::from("package.json"), &patterns));
-        
+
         // Should NOT match partial matches
         assert!(!should_limit_file(&FilePath::from("unlock.txt"), &patterns));
         assert!(!should_limit_file(&FilePath::from("Cargo.lock.bak"), &patterns));
@@ -896,12 +896,12 @@ mod tests {
     #[test]
     fn should_limit_file_wildcard_pattern() {
         let patterns = vec!["*.lock".to_string(), "*.min.js".to_string()];
-        
+
         // Should match wildcard suffix
         assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
         assert!(should_limit_file(&FilePath::from("yarn.lock"), &patterns));
         assert!(should_limit_file(&FilePath::from("app.min.js"), &patterns));
-        
+
         // Should NOT match if suffix doesn't match
         assert!(!should_limit_file(&FilePath::from("unlock.txt"), &patterns));
         assert!(!should_limit_file(&FilePath::from("app.js"), &patterns));
@@ -910,11 +910,11 @@ mod tests {
     #[test]
     fn should_limit_file_directory_pattern() {
         let patterns = vec!["vendor/".to_string(), "node_modules/".to_string()];
-        
+
         // Should match directory prefix
         assert!(should_limit_file(&FilePath::from("vendor/package/file.go"), &patterns));
         assert!(should_limit_file(&FilePath::from("node_modules/react/index.js"), &patterns));
-        
+
         // Should NOT match if not in directory
         assert!(!should_limit_file(&FilePath::from("src/vendor.go"), &patterns));
         assert!(!should_limit_file(&FilePath::from("my_node_modules.txt"), &patterns));
@@ -927,7 +927,7 @@ mod tests {
             "*.min.js".to_string(),
             "dist/".to_string(),
         ];
-        
+
         assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
         assert!(should_limit_file(&FilePath::from("app.min.js"), &patterns));
         assert!(should_limit_file(&FilePath::from("dist/bundle.js"), &patterns));
