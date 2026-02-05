@@ -685,7 +685,7 @@ mod tests {
     fn git_error_from_conversion() {
         #[cfg(feature = "git2-support")]
         {
-            use git2::{Error, ErrorClass, ErrorCode};
+            use git2::Error;
 
             let git2_err = Error::from_str("not found");
             let err: GitError = git2_err.into();

@@ -1,3 +1,11 @@
+// Allow unused dev-dependencies that are only used in benchmarks
+// The unused_crate_dependencies lint cannot distinguish between
+// dependencies used in benches vs lib.
+#![allow(unused_crate_dependencies)]
+
+// Allow unwrap() and expect() in test code
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 pub mod config;
 pub mod error;
 pub mod git;

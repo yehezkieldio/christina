@@ -1,13 +1,44 @@
+#![allow(unused_crate_dependencies)]
+
 use christina::io::git::chunking::{
     split_by_hunks, split_by_lines, split_recursive, truncate_to_token_limit,
 };
 
-extern crate christina;
 use christina_core::{
     git::FileDiff, test_helpers::DeterministicTokenizer, types::TokenCount, types::FilePath,
     Tokenizer,
 };
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+
+// Placeholder uses for dev-dependencies not used in this benchmark
+use ahash as _;
+use anyhow as _;
+use cap as _;
+use clap as _;
+use clap_complete as _;
+use config as _;
+use console as _;
+use dhat as _;
+use dialoguer as _;
+use directories as _;
+use fs2 as _;
+use futures as _;
+use git2 as _;
+use indicatif as _;
+use keyring as _;
+use llm as _;
+use mimalloc as _;
+use moka as _;
+use proptest as _;
+use serde as _;
+use serde_json as _;
+use tiktoken_rs as _;
+use tokio as _;
+use toml as _;
+use tracing as _;
+use tracing_appender as _;
+use tracing_subscriber as _;
+use url as _;
 
 /// Generate a realistic diff header.
 fn diff_header(file: &str) -> String {

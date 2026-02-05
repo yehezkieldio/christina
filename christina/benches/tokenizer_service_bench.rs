@@ -1,8 +1,38 @@
-extern crate christina;
+#![allow(unused_crate_dependencies)]
 
 use christina::io::llm::tokenizer::{get_tokenizer, TokenBudget};
 use christina_core::types::TokenCount;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+
+// Placeholder uses for dev-dependencies not used in this benchmark
+use ahash as _;
+use anyhow as _;
+use cap as _;
+use clap as _;
+use clap_complete as _;
+use config as _;
+use console as _;
+use dhat as _;
+use dialoguer as _;
+use directories as _;
+use fs2 as _;
+use futures as _;
+use git2 as _;
+use indicatif as _;
+use keyring as _;
+use llm as _;
+use mimalloc as _;
+use moka as _;
+use proptest as _;
+use serde as _;
+use serde_json as _;
+use tiktoken_rs as _;
+use tokio as _;
+use toml as _;
+use tracing as _;
+use tracing_appender as _;
+use tracing_subscriber as _;
+use url as _;
 
 /// Generate text with specified word count.
 fn generate_text(word_count: usize) -> String {

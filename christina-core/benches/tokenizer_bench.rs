@@ -1,5 +1,20 @@
+#![allow(unused_crate_dependencies)]
+
 use christina_core::{types::TokenCount, Tokenizer};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+
+// Placeholder uses for dev-dependencies not used in this benchmark
+use anyhow as _;
+use compact_str as _;
+use git2 as _;
+use keyring as _;
+use regex as _;
+use serde as _;
+use serde_json as _;
+use tempfile as _;
+use thiserror as _;
+use tracing as _;
+use url as _;
 
 /// Mock tokenizer for benchmarking trait methods.
 struct MockTokenizer;

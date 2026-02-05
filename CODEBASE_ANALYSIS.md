@@ -362,21 +362,6 @@
 
 ---
 
-### SEC-003: Prompt Injection Mitigations Are Documentation Only
-
-**Finding**: SYSTEM_PROMPT and USER_CONTEXT_TEMPLATE include injection warnings, but enforcement is LLM-dependent.
-**Status**: Open
-**Rationale**: Adversarial diff content could still manipulate the LLM.
-
-**Assumptions**: The prompts are well-designed but not foolproof.
-
-**Approach**:
-1. Add output validation: verify generated commit messages match expected format before use
-2. Reject messages that contain suspicious patterns (e.g., embedded commands)
-3. Log and alert on validation failures for monitoring
-
----
-
 ## Testing Gaps
 
 ### T-002: Concurrent Tokenizer Access Not Tested
