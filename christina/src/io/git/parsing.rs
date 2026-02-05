@@ -43,6 +43,9 @@ pub fn extract_file_paths(diff: &str) -> Vec<FilePath> {
 ///
 /// Returns the destination path (b/ side) after stripping the prefix.
 /// For renames, this is the *new* path. For normal diffs, both sides match.
+///
+/// **Safety**: Git diff output by specification produces only relative paths within
+/// the repository. Absolute paths would violate the diff format and are rejected.
 pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
     fn parse_path(s: &str) -> Option<(&str, &str)> {
         let s = s.trim_start();
@@ -103,7 +106,10 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
     let (path_b_raw, _) = parse_path(remaining)?;
 
     let (_path_a, path_b) = normalize_paths(path_a_raw, path_b_raw);
-    Some(FilePath::from(path_b))
+    
+    // Use try_new at parsing boundary to gracefully reject malformed paths.
+    // Git diff should never produce absolute paths, but we validate defensively.
+    FilePath::try_new(path_b).ok()
 }
 
 /// Split a diff string by file headers (`diff --git`).
@@ -283,7 +289,7 @@ mod tests {
 
     impl Tokenizer for MockTokenizer {
         fn count_tokens(&self, text: &str) -> TokenCount {
-            TokenCount::new_saturating(text.len() as u32)
+            TokenCount::new_at_least_one(text.len() as u32)
         }
 
         fn encoding_name(&self) -> &str {
@@ -449,7 +455,7 @@ index 2345678..bcdefgh 100644
         assert!(!files[0].truncated);
         assert_eq!(
             files[0].token_count,
-            TokenCount::new_saturating(files[0].content.len() as u32)
+            TokenCount::new_at_least_one(files[0].content.len() as u32)
         );
     }
 
@@ -480,7 +486,7 @@ More content
         assert_eq!(files[0].content.len(), MAX_FILE_DIFF_SIZE);
         assert_eq!(
             files[0].token_count,
-            TokenCount::new_saturating(MAX_FILE_DIFF_SIZE as u32)
+            TokenCount::new_at_least_one(MAX_FILE_DIFF_SIZE as u32)
         );
     }
 
@@ -605,5 +611,26 @@ index abcdef..0000000
         assert!(!truncated.contains("Truncated "));
         assert!(truncated.contains("-line 1"));
         assert!(truncated.contains("-line 2"));
+    }
+
+    #[test]
+    fn parse_git_diff_header_rejects_absolute_paths() {
+        // Git diff should never produce absolute paths, but we validate defensively
+        // at parsing boundaries. Absolute paths violate the diff format spec.
+        assert_eq!(
+            parse_git_diff_header("diff --git /absolute/path.txt /absolute/path.txt"),
+            None
+        );
+        assert_eq!(
+            parse_git_diff_header("diff --git a//root/file.txt b//root/file.txt"),
+            None
+        );
+    }
+
+    #[test]
+    fn filepath_try_new_absolute_returns_error() {
+        // Verify that FilePath::try_new properly rejects absolute paths
+        assert!(FilePath::try_new("/absolute/path.rs").is_err());
+        assert!(FilePath::try_new("relative/path.rs").is_ok());
     }
 }

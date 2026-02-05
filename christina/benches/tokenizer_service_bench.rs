@@ -234,7 +234,7 @@ fn bench_slice_to_token_limit_small(c: &mut Criterion) {
 
     for size in [100, 500, 1000].iter() {
         let text = generate_code(*size);
-        let limit = TokenCount::new_saturating((*size as u32) / 2);
+        let limit = TokenCount::new_at_least_one((*size as u32) / 2);
         group.throughput(Throughput::Bytes(text.len() as u64));
 
         group.bench_with_input(
@@ -255,7 +255,7 @@ fn bench_slice_to_token_limit_large(c: &mut Criterion) {
 
     for size in [5000, 10_000, 50_000].iter() {
         let text = generate_code(*size);
-        let limit = TokenCount::new_saturating((*size as u32) / 2);
+        let limit = TokenCount::new_at_least_one((*size as u32) / 2);
         group.throughput(Throughput::Bytes(text.len() as u64));
 
         group.bench_with_input(
@@ -276,7 +276,7 @@ fn bench_slice_to_token_limit_fast_path(c: &mut Criterion) {
 
     for size in [100, 1000, 10_000].iter() {
         let text = generate_code(*size);
-        let limit = TokenCount::new_saturating((*size as u32) * 10); // Already under limit
+        let limit = TokenCount::new_at_least_one((*size as u32) * 10); // Already under limit
         group.throughput(Throughput::Bytes(text.len() as u64));
 
         group.bench_with_input(
@@ -297,7 +297,7 @@ fn bench_slice_to_token_limit_tight(c: &mut Criterion) {
 
     for size in [100, 1000, 10_000].iter() {
         let text = generate_code(*size);
-        let limit = TokenCount::new_saturating((*size as u32) / 10); // 10% limit
+        let limit = TokenCount::new_at_least_one((*size as u32) / 10); // 10% limit
         group.throughput(Throughput::Bytes(text.len() as u64));
 
         group.bench_with_input(
@@ -318,7 +318,7 @@ fn bench_slice_long_line(c: &mut Criterion) {
 
     for size in [1000, 5000, 10_000].iter() {
         let text = generate_long_line(*size);
-        let limit = TokenCount::new_saturating((*size as u32) / 2);
+        let limit = TokenCount::new_at_least_one((*size as u32) / 2);
         group.throughput(Throughput::Bytes(text.len() as u64));
 
         group.bench_with_input(
@@ -343,10 +343,10 @@ fn bench_token_budget_remaining(c: &mut Criterion) {
 
     group.bench_function("custom_large", |b| {
         let budget = TokenBudget::new(
-            TokenCount::new_saturating(256_000),
-            TokenCount::new_saturating(4_096),
-            TokenCount::new_saturating(1_000),
-            TokenCount::new_saturating(500),
+            TokenCount::new_at_least_one(256_000),
+            TokenCount::new_at_least_one(4_096),
+            TokenCount::new_at_least_one(1_000),
+            TokenCount::new_at_least_one(500),
         );
         b.iter(|| black_box(budget.remaining_for_diff()));
     });

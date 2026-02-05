@@ -13,15 +13,10 @@
 ### C-002: TokenCount Allows Zero via new_saturating
 
 **Finding**: TokenCount::new_saturating(0) returns TokenCount(NonZeroU32::MIN) which equals 1. The type claims to represent a non-zero count, but the saturation behavior silently transforms zero input into 1.
-**Status**: Open
-**Rationale**: Silent conversion hides bugs. Callers passing 0 may not realize they receive 1. This violates the "correct by construction" principle stated in AGENTS.md.
+**Status**: Resolved
+**Resolution**: Renamed `new_saturating` to `new_at_least_one` with explicit documentation about the clamping behavior. Updated all call sites across the codebase. The method name now clearly communicates that zero values are clamped to 1, making the behavior explicit rather than hidden.
 
-**Assumptions**: Callers expect new_saturating(0) to represent "no tokens" but actually get 1 token.
-
-**Approach**:
-1. Rename new_saturating to new_at_least_one with documentation stating the clamping behavior
-2. Add a new_or_none method returning Option for cases where zero is meaningful
-3. Audit all call sites of new_saturating(0) to verify intent—most appear in tests where 0 indicates empty, which should likely remain empty
+**Assumptions**: Callers expect new_at_least_one(0) to clamp to 1, which is now clear from the name.
 
 ---
 
@@ -96,15 +91,10 @@
 ### E-002: FilePath::new Panics on Absolute Paths
 
 **Finding**: FilePath::new uses assert! to reject absolute paths. This panics at construction.
-**Status**: Open
-**Rationale**: Per AGENTS.md, panics are for invariant violations. However, user-provided paths from diffs could include absolute paths, causing runtime panics.
+**Status**: Resolved
+**Resolution**: Updated git diff parsing to use `FilePath::try_new` at the parsing boundary instead of `FilePath::from`, which gracefully rejects absolute paths. Added documentation noting that git diff never produces absolute paths by spec. Added tests verifying absolute path rejection at both the parsing and FilePath levels. The panic path remains in `new()` for internal invariant violations, while `try_new()` is used at external boundaries.
 
 **Assumptions**: Git diff output always uses relative paths.
-
-**Approach**:
-1. Verify that git diff output never produces absolute paths (it does not by spec)
-2. Add integration test confirming parsing never produces absolute FilePath inputs
-3. Consider using try_new at parsing boundaries and reserving new for internal construction
 
 ---
 

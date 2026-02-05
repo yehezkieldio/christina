@@ -244,11 +244,11 @@ fn handle_create(
     }
 
     if let Some(tokens) = max_input_tokens {
-        profile.max_input_tokens = TokenCount::new_saturating(tokens as u32);
+        profile.max_input_tokens = TokenCount::new_at_least_one(tokens as u32);
     }
 
     if let Some(tokens) = max_output_tokens {
-        profile.max_output_tokens = TokenCount::new_saturating(tokens as u32);
+        profile.max_output_tokens = TokenCount::new_at_least_one(tokens as u32);
     }
 
     if let Some(version) = azure_api_version {
@@ -309,11 +309,11 @@ fn handle_edit(
     }
 
     if let Some(tokens) = max_input_tokens {
-        profile.max_input_tokens = TokenCount::new_saturating(tokens as u32);
+        profile.max_input_tokens = TokenCount::new_at_least_one(tokens as u32);
     }
 
     if let Some(tokens) = max_output_tokens {
-        profile.max_output_tokens = TokenCount::new_saturating(tokens as u32);
+        profile.max_output_tokens = TokenCount::new_at_least_one(tokens as u32);
     }
 
     if let Some(version) = azure_api_version {

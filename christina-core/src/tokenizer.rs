@@ -83,10 +83,10 @@ mod tests {
     impl Tokenizer for MockTokenizer {
         fn count_tokens(&self, text: &str) -> crate::types::TokenCount {
             if text.is_empty() {
-                return crate::types::TokenCount::new_saturating(0);
+                return crate::types::TokenCount::new_at_least_one(0);
             }
             let count = text.split_whitespace().count();
-            crate::types::TokenCount::new_saturating(count as u32)
+            crate::types::TokenCount::new_at_least_one(count as u32)
         }
 
         fn encoding_name(&self) -> &str {
@@ -138,7 +138,7 @@ mod tests {
         let tokenizer = MockTokenizer;
         assert_eq!(
             tokenizer.count_tokens(""),
-            crate::types::TokenCount::new_saturating(0)
+            crate::types::TokenCount::new_at_least_one(0)
         );
     }
 
@@ -147,7 +147,7 @@ mod tests {
         let tokenizer = MockTokenizer;
         assert_eq!(
             tokenizer.count_tokens("   \t  \n  "),
-            crate::types::TokenCount::new_saturating(0)
+            crate::types::TokenCount::new_at_least_one(0)
         );
     }
 
@@ -268,10 +268,10 @@ mod tests {
         let tokenizer = MockTokenizer;
         let text = "hello world";
         let result =
-            tokenizer.slice_to_token_limit(text, crate::types::TokenCount::new_saturating(0));
+            tokenizer.slice_to_token_limit(text, crate::types::TokenCount::new_at_least_one(0));
         assert_eq!(
             tokenizer.count_tokens(result),
-            crate::types::TokenCount::new_saturating(0)
+            crate::types::TokenCount::new_at_least_one(0)
         );
         assert_eq!(result.trim(), "hello");
     }

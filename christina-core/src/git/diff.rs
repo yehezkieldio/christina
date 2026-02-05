@@ -61,11 +61,11 @@ mod tests {
         let chunk = DiffChunk::new(
             Arc::from("diff --git a/file.txt b/file.txt"),
             vec![FilePath::from("file.txt")],
-            TokenCount::new_saturating(5),
+            TokenCount::new_at_least_one(5),
         );
         assert_eq!(chunk.files.len(), 1);
         assert_eq!(chunk.files[0], FilePath::from("file.txt"));
-        assert_eq!(chunk.token_count, TokenCount::new_saturating(5));
+        assert_eq!(chunk.token_count, TokenCount::new_at_least_one(5));
     }
 
     #[test]
@@ -73,11 +73,11 @@ mod tests {
         let file = FileDiff {
             path: FilePath::from("src/lib.rs"),
             content: "diff --git a/src/lib.rs b/src/lib.rs".to_string(),
-            token_count: TokenCount::new_saturating(3),
+            token_count: TokenCount::new_at_least_one(3),
             truncated: false,
         };
         assert_eq!(file.path, FilePath::from("src/lib.rs"));
-        assert_eq!(file.token_count, TokenCount::new_saturating(3));
+        assert_eq!(file.token_count, TokenCount::new_at_least_one(3));
         assert!(!file.truncated);
     }
 

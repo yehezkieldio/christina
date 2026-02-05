@@ -145,10 +145,10 @@ impl Tokenizer for DeterministicTokenizer {
     /// Empty strings and whitespace-only strings return a token count of 0.
     fn count_tokens(&self, text: &str) -> TokenCount {
         if text.is_empty() {
-            return TokenCount::new_saturating(0);
+            return TokenCount::new_at_least_one(0);
         }
         let count = text.split_whitespace().count();
-        TokenCount::new_saturating(count as u32)
+        TokenCount::new_at_least_one(count as u32)
     }
 
     fn encoding_name(&self) -> &str {
@@ -305,10 +305,10 @@ mod tests {
             TokenCount::new(2).unwrap()
         );
         assert_eq!(tokenizer.count_tokens("one"), TokenCount::new(1).unwrap());
-        assert_eq!(tokenizer.count_tokens(""), TokenCount::new_saturating(0));
+        assert_eq!(tokenizer.count_tokens(""), TokenCount::new_at_least_one(0));
         assert_eq!(
             tokenizer.count_tokens("   \t  \n  "),
-            TokenCount::new_saturating(0)
+            TokenCount::new_at_least_one(0)
         );
     }
 

@@ -550,7 +550,7 @@ mod tests {
             ChatMessage::system("You are a helpful assistant"),
             ChatMessage::user("Hello"),
         ];
-        let max_tokens = TokenCount::new_saturating(100);
+        let max_tokens = TokenCount::new_at_least_one(100);
 
         let request = request_from_messages(&messages, max_tokens, 0.7);
 

@@ -107,7 +107,7 @@ fn bench_split_recursive_small_files(c: &mut Criterion) {
                 b.iter(|| {
                     split_recursive(
                         black_box(files.clone()),
-                        black_box(TokenCount::new_saturating(1000)),
+                        black_box(TokenCount::new_at_least_one(1000)),
                         black_box(&[]),
                         black_box(&tokenizer),
                     )
@@ -135,7 +135,7 @@ fn bench_split_recursive_large_files(c: &mut Criterion) {
                 b.iter(|| {
                     split_recursive(
                         black_box(files.clone()),
-                        black_box(TokenCount::new_saturating(500)),
+                        black_box(TokenCount::new_at_least_one(500)),
                         black_box(&[]),
                         black_box(&tokenizer),
                     )
@@ -171,7 +171,7 @@ fn bench_split_recursive_with_lockfiles(c: &mut Criterion) {
         b.iter(|| {
             split_recursive(
                 black_box(files.clone()),
-                black_box(TokenCount::new_saturating(1000)),
+                black_box(TokenCount::new_at_least_one(1000)),
                 black_box(&["Cargo.lock".to_string()]),
                 black_box(&tokenizer),
             )
@@ -197,7 +197,7 @@ fn bench_split_by_hunks(c: &mut Criterion) {
                     split_by_hunks(
                         black_box(&FilePath::from("test.rs")),
                         black_box(content),
-                        black_box(TokenCount::new_saturating(100)),
+                        black_box(TokenCount::new_at_least_one(100)),
                         black_box(&tokenizer),
                     )
                 });
@@ -226,7 +226,7 @@ fn bench_split_by_lines(c: &mut Criterion) {
                     split_by_lines(
                         black_box(&FilePath::from("test.rs")),
                         black_box(content),
-                        black_box(TokenCount::new_saturating(50)),
+                        black_box(TokenCount::new_at_least_one(50)),
                         black_box(&tokenizer),
                     )
                 });
@@ -254,7 +254,7 @@ fn bench_split_oversized_line(c: &mut Criterion) {
                     split_by_lines(
                         black_box(&FilePath::from("test.rs")),
                         black_box(content),
-                        black_box(TokenCount::new_saturating(10)),
+                        black_box(TokenCount::new_at_least_one(10)),
                         black_box(&tokenizer),
                     )
                 });
@@ -282,7 +282,7 @@ fn bench_truncate_to_token_limit(c: &mut Criterion) {
                 b.iter(|| {
                     truncate_to_token_limit(
                         black_box(content),
-                        black_box(TokenCount::new_saturating((*line_count as u32) / 2)),
+                        black_box(TokenCount::new_at_least_one((*line_count as u32) / 2)),
                         black_box(&tokenizer),
                     )
                 });
@@ -310,7 +310,7 @@ fn bench_truncate_to_token_limit_fast_path(c: &mut Criterion) {
                 b.iter(|| {
                     truncate_to_token_limit(
                         black_box(content),
-                        black_box(TokenCount::new_saturating((*line_count as u32) * 10)), // Already under limit
+                        black_box(TokenCount::new_at_least_one((*line_count as u32) * 10)), // Already under limit
                         black_box(&tokenizer),
                     )
                 });
@@ -336,7 +336,7 @@ fn bench_unicode_handling(c: &mut Criterion) {
             split_by_lines(
                 black_box(&FilePath::from("test.rs")),
                 black_box(&emoji_content),
-                black_box(TokenCount::new_saturating(50)),
+                black_box(TokenCount::new_at_least_one(50)),
                 black_box(&tokenizer),
             )
         });
@@ -353,7 +353,7 @@ fn bench_unicode_handling(c: &mut Criterion) {
             split_by_lines(
                 black_box(&FilePath::from("test.rs")),
                 black_box(&cjk_content),
-                black_box(TokenCount::new_saturating(50)),
+                black_box(TokenCount::new_at_least_one(50)),
                 black_box(&tokenizer),
             )
         });
@@ -378,7 +378,7 @@ fn bench_token_limit_variations(c: &mut Criterion) {
                 b.iter(|| {
                     split_recursive(
                         black_box(files.clone()),
-                        black_box(TokenCount::new_saturating(*limit)),
+                        black_box(TokenCount::new_at_least_one(*limit)),
                         black_box(&[]),
                         black_box(&tokenizer),
                     )

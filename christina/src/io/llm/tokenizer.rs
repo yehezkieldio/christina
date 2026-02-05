@@ -76,13 +76,13 @@ impl TokenizerService {
         // Skip cache for very short strings (cache overhead > tokenization cost)
         if text.len() < 50 {
             let count = self.bpe.encode_ordinary(text).len();
-            return TokenCount::new_saturating(count as u32);
+            return TokenCount::new_at_least_one(count as u32);
         }
 
         let hash = self.hash_builder.hash_one(text.as_bytes());
         self.token_cache.get_with(hash, || {
             let count = self.bpe.encode_ordinary(text).len();
-            TokenCount::new_saturating(count as u32)
+            TokenCount::new_at_least_one(count as u32)
         })
     }
 
@@ -223,39 +223,39 @@ impl TokenBudget {
     #[cfg(test)]
     pub fn small() -> Self {
         Self {
-            max_input: TokenCount::new_saturating(32_000),
-            max_output: TokenCount::new_saturating(4_096),
-            reserved_for_prompt: TokenCount::new_saturating(1_000),
-            reserved_for_messages: TokenCount::new_saturating(500),
+            max_input: TokenCount::new_at_least_one(32_000),
+            max_output: TokenCount::new_at_least_one(4_096),
+            reserved_for_prompt: TokenCount::new_at_least_one(1_000),
+            reserved_for_messages: TokenCount::new_at_least_one(500),
         }
     }
 
     pub fn medium() -> Self {
         Self {
-            max_input: TokenCount::new_saturating(128_000),
-            max_output: TokenCount::new_saturating(4_096),
-            reserved_for_prompt: TokenCount::new_saturating(1_000),
-            reserved_for_messages: TokenCount::new_saturating(500),
+            max_input: TokenCount::new_at_least_one(128_000),
+            max_output: TokenCount::new_at_least_one(4_096),
+            reserved_for_prompt: TokenCount::new_at_least_one(1_000),
+            reserved_for_messages: TokenCount::new_at_least_one(500),
         }
     }
 
     #[cfg(test)]
     pub fn large() -> Self {
         Self {
-            max_input: TokenCount::new_saturating(256_000),
-            max_output: TokenCount::new_saturating(4_096),
-            reserved_for_prompt: TokenCount::new_saturating(1_000),
-            reserved_for_messages: TokenCount::new_saturating(500),
+            max_input: TokenCount::new_at_least_one(256_000),
+            max_output: TokenCount::new_at_least_one(4_096),
+            reserved_for_prompt: TokenCount::new_at_least_one(1_000),
+            reserved_for_messages: TokenCount::new_at_least_one(500),
         }
     }
 
     #[cfg(test)]
     pub fn massive() -> Self {
         Self {
-            max_input: TokenCount::new_saturating(1_000_000),
-            max_output: TokenCount::new_saturating(4_096),
-            reserved_for_prompt: TokenCount::new_saturating(1_000),
-            reserved_for_messages: TokenCount::new_saturating(500),
+            max_input: TokenCount::new_at_least_one(1_000_000),
+            max_output: TokenCount::new_at_least_one(4_096),
+            reserved_for_prompt: TokenCount::new_at_least_one(1_000),
+            reserved_for_messages: TokenCount::new_at_least_one(500),
         }
     }
 
@@ -335,12 +335,12 @@ mod tests {
         let text = "Hello, world! This is a longer text that has many tokens.";
 
         // Slicing to 3 tokens should return less text
-        let sliced = tokenizer.slice_to_token_limit(text, TokenCount::new_saturating(3));
+        let sliced = tokenizer.slice_to_token_limit(text, TokenCount::new_at_least_one(3));
         assert!(sliced.len() < text.len());
         assert!(tokenizer.count_tokens(sliced).get() > 0);
 
         // Slicing with large limit should return full text
-        let full = tokenizer.slice_to_token_limit(text, TokenCount::new_saturating(1000));
+        let full = tokenizer.slice_to_token_limit(text, TokenCount::new_at_least_one(1000));
         assert_eq!(full, text);
     }
 
@@ -349,12 +349,12 @@ mod tests {
         let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
 
         // Zero limit should return empty string
-        let slice = tokenizer.slice_to_token_limit("Hello", TokenCount::new_saturating(1));
+        let slice = tokenizer.slice_to_token_limit("Hello", TokenCount::new_at_least_one(1));
         assert!(!slice.is_empty());
 
         // Empty input should return empty string
         assert_eq!(
-            tokenizer.slice_to_token_limit("", TokenCount::new_saturating(1)),
+            tokenizer.slice_to_token_limit("", TokenCount::new_at_least_one(1)),
             ""
         );
     }
@@ -362,10 +362,10 @@ mod tests {
     #[test]
     fn token_budget_remaining() {
         let budget = TokenBudget::new(
-            TokenCount::new_saturating(100_000),
-            TokenCount::new_saturating(4_000),
-            TokenCount::new_saturating(1_000),
-            TokenCount::new_saturating(500),
+            TokenCount::new_at_least_one(100_000),
+            TokenCount::new_at_least_one(4_000),
+            TokenCount::new_at_least_one(1_000),
+            TokenCount::new_at_least_one(500),
         );
         let remaining = budget.remaining_for_diff().expect("valid budget");
 
@@ -377,10 +377,10 @@ mod tests {
     fn token_budget_invalid_returns_error() {
         // max_output + reserved exceeds max_input
         let result = TokenBudget::try_new(
-            TokenCount::new_saturating(4_096),
-            TokenCount::new_saturating(3_000),
-            TokenCount::new_saturating(1_000),
-            TokenCount::new_saturating(500),
+            TokenCount::new_at_least_one(4_096),
+            TokenCount::new_at_least_one(3_000),
+            TokenCount::new_at_least_one(1_000),
+            TokenCount::new_at_least_one(500),
         );
 
         assert!(result.is_err());

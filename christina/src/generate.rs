@@ -115,7 +115,7 @@ async fn generate_commit_message_with_progress_impl(
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);
-    let reserved_for_messages = TokenCount::new_saturating(500);
+    let reserved_for_messages = TokenCount::new_at_least_one(500);
 
     let budget = TokenBudget::try_new(
         config.max_input_tokens,
@@ -142,7 +142,7 @@ async fn generate_commit_message_with_progress_impl(
         .iter()
         .map(|chunk| chunk.token_count.get() as u64)
         .sum::<u64>();
-    let total_tokens = TokenCount::new_saturating(total_tokens.try_into().unwrap_or(u32::MAX));
+    let total_tokens = TokenCount::new_at_least_one(total_tokens.try_into().unwrap_or(u32::MAX));
 
     if progress_tx
         .send(Event::TokenCountUpdate {
@@ -353,8 +353,8 @@ mod tests {
             model: "gpt-4".into(),
             model_provider: ProviderKind::OpenAI,
             api_key: Some("test-key".to_string()),
-            max_input_tokens: TokenCount::new_saturating(4000),
-            max_output_tokens: TokenCount::new_saturating(500),
+            max_input_tokens: TokenCount::new_at_least_one(4000),
+            max_output_tokens: TokenCount::new_at_least_one(500),
             model_temperature: 0.7,
             ..Default::default()
         };
@@ -364,8 +364,8 @@ mod tests {
         assert_eq!(profile.name, "active");
         assert_eq!(profile.provider, ProviderKind::OpenAI);
         assert_eq!(profile.model.as_str(), "gpt-4");
-        assert_eq!(profile.max_input_tokens, TokenCount::new_saturating(4000));
-        assert_eq!(profile.max_output_tokens, TokenCount::new_saturating(500));
+        assert_eq!(profile.max_input_tokens, TokenCount::new_at_least_one(4000));
+        assert_eq!(profile.max_output_tokens, TokenCount::new_at_least_one(500));
         assert_eq!(profile.temperature, Some(0.7));
     }
 
@@ -378,8 +378,8 @@ mod tests {
             model_api_url: Some(url::Url::parse("https://test.openai.azure.com").unwrap()),
             azure_api_version: Some("2023-05-15".to_string()),
             azure_deployment_id: Some("gpt-4-deployment".to_string()),
-            max_input_tokens: TokenCount::new_saturating(8000),
-            max_output_tokens: TokenCount::new_saturating(1000),
+            max_input_tokens: TokenCount::new_at_least_one(8000),
+            max_output_tokens: TokenCount::new_at_least_one(1000),
             model_temperature: 0.5,
             ..Default::default()
         };
@@ -400,8 +400,8 @@ mod tests {
             model: "mixtral-8x7b".into(),
             model_provider: ProviderKind::Groq,
             api_key: Some("groq-key".to_string()),
-            max_input_tokens: TokenCount::new_saturating(32000),
-            max_output_tokens: TokenCount::new_saturating(2000),
+            max_input_tokens: TokenCount::new_at_least_one(32000),
+            max_output_tokens: TokenCount::new_at_least_one(2000),
             model_temperature: 0.3,
             ..Default::default()
         };
@@ -562,8 +562,8 @@ mod tests {
             model: "gpt-4".into(),
             model_provider: ProviderKind::OpenAI,
             api_key: Some("test-key".to_string()),
-            max_input_tokens: TokenCount::new_saturating(4000),
-            max_output_tokens: TokenCount::new_saturating(500),
+            max_input_tokens: TokenCount::new_at_least_one(4000),
+            max_output_tokens: TokenCount::new_at_least_one(500),
             ..Default::default()
         };
 

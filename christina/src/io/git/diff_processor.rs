@@ -286,7 +286,7 @@ mod tests {
 
     impl Tokenizer for SimpleTokenizer {
         fn count_tokens(&self, text: &str) -> TokenCount {
-            TokenCount::new_saturating((text.len() / 4).max(1) as u32)
+            TokenCount::new_at_least_one((text.len() / 4).max(1) as u32)
         }
 
         fn encoding_name(&self) -> &str {
@@ -309,7 +309,7 @@ mod tests {
 
     fn create_processor(token_limit: u32) -> DiffProcessor {
         let tokenizer: Arc<dyn Tokenizer> = Arc::new(SimpleTokenizer);
-        DiffProcessor::new(tokenizer, TokenCount::new_saturating(token_limit))
+        DiffProcessor::new(tokenizer, TokenCount::new_at_least_one(token_limit))
     }
 
     #[test]
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn processor_new_initializes_defaults() {
         let processor = create_processor(5000);
-        assert_eq!(processor.token_limit, TokenCount::new_saturating(5000));
+        assert_eq!(processor.token_limit, TokenCount::new_at_least_one(5000));
         assert_eq!(processor.ignore_files.len(), 0);
         assert_eq!(processor.max_diff_size, MAX_DIFF_SIZE);
     }
@@ -580,7 +580,7 @@ mod tests {
     #[test]
     fn processor_with_ignore_files() {
         let tokenizer: Arc<dyn Tokenizer> = Arc::new(SimpleTokenizer);
-        let processor = DiffProcessor::new(tokenizer, TokenCount::new_saturating(5000))
+        let processor = DiffProcessor::new(tokenizer, TokenCount::new_at_least_one(5000))
             .with_ignore_files(vec!["*.lock".to_string(), "*.log".to_string()]);
         assert_eq!(processor.ignore_files.len(), 2);
         assert!(processor.ignore_files.contains(&"*.lock".to_string()));

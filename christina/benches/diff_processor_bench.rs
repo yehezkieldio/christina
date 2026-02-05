@@ -137,7 +137,7 @@ fn generate_large_file_for_sampling() -> String {
 
 fn create_processor(token_limit: u32) -> DiffProcessor {
     let tokenizer: Arc<dyn Tokenizer> = Arc::new(DeterministicTokenizer);
-    DiffProcessor::new(tokenizer, TokenCount::new_saturating(token_limit))
+    DiffProcessor::new(tokenizer, TokenCount::new_at_least_one(token_limit))
 }
 
 fn bench_binary_detection_text(c: &mut Criterion) {
@@ -342,7 +342,7 @@ fn bench_process_with_ignore_patterns(c: &mut Criterion) {
 
     group.bench_function("with_lockfiles", |b| {
         let tokenizer: Arc<dyn Tokenizer> = Arc::new(DeterministicTokenizer);
-        let processor = DiffProcessor::new(tokenizer, TokenCount::new_saturating(10_000))
+        let processor = DiffProcessor::new(tokenizer, TokenCount::new_at_least_one(10_000))
             .with_ignore_files(vec![
                 "Cargo.lock".to_string(),
                 "package-lock.json".to_string(),

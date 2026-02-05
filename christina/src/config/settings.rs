@@ -114,8 +114,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            max_input_tokens: TokenCount::new_saturating(4096),
-            max_output_tokens: TokenCount::new_saturating(500),
+            max_input_tokens: TokenCount::new_at_least_one(4096),
+            max_output_tokens: TokenCount::new_at_least_one(500),
             model_provider: ProviderKind::OpenAI,
             model: ModelName::from("gpt-4.1-mini"),
             api_key: None,
@@ -265,8 +265,8 @@ impl Config {
     /// Validate and clamp token values to hard limits.
     /// Also validates provider name against the registry.
     fn validate(&mut self) {
-        let max_input = TokenCount::new_saturating(MAX_INPUT);
-        let max_output = TokenCount::new_saturating(MAX_OUTPUT);
+        let max_input = TokenCount::new_at_least_one(MAX_INPUT);
+        let max_output = TokenCount::new_at_least_one(MAX_OUTPUT);
         self.max_input_tokens = self.max_input_tokens.min(max_input);
         self.max_output_tokens = self.max_output_tokens.min(max_output);
 
@@ -412,7 +412,7 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                let hard_limit = TokenCount::new_saturating(MAX_INPUT);
+                let hard_limit = TokenCount::new_at_least_one(MAX_INPUT);
                 self.max_input_tokens = parsed.min(hard_limit);
                 update_active_profile(key, value)?;
             }
@@ -421,7 +421,7 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                let hard_limit = TokenCount::new_saturating(MAX_OUTPUT);
+                let hard_limit = TokenCount::new_at_least_one(MAX_OUTPUT);
                 self.max_output_tokens = parsed.min(hard_limit);
                 update_active_profile(key, value)?;
             }
@@ -1071,8 +1071,8 @@ mod tests {
     fn validate_clamps_token_limits() {
         let mut config = Config::default();
 
-        config.max_input_tokens = TokenCount::new_saturating(MAX_INPUT + 1000);
-        config.max_output_tokens = TokenCount::new_saturating(MAX_OUTPUT + 1000);
+        config.max_input_tokens = TokenCount::new_at_least_one(MAX_INPUT + 1000);
+        config.max_output_tokens = TokenCount::new_at_least_one(MAX_OUTPUT + 1000);
 
         config.validate();
 
@@ -1120,8 +1120,8 @@ mod tests {
             model: ModelName::from("gpt-4.1-mini"),
             api_url: Some(Url::parse("https://api.azure.com").unwrap()),
             api_key: christina_core::config::Secret::Value("sk-azure-test".to_string()),
-            max_input_tokens: TokenCount::new_saturating(8192),
-            max_output_tokens: TokenCount::new_saturating(4096),
+            max_input_tokens: TokenCount::new_at_least_one(8192),
+            max_output_tokens: TokenCount::new_at_least_one(4096),
             azure_api_version: Some("test-version".to_string()),
             azure_deployment_id: Some("test-deployment".to_string()),
             temperature: None,
@@ -1151,8 +1151,8 @@ mod tests {
         config.model_provider = ProviderKind::OpenAI;
         config.model = ModelName::from("gpt-5.2");
         config.api_key = Some("sk-openai-test".to_string());
-        config.max_input_tokens = TokenCount::new_saturating(16384);
-        config.max_output_tokens = TokenCount::new_saturating(2048);
+        config.max_input_tokens = TokenCount::new_at_least_one(16384);
+        config.max_output_tokens = TokenCount::new_at_least_one(2048);
 
         let profile = config.to_profile("openai-profile".to_string());
 

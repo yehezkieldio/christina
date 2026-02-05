@@ -22,10 +22,10 @@ struct MockTokenizer;
 impl Tokenizer for MockTokenizer {
     fn count_tokens(&self, text: &str) -> TokenCount {
         if text.is_empty() {
-            return TokenCount::new_saturating(0);
+            return TokenCount::new_at_least_one(0);
         }
         let count = text.split_whitespace().count();
-        TokenCount::new_saturating(count as u32)
+        TokenCount::new_at_least_one(count as u32)
     }
 
     fn encoding_name(&self) -> &str {
@@ -110,7 +110,7 @@ fn bench_slice_to_token_limit(c: &mut Criterion) {
 
     for lines in [10, 100, 1000].iter() {
         let text = generate_long_text(*lines);
-        let limit = TokenCount::new_saturating((*lines as u32) / 2); // 50% limit
+        let limit = TokenCount::new_at_least_one((*lines as u32) / 2); // 50% limit
         group.throughput(Throughput::Bytes(text.len() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}_lines", lines)),
@@ -130,7 +130,7 @@ fn bench_slice_to_token_limit_fast_path(c: &mut Criterion) {
 
     for lines in [10, 100, 1000].iter() {
         let text = generate_long_text(*lines);
-        let limit = TokenCount::new_saturating(*lines as u32 * 20); // Large limit (fast path)
+        let limit = TokenCount::new_at_least_one(*lines as u32 * 20); // Large limit (fast path)
         group.throughput(Throughput::Bytes(text.len() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}_lines", lines)),
@@ -150,7 +150,7 @@ fn bench_slice_to_token_limit_binary_search(c: &mut Criterion) {
 
     for lines in [10, 100, 1000].iter() {
         let text = generate_long_text(*lines);
-        let limit = TokenCount::new_saturating((*lines as u32) / 10); // 10% limit (slow path)
+        let limit = TokenCount::new_at_least_one((*lines as u32) / 10); // 10% limit (slow path)
         group.throughput(Throughput::Bytes(text.len() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}_lines", lines)),

@@ -1179,7 +1179,7 @@ mod tests {
         DiffChunk::new(
             Arc::from("diff --git a/file.txt b/file.txt\n+new line\n"),
             vec![FilePath::from("file.txt")],
-            TokenCount::new_saturating(10),
+            TokenCount::new_at_least_one(10),
         )
     }
 

@@ -60,7 +60,7 @@ pub fn split_recursive(
         let effective_token_count = if is_lockfile {
             file_diff
                 .token_count
-                .min(TokenCount::new_saturating(LOCKFILE_TOKEN_LIMIT))
+                .min(TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT))
         } else {
             file_diff.token_count
         };
@@ -75,11 +75,11 @@ pub fn split_recursive(
             if combined_tokens <= token_limit.get() {
                 // Add to current chunk (truncate if lockfile)
                 if is_lockfile
-                    && file_diff.token_count > TokenCount::new_saturating(LOCKFILE_TOKEN_LIMIT)
+                    && file_diff.token_count > TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)
                 {
                     let truncated = truncate_to_token_limit(
                         &file_diff.content,
-                        TokenCount::new_saturating(LOCKFILE_TOKEN_LIMIT),
+                        TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
                         tokenizer,
                     );
                     buffer.content_mut().push_str(&truncated);
@@ -97,18 +97,18 @@ pub fn split_recursive(
                     chunks.push(DiffChunk::new(
                         Arc::from(buffer.take_content()),
                         buffer.take_file_paths(),
-                        current_tokens.unwrap_or_else(|| TokenCount::new_saturating(1)),
+                        current_tokens.unwrap_or_else(|| TokenCount::new_at_least_one(1)),
                     ));
                     buffer.clear();
                 }
 
                 // Add new file to fresh buffer
                 if is_lockfile
-                    && file_diff.token_count > TokenCount::new_saturating(LOCKFILE_TOKEN_LIMIT)
+                    && file_diff.token_count > TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)
                 {
                     let mut truncated = truncate_to_token_limit(
                         &file_diff.content,
-                        TokenCount::new_saturating(LOCKFILE_TOKEN_LIMIT),
+                        TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
                         tokenizer,
                     );
                     truncated.push_str("\n[... truncated lockfile ...]\n");
@@ -125,7 +125,7 @@ pub fn split_recursive(
                 chunks.push(DiffChunk::new(
                     Arc::from(buffer.take_content()),
                     buffer.take_file_paths(),
-                    current_tokens.unwrap_or_else(|| TokenCount::new_saturating(1)),
+                    current_tokens.unwrap_or_else(|| TokenCount::new_at_least_one(1)),
                 ));
                 buffer.clear();
             }
@@ -141,7 +141,7 @@ pub fn split_recursive(
         chunks.push(DiffChunk::new(
             Arc::from(buffer.take_content()),
             buffer.take_file_paths(),
-            current_tokens.unwrap_or_else(|| TokenCount::new_saturating(1)),
+            current_tokens.unwrap_or_else(|| TokenCount::new_at_least_one(1)),
         ));
     }
 
@@ -245,7 +245,7 @@ fn truncate_to_token_limit_fallback(
 
         truncated.push_str(&line_with_newline);
         current_tokens = Some(match current_tokens {
-            Some(current) => TokenCount::new_saturating(current.get() + line_tokens.get()),
+            Some(current) => TokenCount::new_at_least_one(current.get() + line_tokens.get()),
             None => line_tokens,
         });
     }
@@ -327,7 +327,7 @@ pub fn split_by_hunks(
                 chunks.push(DiffChunk::new(
                     Arc::from(buffer.take_content()),
                     vec![file_path.clone()],
-                    TokenCount::new_saturating(current_tokens),
+                    TokenCount::new_at_least_one(current_tokens),
                 ));
                 buffer.clear();
                 current_tokens = 0;
@@ -342,7 +342,7 @@ pub fn split_by_hunks(
                 chunks.push(DiffChunk::new(
                     Arc::from(buffer.take_content()),
                     vec![file_path.clone()],
-                    TokenCount::new_saturating(current_tokens),
+                    TokenCount::new_at_least_one(current_tokens),
                 ));
                 buffer.clear();
             }
@@ -362,7 +362,7 @@ pub fn split_by_hunks(
         chunks.push(DiffChunk::new(
             Arc::from(buffer.take_content()),
             vec![file_path.clone()],
-            TokenCount::new_saturating(current_tokens),
+            TokenCount::new_at_least_one(current_tokens),
         ));
     }
 
@@ -401,7 +401,7 @@ pub fn split_by_lines(
                 chunks.push(DiffChunk::new(
                     Arc::from(buffer.take_content()),
                     vec![file_path.clone()],
-                    TokenCount::new_saturating(current_tokens),
+                    TokenCount::new_at_least_one(current_tokens),
                 ));
                 buffer.clear();
                 current_tokens = 0;
@@ -418,7 +418,7 @@ pub fn split_by_lines(
             chunks.push(DiffChunk::new(
                 Arc::from(buffer.take_content()),
                 vec![file_path.clone()],
-                TokenCount::new_saturating(current_tokens),
+                TokenCount::new_at_least_one(current_tokens),
             ));
             buffer.clear();
             current_tokens = 0;
@@ -434,7 +434,7 @@ pub fn split_by_lines(
         chunks.push(DiffChunk::new(
             Arc::from(buffer.take_content()),
             vec![file_path.clone()],
-            TokenCount::new_saturating(current_tokens),
+            TokenCount::new_at_least_one(current_tokens),
         ));
     }
 
@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn test_split_empty() {
         let tokenizer = DeterministicTokenizer;
-        let chunks = split_recursive(Vec::new(), TokenCount::new_saturating(100), &[], &tokenizer);
+        let chunks = split_recursive(Vec::new(), TokenCount::new_at_least_one(100), &[], &tokenizer);
         assert!(chunks.is_empty());
     }
 
@@ -578,7 +578,7 @@ mod tests {
         let content = sample_hunk(sample_header(), &["+hello"]);
         let file = file_diff("file.txt", &content, &tokenizer);
 
-        let chunks = split_recursive(vec![file], TokenCount::new_saturating(200), &[], &tokenizer);
+        let chunks = split_recursive(vec![file], TokenCount::new_at_least_one(200), &[], &tokenizer);
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].files, vec![FilePath::from("file.txt")]);
@@ -595,7 +595,7 @@ mod tests {
 
         let chunks = split_recursive(
             vec![file_a, file_b],
-            TokenCount::new_saturating(500),
+            TokenCount::new_at_least_one(500),
             &[],
             &tokenizer,
         );
@@ -617,7 +617,7 @@ mod tests {
         }
         let file = file_diff("large.txt", &content, &tokenizer);
 
-        let chunks = split_recursive(vec![file], TokenCount::new_saturating(50), &[], &tokenizer);
+        let chunks = split_recursive(vec![file], TokenCount::new_at_least_one(50), &[], &tokenizer);
 
         assert!(chunks.len() > 1);
         let counts = tokenize_chunks(&chunks, &tokenizer);
@@ -633,7 +633,7 @@ mod tests {
             files.push(file_diff(&format!("file_{i}.txt"), &content, &tokenizer));
         }
 
-        let chunks = split_recursive(files, TokenCount::new_saturating(25), &[], &tokenizer);
+        let chunks = split_recursive(files, TokenCount::new_at_least_one(25), &[], &tokenizer);
 
         for count in tokenize_chunks(&chunks, &tokenizer) {
             assert!(count <= 25);
@@ -653,7 +653,7 @@ mod tests {
 
         let chunks = split_recursive(
             vec![file],
-            TokenCount::new_saturating(500),
+            TokenCount::new_at_least_one(500),
             &["Cargo.lock".to_string()],
             &tokenizer,
         );
@@ -676,7 +676,7 @@ mod tests {
         let chunks = split_by_hunks(
             &FilePath::from("file.txt"),
             &content,
-            TokenCount::new_saturating(20),
+            TokenCount::new_at_least_one(20),
             &tokenizer,
         );
 
@@ -693,7 +693,7 @@ mod tests {
         let chunks = split_by_hunks(
             &FilePath::from("file.txt"),
             &content,
-            TokenCount::new_saturating(200),
+            TokenCount::new_at_least_one(200),
             &tokenizer,
         );
 
@@ -716,7 +716,7 @@ mod tests {
         let chunks = split_by_hunks(
             &FilePath::from("file.txt"),
             &content,
-            TokenCount::new_saturating(20),
+            TokenCount::new_at_least_one(20),
             &tokenizer,
         );
 
@@ -734,7 +734,7 @@ mod tests {
         let chunks = split_by_lines(
             &FilePath::from("file.txt"),
             content,
-            TokenCount::new_saturating(3),
+            TokenCount::new_at_least_one(3),
             &tokenizer,
         );
 
@@ -752,7 +752,7 @@ mod tests {
         let chunks = split_by_lines(
             &FilePath::from("file.txt"),
             content,
-            TokenCount::new_saturating(2),
+            TokenCount::new_at_least_one(2),
             &tokenizer,
         );
 
@@ -766,7 +766,7 @@ mod tests {
     fn test_truncate_respects_limit() {
         let tokenizer = DeterministicTokenizer;
         let content = "alpha beta gamma delta epsilon";
-        let truncated = truncate_to_token_limit(content, TokenCount::new_saturating(3), &tokenizer);
+        let truncated = truncate_to_token_limit(content, TokenCount::new_at_least_one(3), &tokenizer);
         let tokens = tokenizer.count_tokens(&truncated);
         assert!(tokens.get() <= 3);
     }
@@ -776,7 +776,7 @@ mod tests {
         let tokenizer = DeterministicTokenizer;
         let content = "alpha beta\ngamma delta\nepsilon zeta";
         let truncated =
-            truncate_to_token_limit(content, TokenCount::new_saturating(12), &tokenizer);
+            truncate_to_token_limit(content, TokenCount::new_at_least_one(12), &tokenizer);
         assert!(truncated.ends_with('\n') || truncated == content);
         let tokens = tokenizer.count_tokens(&truncated);
         assert!(tokens.get() <= 12);
@@ -789,9 +789,9 @@ mod tests {
         impl Tokenizer for FailingDecodeTokenizer {
             fn count_tokens(&self, text: &str) -> TokenCount {
                 if text.is_empty() {
-                    return TokenCount::new_saturating(0);
+                    return TokenCount::new_at_least_one(0);
                 }
-                TokenCount::new_saturating(text.split_whitespace().count() as u32)
+                TokenCount::new_at_least_one(text.split_whitespace().count() as u32)
             }
 
             fn encoding_name(&self) -> &str {
@@ -809,7 +809,7 @@ mod tests {
 
         let tokenizer = FailingDecodeTokenizer;
         let content = "alpha beta\ngamma delta\nepsilon zeta";
-        let truncated = truncate_to_token_limit(content, TokenCount::new_saturating(3), &tokenizer);
+        let truncated = truncate_to_token_limit(content, TokenCount::new_at_least_one(3), &tokenizer);
         assert!(truncated.contains('\n'));
         let tokens = tokenizer.count_tokens(&truncated);
         assert!(tokens.get() <= 3);
@@ -837,7 +837,7 @@ mod tests {
             limit in 100usize..10000
         ) {
             let tokenizer = DeterministicTokenizer;
-            let chunks = split_recursive(files, TokenCount::new_saturating(limit as u32), &[], &tokenizer);
+            let chunks = split_recursive(files, TokenCount::new_at_least_one(limit as u32), &[], &tokenizer);
             for chunk in chunks {
                 let tokens = tokenizer.count_tokens(&chunk.content);
                 prop_assert!(tokens.get() <= limit as u32);
@@ -849,7 +849,7 @@ mod tests {
             content in "\\PC{0,10000}"
         ) {
             let tokenizer = DeterministicTokenizer;
-            let truncated = truncate_to_token_limit(&content, TokenCount::new_saturating(100), &tokenizer);
+            let truncated = truncate_to_token_limit(&content, TokenCount::new_at_least_one(100), &tokenizer);
             prop_assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
         }
     }

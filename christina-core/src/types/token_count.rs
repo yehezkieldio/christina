@@ -29,7 +29,15 @@ impl TokenCount {
         NonZeroU32::new(count).map(Self)
     }
 
-    pub fn new_saturating(value: u32) -> Self {
+    /// Creates a TokenCount from a u32, clamping zero to 1.
+    ///
+    /// This method ensures a non-zero result by converting 0 to 1. Use this when
+    /// you need a guaranteed non-zero value and treating empty input as "at least
+    /// one token" is acceptable (e.g., for limits where zero would be nonsensical).
+    ///
+    /// For cases where zero should remain distinct (e.g., counting actual tokens
+    /// in empty text), use [`Self::new`] which returns `Option<TokenCount>`.
+    pub fn new_at_least_one(value: u32) -> Self {
         NonZeroU32::new(value)
             .map(Self)
             .unwrap_or(Self(NonZeroU32::MIN))
@@ -93,9 +101,9 @@ mod tests {
     }
 
     #[test]
-    fn token_count_new_saturating() {
-        assert_eq!(TokenCount::new_saturating(0).get(), 1);
-        assert_eq!(TokenCount::new_saturating(50).get(), 50);
+    fn token_count_new_at_least_one() {
+        assert_eq!(TokenCount::new_at_least_one(0).get(), 1);
+        assert_eq!(TokenCount::new_at_least_one(50).get(), 50);
     }
 
     #[test]
