@@ -116,16 +116,19 @@ async fn generate_commit(diff: String, context: Option<String>) -> Result<String
         .map(PathBuf::from)
         .unwrap_or_else(|| repo.path().to_path_buf());
 
-    let (progress_tx, mut progress_rx) = mpsc::channel::<Event>(100);
-    let progress_spinner = spinner.clone();
+    let (progress_tx, mut _progress_rx) = mpsc::channel::<Event>(100);
+    let _progress_spinner = spinner.clone();
     let progress_handle = tokio::spawn(async move {
-        while let Some(event) = progress_rx.recv().await {
+        while let Some(event) = _progress_rx.recv().await {
             match event {
                 Event::GenerationProgress { stage, .. } => {
-                    progress_spinner.set_message(stage);
+                    _progress_spinner.set_message(stage);
                 }
                 Event::TokenCountUpdate { token_count } => {
                     let _ = token_count.get();
+                }
+                _ => {
+                    // Ignore other events for now
                 }
             }
         }

@@ -45,7 +45,15 @@ pub struct FileDiff {
     /// The file path (extracted from diff header).
     pub path: FilePath,
     /// The full diff content for this file.
-    pub content: String,
+    ///
+    /// Uses `Arc<str>` to avoid allocating intermediate `String` copies when
+    /// converting to `DiffChunk`. The Arc is cloned (cheap pointer copy) rather
+    /// than allocating new String data.
+    #[serde(
+        serialize_with = "serialize_arc_str",
+        deserialize_with = "deserialize_arc_str"
+    )]
+    pub content: Arc<str>,
     /// Token count for this file's diff.
     pub token_count: TokenCount,
     /// Whether this file was truncated due to size.
@@ -72,7 +80,7 @@ mod tests {
     fn file_diff_round_trip_fields() {
         let file = FileDiff {
             path: FilePath::from("src/lib.rs"),
-            content: "diff --git a/src/lib.rs b/src/lib.rs".to_string(),
+            content: Arc::from("diff --git a/src/lib.rs b/src/lib.rs"),
             token_count: TokenCount::new_at_least_one(3),
             truncated: false,
         };

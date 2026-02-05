@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use christina_core::{Tokenizer, git::FileDiff, types::FilePath};
 
 const FILE_HEADER: &str = "diff --git ";
@@ -152,11 +154,11 @@ pub fn split_by_files(diff: &str, tokenizer: &dyn Tokenizer) -> Vec<FileDiff> {
 
         let (content, truncated) = if raw_content.len() > MAX_FILE_DIFF_SIZE {
             (
-                safe_truncate(raw_content, MAX_FILE_DIFF_SIZE).to_string(),
+                Arc::from(safe_truncate(raw_content, MAX_FILE_DIFF_SIZE)),
                 true,
             )
         } else {
-            (raw_content.to_string(), false)
+            (Arc::from(raw_content), false)
         };
 
         let token_count = tokenizer.count_tokens(&content);

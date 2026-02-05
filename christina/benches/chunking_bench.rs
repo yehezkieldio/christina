@@ -1,5 +1,7 @@
 #![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used)]
 
+use std::sync::Arc;
+
 use christina::io::git::chunking::{
     split_by_hunks, split_by_lines, split_recursive, truncate_to_token_limit,
 };
@@ -82,7 +84,7 @@ fn generate_multi_file_diff(
             let content = generate_file_diff(&filename, hunks_per_file, lines_per_hunk);
             FileDiff {
                 path: FilePath::from(filename),
-                content: content.clone(),
+                content: Arc::from(content.as_str()),
                 token_count: tokenizer.count_tokens(&content),
                 truncated: false,
             }
@@ -166,7 +168,7 @@ fn bench_split_recursive_with_lockfiles(c: &mut Criterion) {
         .collect::<String>();
     files.push(FileDiff {
         path: FilePath::from("Cargo.lock"),
-        content: lockfile_content.clone(),
+        content: Arc::from(lockfile_content.as_str()),
         token_count: tokenizer.count_tokens(&lockfile_content),
         truncated: false,
     });

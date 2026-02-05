@@ -243,8 +243,16 @@ pub fn truncate_to_token_limit(
 /// Fallback line-by-line truncation if token decode fails.
 ///
 /// This is a safety net that uses incremental token counting per line.
-/// While less precise than token-level truncation due to BPE boundary effects,
-/// it guarantees we won't exceed the limit.
+///
+/// **Token count variance**: Due to BPE tokenization boundary effects, counting tokens
+/// line-by-line with newlines may produce slightly different counts than encoding the
+/// entire text. This fallback errs on the conservative side by verifying the actual
+/// token count of the accumulated result after each line addition, guaranteeing we
+/// never exceed the limit.
+///
+/// **Why this approach**: If decode() fails, we can't use precise token-level truncation.
+/// Line-by-line counting with verification is the safest alternative that maintains
+/// readability while strictly respecting the token budget.
 fn truncate_to_token_limit_fallback(
     content: &str,
     limit: TokenCount,
@@ -252,26 +260,20 @@ fn truncate_to_token_limit_fallback(
 ) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut truncated = String::new();
-    let mut current_tokens: Option<TokenCount> = None;
 
     for line in lines {
-        let line_with_newline = format!("{}\n", line);
-        let line_tokens = tokenizer.count_tokens(&line_with_newline);
+        let mut candidate = truncated.clone();
+        candidate.push_str(line);
+        candidate.push('\n');
 
-        // Check if adding this line would exceed the limit
-        if current_tokens
-            .map(|current| current.get() + line_tokens.get())
-            .unwrap_or(line_tokens.get())
-            > limit.get()
-        {
+        // Verify actual token count to handle BPE boundary effects
+        let candidate_tokens = tokenizer.count_tokens(&candidate);
+
+        if candidate_tokens.get() > limit.get() {
             break;
         }
 
-        truncated.push_str(&line_with_newline);
-        current_tokens = Some(match current_tokens {
-            Some(current) => TokenCount::new_at_least_one(current.get() + line_tokens.get()),
-            None => line_tokens,
-        });
+        truncated = candidate;
     }
 
     truncated
@@ -560,7 +562,7 @@ mod tests {
     fn file_diff(path: &str, content: &str, tokenizer: &DeterministicTokenizer) -> FileDiff {
         FileDiff {
             path: FilePath::from(path),
-            content: content.to_string(),
+            content: Arc::from(content),
             token_count: tokenizer.count_tokens(content),
             truncated: false,
         }
@@ -856,6 +858,59 @@ mod tests {
         assert!(tokens.get() <= 3);
     }
 
+    #[test]
+    fn fallback_truncation_respects_token_limit() {
+        // Test that fallback truncation never exceeds limits across various scenarios
+        struct FailingDecodeTokenizer;
+
+        impl Tokenizer for FailingDecodeTokenizer {
+            fn count_tokens(&self, text: &str) -> TokenCount {
+                // Simulate realistic token counts (roughly 4 chars per token)
+                TokenCount::new_at_least_one((text.len() / 4).max(1) as u32)
+            }
+
+            fn encoding_name(&self) -> &str {
+                "test"
+            }
+
+            fn encode(&self, text: &str) -> Vec<u32> {
+                text.chars().map(|c| c as u32).collect()
+            }
+
+            fn decode(&self, _tokens: &[u32]) -> Option<String> {
+                None // Force fallback
+            }
+        }
+
+        let tokenizer = FailingDecodeTokenizer;
+
+        // Test 1: Multiple lines with varying lengths
+        let content = "line 1\nthis is a longer line with more content\nshort\nanother medium length line here\nfinal";
+        for limit in [5, 10, 20, 50] {
+            let truncated = truncate_to_token_limit(content, TokenCount::new_at_least_one(limit), &tokenizer);
+            let actual_tokens = tokenizer.count_tokens(&truncated);
+            assert!(
+                actual_tokens.get() <= limit,
+                "Fallback exceeded limit: {} tokens with limit {}",
+                actual_tokens.get(),
+                limit
+            );
+        }
+
+        // Test 2: Content with very long lines
+        let long_line = "x".repeat(200);
+        let content_long = format!("{}\n{}\n{}", long_line, long_line, long_line);
+        let truncated = truncate_to_token_limit(&content_long, TokenCount::new_at_least_one(30), &tokenizer);
+        let actual_tokens = tokenizer.count_tokens(&truncated);
+        assert!(actual_tokens.get() <= 30);
+
+        // Test 3: Edge case with limit = 1
+        let content_small = "a\nb\nc\nd";
+        let truncated = truncate_to_token_limit(content_small, TokenCount::new_at_least_one(1), &tokenizer);
+        let actual_tokens = tokenizer.count_tokens(&truncated);
+        assert!(actual_tokens.get() <= 1);
+    }
+
     fn file_diff_strategy() -> impl Strategy<Value = FileDiff> {
         let content_strategy =
             proptest::string::string_regex("[a-zA-Z0-9 _\n@+-]{0,200}").expect("valid regex");
@@ -863,7 +918,7 @@ mod tests {
             let tokenizer = DeterministicTokenizer;
             FileDiff {
                 path: FilePath::from(name),
-                content: content.clone(),
+                content: Arc::from(content.as_str()),
                 token_count: tokenizer.count_tokens(&content),
                 truncated: false,
             }

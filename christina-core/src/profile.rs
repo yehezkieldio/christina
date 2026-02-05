@@ -1,3 +1,54 @@
+//! LLM provider profiles and configuration management.
+//!
+//! ## Generic Parameter Pattern
+//!
+//! Both `ProviderProfile<S>` and `Profiles<S>` use a generic parameter `S` to support
+//! different secret storage strategies at compile time. This enables type-safe handling
+//! of secrets across serialization boundaries.
+//!
+//! ### Use Cases
+//!
+//! **Disk Storage (`S = String` or `S = SecretRef`)**:
+//! - Used in config files loaded from disk
+//! - Secrets stored as references (env var names, keyring keys)
+//! - Fully serializable via serde
+//! - Example: `Profiles<String>` in `Config::profiles`
+//!
+//! **Runtime Resolution (`S = SecretString`)**:
+//! - Used after resolving secret references to actual values
+//! - Holds sensitive data in memory
+//! - NOT serializable (SecretString deliberately omits Serialize)
+//! - NOT comparable (SecretString deliberately omits PartialEq)
+//! - Example: `ResolvedConfig::profiles` internally uses SecretString
+//!
+//! ### Design Rationale
+//!
+//! The generic pattern enforces a clean separation:
+//! 1. Config files NEVER contain literal secrets (type system prevents serialization)
+//! 2. Runtime secrets NEVER leak into config files (no Serialize impl)
+//! 3. Secret references flow: Disk → SecretRef → resolve() → SecretString → use
+//!
+//! ### Common Pitfalls
+//!
+//! - **Cloning profiles**: Cloning `ProviderProfile<SecretString>` clones sensitive data
+//! - **Serializing runtime profiles**: Attempting to serialize profiles with SecretString
+//!   will fail at compile time (no Serialize implementation)
+//! - **Comparing resolved secrets**: SecretString intentionally has no PartialEq to prevent
+//!   timing attacks through comparison
+//!
+//! ### Migration Path
+//!
+//! To convert between storage and runtime representations:
+//! ```ignore
+//! // Disk → Runtime
+//! let disk_profile: ProviderProfile<String> = load_from_file();
+//! let resolved: ProviderProfile<SecretString> = resolve_profile(&disk_profile)?;
+//!
+//! // Runtime → Disk (loses secret values, only stores references)
+//! let runtime_profile: ProviderProfile<SecretString> = /* ... */;
+//! // Cannot directly serialize - must convert back to SecretRef representation
+//! ```
+
 use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
@@ -11,6 +62,13 @@ use crate::{
     },
 };
 
+/// Configuration for an LLM provider (API credentials, model, token limits).
+///
+/// Generic parameter `S` determines secret storage strategy:
+/// - `S = String` or `S = SecretRef`: Disk storage, fully serializable
+/// - `S = SecretString`: Runtime secrets, NOT serializable
+///
+/// See module-level documentation for detailed usage patterns.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct ProviderProfile<S = String> {
@@ -62,6 +120,22 @@ impl ProviderProfile<String> {
     }
 }
 
+/// Collection of provider profiles with an active profile selection.
+///
+/// Generic parameter `S` determines secret storage strategy:
+/// - `S = String`: Direct string values, serializable
+/// - `S = SecretRef`: References to secrets (env vars, keyring), serializable
+/// - `S = SecretString`: Resolved secret values, NOT serializable
+///
+/// The `definitions` field uses serde's `flatten` attribute to serialize profiles
+/// directly into the parent config structure, enabling TOML files like:
+/// ```toml
+/// [profiles.default]
+/// provider = "openai"
+/// model = "gpt-4"
+/// ```
+///
+/// See module-level documentation for usage patterns and best practices.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Profiles<S = String> {
@@ -203,3 +277,38 @@ mod tests {
         assert!(manager.get_active().is_none());
     }
 }
+
+// Compile-time assertions to verify generic parameter behavior.
+//
+// These assertions ensure that the generic pattern maintains expected properties:
+// - Disk storage variants (String) are serializable
+// - SecretString is Clone but deliberately NOT PartialEq or Serialize
+#[allow(dead_code)]
+const _: () = {
+    use crate::config::SecretString;
+
+    // Verify that String variant implements Serialize + Deserialize
+    const fn assert_serde<T: Serialize + for<'de> Deserialize<'de>>() {}
+
+    const fn _check_string_variant() {
+        assert_serde::<ProviderProfile<String>>();
+        assert_serde::<Profiles<String>>();
+    }
+
+    // Verify SecretString is Clone (needed for practical use cases)
+    const fn assert_clone<T: Clone>() {}
+
+    const fn _check_secretstring_clone() {
+        assert_clone::<SecretString>();
+    }
+
+    // Note: We cannot directly assert !Serialize or !PartialEq in stable Rust,
+    // but SecretString deliberately omits these traits to prevent accidental
+    // serialization or timing-attack-vulnerable comparisons. The design ensures
+    // that attempting to serialize ProviderProfile<SecretString> will fail at
+    // compile time due to the missing Serialize bound on SecretString.
+    //
+    // SecretRef is also serializable but doesn't have Default, so we omit it
+    // from these assertions. In practice, Profiles<SecretRef> works correctly
+    // when constructed non-default, which is the normal usage pattern.
+};

@@ -49,6 +49,17 @@ impl std::str::FromStr for DiffTool {
 }
 
 /// Diff tool configuration
+///
+/// **Current Status**: This configuration is preserved for future TUI integration
+/// but is not currently consumed by the CLI-only codebase. The TUI was temporarily
+/// removed (see TUI_INTEGRATION.md) to focus on core functionality.
+///
+/// **Intended Usage**: When TUI is re-integrated, these settings will control:
+/// - `tool`: Which diff formatter to use for preview display (delta, diff-so-fancy, etc.)
+/// - `show_preview`: Whether to show diff preview before generating commit messages
+///
+/// The configuration is validated, serialized, and displayed via `christina config show`,
+/// but does not affect current diff processing behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DiffConfig {

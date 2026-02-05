@@ -639,4 +639,79 @@ mod tests {
                 .contains("sequence exhausted")
         );
     }
+
+    #[tokio::test]
+    async fn test_provider_error_timeout() {
+        let provider = Provider::mock_sequence(vec![Err(CompletionError::Timeout)]);
+        let messages = vec![ChatMessage::user("test")];
+
+        let result = provider.generate(&messages).await;
+        assert!(matches!(result, Err(CompletionError::Timeout)));
+    }
+
+    #[tokio::test]
+    async fn test_provider_error_server_error() {
+        let provider = Provider::mock_sequence(vec![Err(CompletionError::ServerError(
+            "500 Internal Server Error".to_string(),
+        ))]);
+        let messages = vec![ChatMessage::user("test")];
+
+        let result = provider.generate(&messages).await;
+        assert!(matches!(result, Err(CompletionError::ServerError(_))));
+    }
+
+    #[tokio::test]
+    async fn test_provider_error_network_error() {
+        let provider = Provider::mock_sequence(vec![Err(CompletionError::NetworkError(
+            "Connection reset".to_string(),
+        ))]);
+        let messages = vec![ChatMessage::user("test")];
+
+        let result = provider.generate(&messages).await;
+        assert!(matches!(result, Err(CompletionError::NetworkError(_))));
+    }
+
+    #[tokio::test]
+    async fn test_provider_error_unauthorized() {
+        let provider = Provider::mock_sequence(vec![Err(CompletionError::Unauthorized(
+            "Invalid API key".to_string(),
+        ))]);
+        let messages = vec![ChatMessage::user("test")];
+
+        let result = provider.generate(&messages).await;
+        assert!(matches!(result, Err(CompletionError::Unauthorized(_))));
+    }
+
+    #[tokio::test]
+    async fn test_provider_error_invalid_response() {
+        let provider = Provider::mock_sequence(vec![Err(CompletionError::InvalidResponse(
+            "Malformed JSON".to_string(),
+        ))]);
+        let messages = vec![ChatMessage::user("test")];
+
+        let result = provider.generate(&messages).await;
+        assert!(matches!(result, Err(CompletionError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn test_provider_error_sequence_mixed() {
+        let provider = Provider::mock_sequence(vec![
+            Ok("success".to_string()),
+            Err(CompletionError::RateLimited),
+            Ok("recovered".to_string()),
+            Err(CompletionError::Timeout),
+        ]);
+        let messages = vec![ChatMessage::user("test")];
+
+        assert_eq!(provider.generate(&messages).await.unwrap(), "success");
+        assert!(matches!(
+            provider.generate(&messages).await,
+            Err(CompletionError::RateLimited)
+        ));
+        assert_eq!(provider.generate(&messages).await.unwrap(), "recovered");
+        assert!(matches!(
+            provider.generate(&messages).await,
+            Err(CompletionError::Timeout)
+        ));
+    }
 }

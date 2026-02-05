@@ -1,6 +1,8 @@
+use std::collections::hash_map::RandomState;
 use std::fmt;
+use std::hash::{BuildHasher, Hasher};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tracing;
 
@@ -18,6 +20,102 @@ pub enum SecretError {
     /// Invalid secret reference format
     #[error("Invalid secret reference: {0}")]
     InvalidFormat(String),
+}
+
+/// Synchronous retry policy for blocking operations.
+///
+/// Mirrors the async RetryPolicy from christina/src/io/llm/retry.rs but works with blocking operations.
+/// Uses exponential backoff with full jitter to prevent thundering herds on transient failures.
+#[derive(Debug, Clone)]
+struct BlockingRetryPolicy {
+    max_retries: usize,
+    base_delay_ms: u64,
+    with_jitter: bool,
+}
+
+impl Default for BlockingRetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            base_delay_ms: 1_000,
+            with_jitter: true,
+        }
+    }
+}
+
+impl BlockingRetryPolicy {
+    fn calculate_delay(&self, attempt: u32) -> Duration {
+        let max_delay_ms = self
+            .base_delay_ms
+            .saturating_mul(2_u64.saturating_pow(attempt));
+        let delay_ms = if self.with_jitter {
+            rand_jitter(max_delay_ms)
+        } else {
+            max_delay_ms
+        };
+        Duration::from_millis(delay_ms)
+    }
+
+    /// Retry a fallible blocking operation with exponential backoff.
+    ///
+    /// Only retries if `is_transient` returns true for the error.
+    fn retry_blocking<F, T, E>(
+        &self,
+        mut operation: F,
+        is_transient: impl Fn(&E) -> bool,
+    ) -> Result<T, E>
+    where
+        F: FnMut() -> Result<T, E>,
+    {
+        let mut attempt = 0usize;
+
+        loop {
+            match operation() {
+                Ok(result) => return Ok(result),
+                Err(err) => {
+                    if !is_transient(&err) {
+                        return Err(err);
+                    }
+
+                    if attempt >= self.max_retries {
+                        return Err(err);
+                    }
+
+                    let delay = self.calculate_delay(attempt as u32);
+                    thread::sleep(delay);
+                    attempt += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Generate random jitter in range [0, max] using time-based entropy.
+///
+/// Hash-based jitter avoids the `rand` crate dependency while providing
+/// sufficient distribution for retry timing. Not cryptographically secure,
+/// but adequate for backoff randomization.
+fn rand_jitter(max: u64) -> u64 {
+    if max == 0 {
+        return 0;
+    }
+
+    if max == u64::MAX {
+        let mut hasher = RandomState::new().build_hasher();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        hasher.write_u64(now.as_nanos() as u64);
+        return hasher.finish();
+    }
+
+    let mut hasher = RandomState::new().build_hasher();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    hasher.write_u64(now.as_nanos() as u64);
+    let hash = hasher.finish();
+    hash % (max + 1)
 }
 
 /// Generic secret container
@@ -54,32 +152,35 @@ impl Secret<String> {
                 .map_err(|_| SecretError::EnvVarNotFound(name.clone())),
             #[cfg(feature = "keyring-support")]
             Secret::Keyring(key) => {
-                let entry =
-                    keyring::Entry::new("christina", key).map_err(|e: keyring::Error| {
-                        SecretError::KeyringFailed(key.clone(), e.to_string())
-                    })?;
+                let policy = BlockingRetryPolicy::default();
+                let key_clone = key.clone();
 
-                match entry.get_password() {
-                    Ok(password) => Ok(SecretString::new(password)),
-                    Err(e) => {
-                        let error_str = e.to_string();
-                        let is_not_found = error_str.contains("entry not found")
-                            || error_str.contains("not found");
+                policy.retry_blocking(
+                    || {
+                        let entry = keyring::Entry::new("christina", &key_clone)
+                            .map_err(|e: keyring::Error| {
+                                SecretError::KeyringFailed(key_clone.clone(), e.to_string())
+                            })?;
 
-                        if is_not_found {
-                            Err(SecretError::KeyringFailed(key.clone(), error_str))
-                        } else {
-                            tracing::warn!("Keyring access failed for '{}', retrying...", key);
-                            thread::sleep(Duration::from_millis(500));
-
-                            entry.get_password().map(SecretString::new).map_err(
-                                |retry_err: keyring::Error| {
-                                    SecretError::KeyringFailed(key.clone(), retry_err.to_string())
-                                },
-                            )
+                        entry
+                            .get_password()
+                            .map(SecretString::new)
+                            .map_err(|e: keyring::Error| {
+                                SecretError::KeyringFailed(key_clone.clone(), e.to_string())
+                            })
+                    },
+                    |err| {
+                        // Only retry on transient errors (not "entry not found")
+                        match err {
+                            SecretError::KeyringFailed(_, msg) => {
+                                let is_not_found =
+                                    msg.contains("entry not found") || msg.contains("not found");
+                                !is_not_found
+                            }
+                            _ => false,
                         }
-                    }
-                }
+                    },
+                )
             }
 
             #[cfg(not(feature = "keyring-support"))]
@@ -113,32 +214,35 @@ impl SecretRef {
                 .map_err(|_| SecretError::EnvVarNotFound(name.clone())),
             #[cfg(feature = "keyring-support")]
             SecretRef::Keyring(key) => {
-                let entry =
-                    keyring::Entry::new("christina", key).map_err(|e: keyring::Error| {
-                        SecretError::KeyringFailed(key.clone(), e.to_string())
-                    })?;
+                let policy = BlockingRetryPolicy::default();
+                let key_clone = key.clone();
 
-                match entry.get_password() {
-                    Ok(password) => Ok(SecretString::new(password)),
-                    Err(e) => {
-                        let error_str = e.to_string();
-                        let is_not_found = error_str.contains("entry not found")
-                            || error_str.contains("not found");
+                policy.retry_blocking(
+                    || {
+                        let entry = keyring::Entry::new("christina", &key_clone)
+                            .map_err(|e: keyring::Error| {
+                                SecretError::KeyringFailed(key_clone.clone(), e.to_string())
+                            })?;
 
-                        if is_not_found {
-                            Err(SecretError::KeyringFailed(key.clone(), error_str))
-                        } else {
-                            tracing::warn!("Keyring access failed for '{}', retrying...", key);
-                            thread::sleep(Duration::from_millis(500));
-
-                            entry.get_password().map(SecretString::new).map_err(
-                                |retry_err: keyring::Error| {
-                                    SecretError::KeyringFailed(key.clone(), retry_err.to_string())
-                                },
-                            )
+                        entry
+                            .get_password()
+                            .map(SecretString::new)
+                            .map_err(|e: keyring::Error| {
+                                SecretError::KeyringFailed(key_clone.clone(), e.to_string())
+                            })
+                    },
+                    |err| {
+                        // Only retry on transient errors (not "entry not found")
+                        match err {
+                            SecretError::KeyringFailed(_, msg) => {
+                                let is_not_found =
+                                    msg.contains("entry not found") || msg.contains("not found");
+                                !is_not_found
+                            }
+                            _ => false,
                         }
-                    }
-                }
+                    },
+                )
             }
             #[cfg(not(feature = "keyring-support"))]
             SecretRef::Keyring(key) => Err(SecretError::KeyringFailed(

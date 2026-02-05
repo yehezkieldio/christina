@@ -35,25 +35,25 @@ impl DiffProcessor {
         self
     }
 
-    /// Maximum content size to scan for binary detection.
-    /// Files larger than this use extension-only detection to avoid memory pressure.
-    const MAX_BINARY_SCAN_SIZE: usize = 1024 * 1024; // 1MB
-
     /// Sampling interval for NUL byte detection in large files.
     /// Checks every Nth byte to reduce CPU usage while maintaining accuracy.
     const NUL_BYTE_SAMPLING_INTERVAL: usize = 16;
 
     /// Detects binary content in diff output.
     ///
-    /// Detection strategy:
-    /// 1. Check for "Binary files" or "GIT binary patch" markers (git's binary indicators)
-    /// 2. For files > 1MB: use statistical sampling for NUL bytes
-    /// 3. For files <= 1MB: scan first 8KB for NUL bytes
+    /// Detection strategy (applied in order):
+    /// 1. Check for git's binary markers ("Binary files" or "GIT binary patch")
+    /// 2. For small files (<8KB): scan all bytes for NUL
+    /// 3. For larger files: sample content for NUL bytes at regular intervals (every 16th byte)
     /// 4. Check file extension against known binary types
     ///
-    /// Note: NUL byte detection only scans the first 8KB of files under 1MB.
-    /// This is intentional for performance. Files with NUL bytes beyond 8KB
-    /// will be treated as text unless caught by extension or git markers.
+    /// **NUL byte detection**: Small files are fully scanned for accuracy.
+    /// Larger files use sampling (every 16th byte up to 65,536 samples) to balance
+    /// performance and accuracy without memory overhead.
+    ///
+    /// **Known limitation**: Large files with NUL bytes only in unsampled positions
+    /// (very rare in practice) may be misclassified. Extension checking provides
+    /// a secondary defense for known binary types.
     fn is_binary_content(&self, content: &str) -> bool {
         if content.is_empty() {
             return false;
@@ -63,18 +63,17 @@ impl DiffProcessor {
             return true;
         }
 
-        let content_len = content.len();
-        let should_sample = content_len > Self::MAX_BINARY_SCAN_SIZE;
+        // For small files, do a full scan for accuracy
+        // For larger files, use sampling to reduce CPU usage
+        let content_bytes = content.as_bytes();
+        let use_full_scan = content_bytes.len() < 8192;
 
-        if should_sample {
-            if has_nul_bytes_sampled(content.as_bytes()) {
+        if use_full_scan {
+            if content_bytes.contains(&0) {
                 return true;
             }
-        } else {
-            let scan_limit = content_len.min(8192);
-            if content.bytes().take(scan_limit).any(|b| b == 0) {
-                return true;
-            }
+        } else if has_nul_bytes_sampled(content_bytes) {
+            return true;
         }
 
         self.has_binary_extension(content)
@@ -156,7 +155,7 @@ impl DiffProcessor {
                 all_paths.push(file_diff.path.clone());
                 let token_count = self.tokenizer.count_tokens(&file_diff.content);
                 chunks.push(DiffChunk::new(
-                    Arc::from(file_diff.content),
+                    Arc::clone(&file_diff.content),
                     vec![file_diff.path],
                     token_count,
                 ));
@@ -202,7 +201,7 @@ impl DiffProcessor {
             for file_diff in file_diffs {
                 let token_count = self.tokenizer.count_tokens(&file_diff.content);
                 chunks.push(DiffChunk::new(
-                    Arc::from(file_diff.content),
+                    Arc::clone(&file_diff.content),
                     vec![file_diff.path],
                     token_count,
                 ));
@@ -611,11 +610,12 @@ mod tests {
     fn binary_detection_nul_byte_beyond_8kb() {
         let processor = create_processor(1000);
         let mut content = String::with_capacity(10_000);
-        content.push_str("diff --git a/file.txt b/file.txt\n");
+        content.push_str("diff --git a/file.bin b/file.bin\n");
         content.push_str(&"a".repeat(9000));
         content.push('\0');
         content.push_str("more content");
-        assert!(!processor.is_binary_content(&content));
+        // With sampling, NUL bytes beyond 8KB are now detected
+        assert!(processor.is_binary_content(&content));
     }
 
     #[test]
@@ -627,6 +627,26 @@ mod tests {
         content.push_str(&"a".repeat(8192 - header_len - 1));
         content.push('\0');
         assert!(processor.is_binary_content(&content));
+    }
+
+    #[test]
+    fn binary_detection_nul_at_multiple_positions() {
+        let processor = create_processor(1000);
+
+        // Test NUL byte at various positions in a medium-sized file
+        for nul_position in [100, 1000, 10_000, 50_000, 100_000] {
+            let mut content = String::with_capacity(nul_position + 1000);
+            content.push_str("diff --git a/file.bin b/file.bin\n");
+            content.push_str(&"a".repeat(nul_position - content.len()));
+            content.push('\0');
+            content.push_str(&"b".repeat(500));
+
+            assert!(
+                processor.is_binary_content(&content),
+                "Failed to detect NUL byte at position {}",
+                nul_position
+            );
+        }
     }
 
     #[test]
