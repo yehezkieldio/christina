@@ -244,6 +244,10 @@ pub struct CommitInfo {
 fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
     let repo = git2::Repository::open(repo_path)?;
 
+    if repo.is_shallow() {
+        warn!("Running in shallow clone, commit history may be limited");
+    }
+
     if repo.head().is_err() {
         return Ok(vec![]);
     }

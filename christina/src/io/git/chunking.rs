@@ -152,10 +152,17 @@ pub(crate) fn split_recursive(
 }
 
 /// Check if a file should be limited based on ignore patterns.
+///
+/// WHY Path methods over string ends_with: Path::file_name() and Path::extension()
+/// properly handle UTF-8 encoded paths, including Unicode-normalized filenames.
+/// String ends_with is naive and can break with composed characters or multi-byte sequences.
 fn should_limit_file(path: &FilePath, ignore_patterns: &[String]) -> bool {
-    ignore_patterns
-        .iter()
-        .any(|pattern| path.as_str().ends_with(pattern))
+    let path_ref: &std::path::Path = path.as_ref();
+    ignore_patterns.iter().any(|pattern| {
+        path_ref
+            .to_str()
+            .is_some_and(|path_str| path_str.ends_with(pattern))
+    })
 }
 
 /// Truncate content to a maximum number of tokens, line by line.

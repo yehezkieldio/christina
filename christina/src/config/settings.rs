@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use tracing;
 
 use super::diff_tool::DiffConfig;
 use christina_core::{
@@ -189,7 +190,7 @@ impl Config {
             // Persist the default profile to global config to prevent recreation on next run
             // This ensures user's API key and settings are not lost
             if let Err(e) = config.save_to_global() {
-                return Err(anyhow::anyhow!("Failed to persist default profile: {}", e));
+                tracing::warn!("Failed to persist default profile (read-only config?): {}", e);
             }
         }
 

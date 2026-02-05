@@ -1,4 +1,6 @@
 use std::fmt;
+use std::thread;
+use std::time::Duration;
 use thiserror::Error;
 use tracing;
 
@@ -55,13 +57,30 @@ impl Secret<String> {
                     keyring::Entry::new("christina", key).map_err(|e: keyring::Error| {
                         SecretError::KeyringFailed(key.clone(), e.to_string())
                     })?;
-                entry
-                    .get_password()
-                    .map(SecretString::new)
-                    .map_err(|e: keyring::Error| {
-                        SecretError::KeyringFailed(key.clone(), e.to_string())
-                    })
+
+                match entry.get_password() {
+                    Ok(password) => Ok(SecretString::new(password)),
+                    Err(e) => {
+                        let error_str = e.to_string();
+                        let is_not_found = error_str.contains("entry not found")
+                            || error_str.contains("not found");
+
+                        if is_not_found {
+                            Err(SecretError::KeyringFailed(key.clone(), error_str))
+                        } else {
+                            tracing::warn!("Keyring access failed for '{}', retrying...", key);
+                            thread::sleep(Duration::from_millis(500));
+
+                            entry.get_password().map(SecretString::new).map_err(
+                                |retry_err: keyring::Error| {
+                                    SecretError::KeyringFailed(key.clone(), retry_err.to_string())
+                                },
+                            )
+                        }
+                    }
+                }
             }
+
             #[cfg(not(feature = "keyring-support"))]
             Secret::Keyring(key) => Err(SecretError::KeyringFailed(
                 key.clone(),
@@ -96,12 +115,28 @@ impl SecretRef {
                     keyring::Entry::new("christina", key).map_err(|e: keyring::Error| {
                         SecretError::KeyringFailed(key.clone(), e.to_string())
                     })?;
-                entry
-                    .get_password()
-                    .map(SecretString::new)
-                    .map_err(|e: keyring::Error| {
-                        SecretError::KeyringFailed(key.clone(), e.to_string())
-                    })
+
+                match entry.get_password() {
+                    Ok(password) => Ok(SecretString::new(password)),
+                    Err(e) => {
+                        let error_str = e.to_string();
+                        let is_not_found = error_str.contains("entry not found")
+                            || error_str.contains("not found");
+
+                        if is_not_found {
+                            Err(SecretError::KeyringFailed(key.clone(), error_str))
+                        } else {
+                            tracing::warn!("Keyring access failed for '{}', retrying...", key);
+                            thread::sleep(Duration::from_millis(500));
+
+                            entry.get_password().map(SecretString::new).map_err(
+                                |retry_err: keyring::Error| {
+                                    SecretError::KeyringFailed(key.clone(), retry_err.to_string())
+                                },
+                            )
+                        }
+                    }
+                }
             }
             #[cfg(not(feature = "keyring-support"))]
             SecretRef::Keyring(key) => Err(SecretError::KeyringFailed(

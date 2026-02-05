@@ -391,7 +391,24 @@ pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Validate that git user.name and user.email are configured
+fn validate_git_author(repo: &Repository) -> Result<()> {
+    let config = repo.config()?;
+
+    let name_err = config.get_string("user.name").is_err();
+    let email_err = config.get_string("user.email").is_err();
+
+    if name_err || email_err {
+        return Err(anyhow::anyhow!(
+            "Git user.name and/or user.email not configured. Run:\n  git config --global user.name 'Your Name'\n  git config --global user.email 'your@email.com'"
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
+    validate_git_author(repo)?;
     let signature = repo.signature()?;
     let mut index = repo.index()?;
     let tree_id = index.write_tree()?;

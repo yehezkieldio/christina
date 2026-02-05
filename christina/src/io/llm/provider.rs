@@ -13,6 +13,19 @@ use christina_core::{
 
 use crate::io::llm::{azure, groq, openai};
 
+#[derive(Clone, Copy, Debug)]
+pub struct Temperature(f32);
+
+impl Temperature {
+    pub fn new(value: f32) -> Self {
+        Self(value.clamp(0.0, 2.0))
+    }
+
+    pub fn value(self) -> f32 {
+        self.0
+    }
+}
+
 #[derive(Clone)]
 pub struct ApiKey(String);
 
@@ -39,7 +52,7 @@ pub enum Provider {
         api_key: ApiKey,
         base_url: Option<url::Url>,
         max_tokens: TokenCount,
-        temperature: f32,
+        temperature: Temperature,
     },
     Azure {
         model: ModelName,
@@ -48,14 +61,14 @@ pub enum Provider {
         api_version: String,
         deployment_id: String,
         max_tokens: TokenCount,
-        temperature: f32,
+        temperature: Temperature,
     },
     Groq {
         model: ModelName,
         api_key: ApiKey,
         base_url: Option<url::Url>,
         max_tokens: TokenCount,
-        temperature: f32,
+        temperature: Temperature,
     },
     #[cfg(test)]
     Mock { response: String, delay_ms: u64 },
@@ -68,7 +81,7 @@ pub enum Provider {
 
 impl Provider {
     pub fn from_profile(profile: &ProviderProfile, api_key: &str) -> Result<Self> {
-        let temperature = profile.temperature.unwrap_or(0.3).clamp(0.0, 2.0);
+        let temperature = Temperature::new(profile.temperature.unwrap_or(0.3));
 
         match profile.provider {
             ProviderKind::OpenAI => Ok(Provider::OpenAI {
@@ -124,7 +137,7 @@ impl Provider {
                 max_tokens,
                 temperature,
             } => {
-                let request = request_from_messages(messages, *max_tokens, *temperature);
+                let request = request_from_messages(messages, *max_tokens, temperature.value());
                 let response = openai::execute_openai_request(
                     &request,
                     api_key.as_str(),
@@ -143,7 +156,7 @@ impl Provider {
                 max_tokens,
                 temperature,
             } => {
-                let request = request_from_messages(messages, *max_tokens, *temperature);
+                let request = request_from_messages(messages, *max_tokens, temperature.value());
                 let response = azure::execute_azure_request(
                     &request,
                     api_key.as_str(),
@@ -162,7 +175,7 @@ impl Provider {
                 max_tokens,
                 temperature,
             } => {
-                let request = request_from_messages(messages, *max_tokens, *temperature);
+                let request = request_from_messages(messages, *max_tokens, temperature.value());
                 let response = groq::execute_groq_request(
                     &request,
                     api_key.as_str(),
