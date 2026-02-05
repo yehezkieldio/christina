@@ -24,12 +24,20 @@ impl ConfigStore for GlobalConfigStore {
     }
 }
 
-fn parse_secret_input(key: &str) -> Secret<String> {
-    match SecretRef::parse(key) {
-        Ok(SecretRef::EnvVar(name)) => Secret::EnvVar(name),
-        Ok(SecretRef::Keyring(key_name)) => Secret::Keyring(key_name),
-        Ok(SecretRef::Literal(value)) => Secret::Value(value),
-        Err(_) => Secret::Value(key.to_string()),
+fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>> {
+    match SecretRef::parse(key).map_err(anyhow::Error::msg)? {
+        SecretRef::EnvVar(name) => Ok(Secret::EnvVar(name)),
+        SecretRef::Keyring(key_name) => Ok(Secret::Keyring(key_name)),
+        SecretRef::Literal(value) => {
+            if allow_plaintext {
+                Ok(Secret::Value(value))
+            } else {
+                anyhow::bail!(
+                    "Refusing to store plaintext API key. Use env:VAR_NAME or keyring:KEY_NAME, \
+                     or pass --allow-plaintext to override."
+                );
+            }
+        }
     }
 }
 
@@ -55,6 +63,7 @@ fn handle_profile_command_with_deps(
             provider,
             model,
             api_key,
+            allow_plaintext,
             api_url,
             max_input_tokens,
             max_output_tokens,
@@ -67,6 +76,7 @@ fn handle_profile_command_with_deps(
             provider,
             model,
             api_key,
+            allow_plaintext,
             api_url,
             max_input_tokens,
             max_output_tokens,
@@ -78,6 +88,7 @@ fn handle_profile_command_with_deps(
             provider,
             model,
             api_key,
+            allow_plaintext,
             api_url,
             max_input_tokens,
             max_output_tokens,
@@ -90,6 +101,7 @@ fn handle_profile_command_with_deps(
             provider,
             model,
             api_key,
+            allow_plaintext,
             api_url,
             max_input_tokens,
             max_output_tokens,
@@ -207,6 +219,7 @@ fn handle_create(
     provider: Option<String>,
     model: Option<String>,
     api_key: Option<String>,
+    allow_plaintext: bool,
     api_url: Option<String>,
     max_input_tokens: Option<usize>,
     max_output_tokens: Option<usize>,
@@ -236,7 +249,7 @@ fn handle_create(
 
     // Apply optional fields
     if let Some(key) = api_key {
-        profile.api_key = parse_secret_input(&key);
+        profile.api_key = parse_secret_input(&key, allow_plaintext)?;
     }
 
     if let Some(url) = api_url {
@@ -277,6 +290,7 @@ fn handle_edit(
     provider: Option<String>,
     model: Option<String>,
     api_key: Option<String>,
+    allow_plaintext: bool,
     api_url: Option<String>,
     max_input_tokens: Option<usize>,
     max_output_tokens: Option<usize>,
@@ -301,7 +315,7 @@ fn handle_edit(
     }
 
     if let Some(key) = api_key {
-        profile.api_key = parse_secret_input(&key);
+        profile.api_key = parse_secret_input(&key, allow_plaintext)?;
     }
 
     if let Some(url) = api_url {
@@ -529,6 +543,7 @@ mod tests {
             Some("openai".to_string()),
             Some("gpt-4".to_string()),
             Some("env:OPENAI_KEY".to_string()),
+            false,
             None,
             None,
             None,
@@ -555,6 +570,7 @@ mod tests {
             Some("openai".to_string()),
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -578,6 +594,7 @@ mod tests {
             Some("azure".to_string()),
             Some("gpt-4".to_string()),
             Some("keyring:azure-key".to_string()),
+            false,
             Some("https://test.openai.azure.com".to_string()),
             Some(100000),
             Some(4000),
@@ -607,6 +624,7 @@ mod tests {
             None,
             Some("gpt-4-turbo".to_string()),
             None,
+            false,
             None,
             Some(200000),
             None,
@@ -632,6 +650,7 @@ mod tests {
             None,
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -747,19 +766,29 @@ mod tests {
 
     #[test]
     fn test_parse_secret_input_env() {
-        let secret = parse_secret_input("env:MY_KEY");
+        let secret = parse_secret_input("env:MY_KEY", false).unwrap();
         assert!(matches!(secret, Secret::EnvVar(_)));
     }
 
     #[test]
     fn test_parse_secret_input_keyring() {
-        let secret = parse_secret_input("keyring:my-key");
+        let secret = parse_secret_input("keyring:my-key", false).unwrap();
         assert!(matches!(secret, Secret::Keyring(_)));
     }
 
     #[test]
     fn test_parse_secret_input_literal() {
-        let secret = parse_secret_input("sk-1234567890");
+        let secret = parse_secret_input("sk-1234567890", true).unwrap();
         assert!(matches!(secret, Secret::Value(_)));
+    }
+
+    #[test]
+    fn test_parse_secret_input_literal_requires_override() {
+        let result = parse_secret_input("sk-1234567890", false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Refusing to store plaintext API key"));
     }
 }

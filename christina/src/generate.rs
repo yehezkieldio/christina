@@ -12,9 +12,125 @@ use crate::io::llm::provider::Provider;
 use crate::io::llm::tokenizer::get_tokenizer;
 use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
 use christina_core::ProviderProfile;
-use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
+use christina_core::prompt::{
+    DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT, USER_CONTEXT_MAX_LEN, USER_CONTEXT_TEMPLATE,
+};
 use christina_core::types::{ProviderKind, TokenCount};
 use christina_core::types::UsageTier;
+
+const HISTORY_CONTEXT_PREFIX: &str = "\n\nRecent commit history for style reference:\n";
+
+fn normalize_user_context(raw: Option<String>) -> Option<String> {
+    let ctx = raw?;
+    let trimmed = ctx.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.len() <= USER_CONTEXT_MAX_LEN {
+        return Some(trimmed.to_string());
+    }
+
+    let mut end = USER_CONTEXT_MAX_LEN;
+    while end > 0 && !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(trimmed[..end].to_string())
+}
+
+fn user_context_template_parts() -> (&'static str, &'static str) {
+    if let Some(pos) = USER_CONTEXT_TEMPLATE.find("{context}") {
+        (
+            &USER_CONTEXT_TEMPLATE[..pos],
+            &USER_CONTEXT_TEMPLATE[pos + 9..],
+        )
+    } else {
+        ("", "")
+    }
+}
+
+fn fit_user_context_to_budget(
+    tokenizer: &dyn christina_core::Tokenizer,
+    context: Option<String>,
+    budget_tokens: u32,
+) -> (Option<String>, u32, bool) {
+    let Some(context) = context else {
+        return (None, 0, false);
+    };
+
+    if budget_tokens == 0 {
+        return (None, 0, true);
+    }
+
+    let (prefix, suffix) = user_context_template_parts();
+    let prefix_tokens = tokenizer.count_tokens_exact(prefix);
+    let suffix_tokens = tokenizer.count_tokens_exact(suffix);
+    let overhead = prefix_tokens.saturating_add(suffix_tokens);
+
+    if budget_tokens <= overhead {
+        return (None, 0, true);
+    }
+
+    let allowed_context_tokens = budget_tokens - overhead;
+    let context_tokens = tokenizer.count_tokens_exact(&context);
+
+    if context_tokens <= allowed_context_tokens {
+        let used = overhead.saturating_add(context_tokens);
+        return (Some(context), used, false);
+    }
+
+    let allowed = TokenCount::new_at_least_one(allowed_context_tokens);
+    let truncated = tokenizer.slice_to_token_limit(&context, allowed).trim_end();
+    if truncated.is_empty() {
+        return (None, 0, true);
+    }
+    let truncated_tokens = tokenizer.count_tokens_exact(truncated);
+    let used = overhead.saturating_add(truncated_tokens);
+    (Some(truncated.to_string()), used, true)
+}
+
+fn fit_history_to_budget(
+    tokenizer: &dyn christina_core::Tokenizer,
+    history: Option<String>,
+    budget_tokens: u32,
+) -> (Option<String>, u32, bool) {
+    let Some(history) = history else {
+        return (None, 0, false);
+    };
+
+    if budget_tokens == 0 {
+        return (None, 0, true);
+    }
+
+    let prefix_tokens = tokenizer.count_tokens_exact(HISTORY_CONTEXT_PREFIX);
+    if budget_tokens <= prefix_tokens {
+        return (None, 0, true);
+    }
+
+    let allowed_history_tokens = budget_tokens - prefix_tokens;
+    let history_tokens = tokenizer.count_tokens_exact(&history);
+
+    if history_tokens <= allowed_history_tokens {
+        let used = prefix_tokens.saturating_add(history_tokens);
+        return (Some(history), used, false);
+    }
+
+    let allowed = TokenCount::new_at_least_one(allowed_history_tokens);
+    let truncated = tokenizer.slice_to_token_limit(&history, allowed);
+    let truncated = truncated
+        .rfind('\n')
+        .map(|idx| &truncated[..idx])
+        .unwrap_or(truncated)
+        .trim_end();
+
+    if truncated.is_empty() {
+        return (None, 0, true);
+    }
+
+    let truncated_tokens = tokenizer.count_tokens_exact(truncated);
+    let used = prefix_tokens.saturating_add(truncated_tokens);
+    (Some(truncated.to_string()), used, true)
+}
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -125,75 +241,6 @@ async fn generate_commit_message_with_progress_impl(
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);
-    let reserved_for_messages = TokenCount::new_at_least_one(500);
-
-    let budget = TokenBudget::try_new(
-        config.max_input_tokens,
-        config.max_output_tokens,
-        reserved_for_prompt,
-        reserved_for_messages,
-    )
-    .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
-
-    let token_limit = budget
-        .remaining_for_diff()
-        .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
-
-    let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
-        .with_ignore_files(config.ignore_files.clone())
-        .with_lockfile_token_limit(config.lockfile_token_limit);
-
-    let chunks = processor
-        .process_safe(&diff)
-        .map_err(|e| anyhow::anyhow!("Diff processing error: {}", e))?;
-
-    if chunks.is_empty() {
-        let file_paths = parsing::extract_file_paths(&diff);
-        if !file_paths.is_empty()
-            && file_paths
-                .iter()
-                .all(|path| chunking::should_limit_file(path, &config.ignore_files))
-        {
-            anyhow::bail!(
-                "All staged files are in ignore_files list. Update ignore_files in your config or stage other files."
-            );
-        }
-        anyhow::bail!("No processable diff content found");
-    }
-
-    let binary_only = chunks
-        .iter()
-        .all(|chunk| chunk.content.starts_with("[Binary file:"));
-
-    let total_tokens = chunks
-        .iter()
-        .map(|chunk| chunk.token_count.get() as u64)
-        .sum::<u64>();
-    let total_tokens = TokenCount::new_at_least_one(total_tokens.try_into().unwrap_or(u32::MAX));
-
-    if progress_tx
-        .send(Event::TokenCountUpdate {
-            token_count: total_tokens,
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
-
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: format!(
-                "Analyzing {} chunk{}...",
-                chunks.len(),
-                if chunks.len() == 1 { "" } else { "s" }
-            ),
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
 
     let orchestrator = AIOrchestrator::with_config(
         Arc::clone(&provider),
@@ -246,6 +293,118 @@ async fn generate_commit_message_with_progress_impl(
         None
     };
 
+    let message_budget = config
+        .max_input_tokens
+        .get()
+        .checked_sub(config.max_output_tokens.get())
+        .and_then(|remaining| remaining.checked_sub(reserved_for_prompt.get()))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Invalid token budget: max_output ({}) + reserved_for_prompt ({}) exceeds max_input ({})",
+                config.max_output_tokens.get(),
+                reserved_for_prompt.get(),
+                config.max_input_tokens.get()
+            )
+        })?;
+
+    let mut budget_warnings = Vec::new();
+    let normalized_user_context = normalize_user_context(user_context);
+    let had_user_context = normalized_user_context.is_some();
+    let (effective_user_context, user_context_tokens, user_context_truncated) =
+        fit_user_context_to_budget(tokenizer.as_ref(), normalized_user_context, message_budget);
+
+    if user_context_truncated && had_user_context {
+        if effective_user_context.is_some() {
+            budget_warnings.push("User context truncated to fit token budget.".to_string());
+        } else {
+            budget_warnings.push("User context omitted to fit token budget.".to_string());
+        }
+    }
+
+    let remaining_for_history = message_budget.saturating_sub(user_context_tokens);
+    let had_history_context = history_context.is_some();
+    let (history_context, history_tokens, history_truncated) =
+        fit_history_to_budget(tokenizer.as_ref(), history_context, remaining_for_history);
+
+    if history_truncated && had_history_context {
+        if history_context.is_some() {
+            budget_warnings.push("Commit history truncated to fit token budget.".to_string());
+        } else {
+            budget_warnings.push("Commit history omitted to fit token budget.".to_string());
+        }
+    }
+
+    let reserved_for_messages =
+        TokenCount::new_at_least_one(user_context_tokens.saturating_add(history_tokens));
+
+    let budget = TokenBudget::try_new(
+        config.max_input_tokens,
+        config.max_output_tokens,
+        reserved_for_prompt,
+        reserved_for_messages,
+    )
+    .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
+
+    let token_limit = budget
+        .remaining_for_diff()
+        .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
+
+    let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
+        .with_ignore_files(config.ignore_files.clone())
+        .with_lockfile_token_limit(config.lockfile_token_limit);
+
+    let chunks = processor.process_safe(&diff);
+
+    if chunks.is_empty() {
+        let file_paths = parsing::extract_file_paths(&diff);
+        if !file_paths.is_empty()
+            && file_paths
+                .iter()
+                .all(|path| chunking::should_limit_file(path, &config.ignore_files))
+        {
+            anyhow::bail!(
+                "All staged files are in ignore_files list. Update ignore_files in your config or stage other files."
+            );
+        }
+        anyhow::bail!("No processable diff content found");
+    }
+
+    let binary_only = chunks
+        .iter()
+        .all(|chunk| chunk.content.starts_with("[Binary file:"));
+
+    let total_tokens = chunks
+        .iter()
+        .map(|chunk| chunk.token_count.get() as u64)
+        .sum::<u64>();
+    let total_tokens = TokenCount::new_at_least_one(total_tokens.try_into().unwrap_or(u32::MAX));
+
+    if progress_tx
+        .send(Event::TokenCountUpdate {
+            token_count: total_tokens,
+        })
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
+
+    if progress_tx
+        .send(Event::GenerationProgress {
+            stage: format!(
+                "Analyzing {} chunk{}...",
+                chunks.len(),
+                if chunks.len() == 1 { "" } else { "s" }
+            ),
+        })
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
+
+    let user_context = effective_user_context;
+
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Generating commit message...".to_string(),
@@ -265,6 +424,10 @@ async fn generate_commit_message_with_progress_impl(
             history_context,
         )
         .await?;
+
+    if !budget_warnings.is_empty() {
+        result.validation_warnings.extend(budget_warnings);
+    }
 
     if binary_only {
         result.validation_warnings.push(

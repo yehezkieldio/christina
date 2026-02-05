@@ -42,7 +42,10 @@ cargo install --path christina
 1. **Configure your first profile:**
    ```bash
    # Add a new profile (OpenAI example)
-   christina profile add my-openai --provider openai --model gpt-4o --api-key YOUR_KEY
+   # Prefer env or keyring references
+   christina profile create my-openai --provider openai --model gpt-4o --api-key env:OPENAI_API_KEY
+   # Plaintext keys require explicit opt-in (not recommended)
+   christina profile create my-openai --provider openai --model gpt-4o --api-key YOUR_KEY --allow-plaintext
    ```
 
 2. **Generate a commit message:**
@@ -70,17 +73,19 @@ Christina stores configuration and profiles in your OS-standard config directory
 ### Example `config.toml`
 
 ```toml
-[diff]
-# Choose your preferred diff tool: git, delta, difftastic, or basic
-diff_tool = "git"
-# Always show a preview of changes before generating message
-diff_show_preview = true
+active_profile = "default"
+commit_message_max_length = 72
+use_commit_history = true
+commit_history_depth = 5
 
-[generation]
-# Default temperature for LLM sampling
-temperature = 0.7
-# Maximum tokens for generated message
-max_tokens = 500
+[profiles.default]
+name = "default"
+provider = "openai"
+model = "gpt-4o"
+api_key = { env = "OPENAI_API_KEY" }
+max_input_tokens = 128000
+max_output_tokens = 4096
+temperature = 0.3
 ```
 
 ### Profile Management

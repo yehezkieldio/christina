@@ -88,6 +88,9 @@ pub enum ProfileCommands {
         /// API key
         #[arg(long)]
         api_key: Option<String>,
+        /// Allow storing plaintext API keys in config
+        #[arg(long)]
+        allow_plaintext: bool,
         /// API URL
         #[arg(long)]
         api_url: Option<String>,
@@ -117,6 +120,9 @@ pub enum ProfileCommands {
         /// API key
         #[arg(long)]
         api_key: Option<String>,
+        /// Allow storing plaintext API keys in config
+        #[arg(long)]
+        allow_plaintext: bool,
         /// API URL
         #[arg(long)]
         api_url: Option<String>,

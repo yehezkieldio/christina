@@ -38,8 +38,8 @@ fn get_test_tokenizer() -> Option<Arc<dyn Tokenizer>> {
 /// Get the global tokenizer service instance.
 ///
 /// This initializes the tokenizer on first call and caches successful results.
-/// If the primary tokenizer fails to initialize, a whitespace-based fallback is
-/// installed and a warning is logged.
+/// If the primary tokenizer fails to initialize, a conservative byte-based fallback is
+/// installed to avoid undercounting tokens.
 pub fn get_tokenizer() -> Arc<dyn Tokenizer> {
     #[cfg(test)]
     if let Some(tokenizer) = get_test_tokenizer() {
@@ -53,10 +53,10 @@ pub fn get_tokenizer() -> Arc<dyn Tokenizer> {
                 Ok(service) => Arc::new(service),
                 Err(err) => {
                     warn!(
-                        "Tokenizer initialization failed, falling back to whitespace tokenizer: {}",
+                        "Tokenizer initialization failed, falling back to byte tokenizer: {}",
                         err
                     );
-                    Arc::new(WhitespaceTokenizer)
+                    Arc::new(ByteTokenizer)
                 }
             };
 
@@ -75,27 +75,27 @@ pub fn get_tokenizer() -> Arc<dyn Tokenizer> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct WhitespaceTokenizer;
+struct ByteTokenizer;
 
-impl Tokenizer for WhitespaceTokenizer {
+impl Tokenizer for ByteTokenizer {
     fn count_tokens_exact(&self, text: &str) -> u32 {
-        text.split_whitespace().count() as u32
+        text.len() as u32
     }
 
     fn encoding_name(&self) -> &str {
-        "fallback-whitespace"
+        "fallback-byte"
     }
 
     fn encode(&self, text: &str) -> Vec<u32> {
-        text.chars().map(|c| c as u32).collect()
+        text.as_bytes().iter().map(|b| *b as u32).collect()
     }
 
     fn decode(&self, tokens: &[u32]) -> Option<String> {
-        tokens
+        let bytes = tokens
             .iter()
-            .filter_map(|&token| char::from_u32(token))
-            .collect::<String>()
-            .into()
+            .map(|token| (*token).min(u32::from(u8::MAX)) as u8)
+            .collect::<Vec<_>>();
+        Some(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
 

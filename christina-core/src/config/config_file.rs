@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::SecretRef,
-    profile::ProviderProfile,
-    types::{FreeTierLimits, TokenCount, UsageTier},
+    profile::Profiles,
+    types::{
+        FreeTierLimits, TokenCount, UsageTier,
+        commit_message::ValidationMode,
+    },
 };
 
 /// On-disk configuration representation (serde-friendly)
@@ -13,14 +13,20 @@ use crate::{
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct ConfigFile {
-    /// Active profile name
+    /// Schema version for config file format migrations
+    pub schema_version: u32,
+
+    /// Active profile name (legacy alias, preferred via profiles.active)
     pub active_profile: Option<String>,
 
-    /// Provider profiles (with SecretRef for file storage)
-    pub profiles: HashMap<String, ProviderProfile<SecretRef>>,
+    /// Provider profiles
+    pub profiles: Profiles,
 
     /// Maximum commit message length (None = 72)
     pub commit_message_max_length: Option<usize>,
+
+    /// Validation mode for commit message length
+    pub commit_message_validation_mode: ValidationMode,
 
     /// Files to exclude from AI processing
     pub ignore_files: Vec<String>,
@@ -28,37 +34,53 @@ pub struct ConfigFile {
     /// Maximum tokens to include from lockfiles when truncating
     pub lockfile_token_limit: TokenCount,
 
-    /// Whether to enable file diffs in output
-    pub include_file_diffs: bool,
-
     /// Usage tier for rate-limit-aware defaults
     pub usage_tier: UsageTier,
 
     /// Free-tier limits applied when usage_tier is set to free
     pub free_tier: FreeTierLimits,
 
+    /// Whether to include commit history context in LLM prompts
+    pub use_commit_history: bool,
+
+    /// Number of recent commits to include for style analysis
+    pub commit_history_depth: usize,
+
+    /// Maximum concurrent LLM requests
+    pub max_concurrent_requests: usize,
+
     /// Maximum allowed fraction of chunk failures before aborting map phase
     pub max_partial_failure_rate: f64,
+
+    /// Failure rate threshold for prompting user confirmation
+    pub prompt_failure_rate_threshold: f64,
 }
 
 impl Default for ConfigFile {
     fn default() -> Self {
         Self {
+            schema_version: 1,
             active_profile: None,
-            profiles: HashMap::new(),
+            profiles: Profiles::new(),
             commit_message_max_length: None,
+            commit_message_validation_mode: ValidationMode::default(),
             ignore_files: vec![
-                "Cargo.lock".to_string(),
                 "package-lock.json".to_string(),
                 "yarn.lock".to_string(),
                 "pnpm-lock.yaml".to_string(),
-                "*.lock".to_string(),
+                "bun.lock".to_string(),
+                "Cargo.lock".to_string(),
+                "poetry.lock".to_string(),
+                "Gemfile.lock".to_string(),
             ],
             lockfile_token_limit: TokenCount::new_at_least_one(100),
-            include_file_diffs: false,
             usage_tier: UsageTier::Standard,
             free_tier: FreeTierLimits::default(),
+            use_commit_history: true,
+            commit_history_depth: 5,
+            max_concurrent_requests: 4,
             max_partial_failure_rate: 0.1,
+            prompt_failure_rate_threshold: 0.05,
         }
     }
 }
@@ -73,10 +95,13 @@ mod tests {
         let config = ConfigFile::default();
 
         assert_eq!(config.active_profile, None);
-        assert!(config.profiles.is_empty());
+        assert!(config.profiles.definitions.is_empty());
         assert_eq!(config.commit_message_max_length, None);
-        assert!(!config.include_file_diffs);
-        assert_eq!(config.ignore_files.len(), 5);
+        assert_eq!(config.commit_message_validation_mode, ValidationMode::Soft);
+        assert!(config.use_commit_history);
+        assert_eq!(config.commit_history_depth, 5);
+        assert_eq!(config.max_concurrent_requests, 4);
+        assert_eq!(config.prompt_failure_rate_threshold, 0.05);
     }
 
     #[test]
@@ -84,7 +109,7 @@ mod tests {
         let config = ConfigFile {
             active_profile: Some("default".to_string()),
             commit_message_max_length: Some(100),
-            include_file_diffs: true,
+            commit_message_validation_mode: ValidationMode::Strict,
             ..ConfigFile::default()
         };
 
@@ -96,7 +121,10 @@ mod tests {
             deserialized.commit_message_max_length,
             config.commit_message_max_length
         );
-        assert_eq!(deserialized.include_file_diffs, config.include_file_diffs);
+        assert_eq!(
+            deserialized.commit_message_validation_mode,
+            config.commit_message_validation_mode
+        );
         assert_eq!(deserialized.ignore_files, config.ignore_files);
     }
 
@@ -104,10 +132,9 @@ mod tests {
     fn test_optional_fields() {
         let config = ConfigFile {
             active_profile: None,
-            profiles: HashMap::new(),
+            profiles: Profiles::new(),
             commit_message_max_length: None,
             ignore_files: vec![],
-            include_file_diffs: false,
             ..ConfigFile::default()
         };
 

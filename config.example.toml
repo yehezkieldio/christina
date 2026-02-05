@@ -12,10 +12,6 @@ active_profile = "default"
 # Set to null or omit to use the default
 commit_message_max_length = 72
 
-# Whether to include file diffs in the output (default: false)
-# When true, shows the actual diff content for each file
-include_file_diffs = false
-
 # Files to exclude from AI processing
 # These patterns support:
 # - Exact filename matches: "Cargo.lock"

@@ -49,21 +49,79 @@ pub fn extract_file_paths(diff: &str) -> Vec<FilePath> {
 /// **Safety**: Git diff output by specification produces only relative paths within
 /// the repository. Absolute paths would violate the diff format and are rejected.
 pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
-    fn parse_path(s: &str) -> Option<(&str, &str)> {
+    fn parse_quoted_path(s: &str) -> Option<(String, &str)> {
+        let bytes = s.as_bytes();
+        if bytes.first()? != &b'"' {
+            return None;
+        }
+
+        let mut out = Vec::new();
+        let mut i = 1usize;
+        let mut closed = false;
+
+        while i < bytes.len() {
+            match bytes[i] {
+                b'"' => {
+                    closed = true;
+                    i += 1;
+                    break;
+                }
+                b'\\' => {
+                    i += 1;
+                    if i >= bytes.len() {
+                        return None;
+                    }
+                    let esc = bytes[i];
+                    match esc {
+                        b'n' => out.push(b'\n'),
+                        b't' => out.push(b'\t'),
+                        b'r' => out.push(b'\r'),
+                        b'b' => out.push(0x08),
+                        b'f' => out.push(0x0c),
+                        b'\\' => out.push(b'\\'),
+                        b'"' => out.push(b'"'),
+                        b'0'..=b'7' => {
+                            let mut value = (esc - b'0') as u32;
+                            let mut digits = 1;
+                            while digits < 3 && i + 1 < bytes.len() {
+                                let next = bytes[i + 1];
+                                if !(b'0'..=b'7').contains(&next) {
+                                    break;
+                                }
+                                value = value * 8 + (next - b'0') as u32;
+                                i += 1;
+                                digits += 1;
+                            }
+                            out.push(value.min(u32::from(u8::MAX)) as u8);
+                        }
+                        _ => out.push(esc),
+                    }
+                }
+                other => out.push(other),
+            }
+            i += 1;
+        }
+
+        if !closed {
+            return None;
+        }
+
+        let path = String::from_utf8(out).ok()?;
+        Some((path, &s[i..]))
+    }
+
+    fn parse_path(s: &str) -> Option<(String, &str)> {
         let s = s.trim_start();
         if s.is_empty() {
             return None;
         }
 
-        if let Some(s_without_quote) = s.strip_prefix('"') {
-            let end_quote = s_without_quote.find('"')?;
-            let path = &s_without_quote[..end_quote];
-            let rest = &s[end_quote + 2..];
-            Some((path, rest))
+        if s.starts_with('"') {
+            parse_quoted_path(s)
         } else {
             let path = s.split_whitespace().next()?;
             let rest = &s[path.len()..];
-            Some((path, rest))
+            Some((path.to_string(), rest))
         }
     }
 
@@ -81,7 +139,7 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
         prefix_a != prefix_b
     }
 
-    fn normalize_paths<'a>(path_a: &'a str, path_b: &'a str) -> (&'a str, &'a str) {
+    fn normalize_paths(path_a: String, path_b: String) -> (String, String) {
         let (Some((prefix_a, rest_a)), Some((prefix_b, rest_b))) =
             (path_a.split_once('/'), path_b.split_once('/'))
         else {
@@ -89,29 +147,52 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
         };
 
         if should_strip_prefix(prefix_a, prefix_b) {
-            (rest_a, rest_b)
+            (rest_a.to_string(), rest_b.to_string())
         } else {
             (path_a, path_b)
         }
     }
 
+    fn normalize_single_path(path: String) -> String {
+        if let Some((prefix, rest)) = path.split_once('/')
+            && matches!(prefix, "a" | "b" | "c" | "i" | "w")
+            && !rest.is_empty()
+        {
+            return rest.to_string();
+        }
+        path
+    }
+
     let trimmed = line.trim();
-    let after_git = trimmed
-        .strip_prefix("diff")
-        .and_then(|s| s.trim_start().strip_prefix("--git"))
-        .and_then(|s| {
-            let s = s.trim_start();
-            if s.is_empty() { None } else { Some(s) }
-        })?;
+    let after_diff = trimmed.strip_prefix("diff")?.trim_start();
 
-    let (path_a_raw, remaining) = parse_path(after_git)?;
-    let (path_b_raw, _) = parse_path(remaining)?;
+    if let Some(after_git) = after_diff.strip_prefix("--git") {
+        let after_git = after_git.trim_start();
+        if after_git.is_empty() {
+            return None;
+        }
 
-    let (_path_a, path_b) = normalize_paths(path_a_raw, path_b_raw);
+        let (path_a_raw, remaining) = parse_path(after_git)?;
+        let (path_b_raw, _) = parse_path(remaining)?;
 
-    // Use try_new at parsing boundary to gracefully reject malformed paths.
-    // Git diff should never produce absolute paths, but we validate defensively.
-    FilePath::try_new(path_b).ok()
+        let (_path_a, path_b) = normalize_paths(path_a_raw, path_b_raw);
+
+        // Use try_new at parsing boundary to gracefully reject malformed paths.
+        // Git diff should never produce absolute paths, but we validate defensively.
+        return FilePath::try_new(path_b).ok();
+    }
+
+    let after_combined = after_diff
+        .strip_prefix("--cc")
+        .or_else(|| after_diff.strip_prefix("--combined"))?;
+    let after_combined = after_combined.trim_start();
+    if after_combined.is_empty() {
+        return None;
+    }
+
+    let (path_raw, _) = parse_path(after_combined)?;
+    let path = normalize_single_path(path_raw);
+    FilePath::try_new(path).ok()
 }
 
 /// Split a diff string by file headers (`diff --git`).
@@ -347,6 +428,7 @@ mod tests {
 diff --git a/src/main.rs b/src/main.rs
 index 1234567..abcdefg 100644
 diff --git \"a/path with space.txt\" \"b/path with space.txt\"
+diff --cc src/combined.rs
 diff --git c/noindex.txt i/noindex.txt
  context diff --git a/fake.txt b/fake.txt
 diff --git file.txt file.txt
@@ -358,6 +440,7 @@ diff --git file.txt file.txt
             vec![
                 FilePath::from("src/main.rs"),
                 FilePath::from("path with space.txt"),
+                FilePath::from("src/combined.rs"),
                 FilePath::from("noindex.txt"),
                 FilePath::from("file.txt"),
             ]
@@ -417,6 +500,26 @@ diff --git file.txt file.txt
         assert_eq!(
             parse_git_diff_header("diff --git \"a/path with space.txt\" \"b/path with space.txt\""),
             Some(FilePath::from("path with space.txt"))
+        );
+    }
+
+    #[test]
+    fn parse_git_diff_header_escaped_quotes() {
+        assert_eq!(
+            parse_git_diff_header("diff --git \"a/path\\\"with\\\"quote.txt\" \"b/path\\\"with\\\"quote.txt\""),
+            Some(FilePath::from("path\"with\"quote.txt"))
+        );
+    }
+
+    #[test]
+    fn parse_git_diff_header_combined() {
+        assert_eq!(
+            parse_git_diff_header("diff --cc src/combined.rs"),
+            Some(FilePath::from("src/combined.rs"))
+        );
+        assert_eq!(
+            parse_git_diff_header("diff --combined \"path with space.rs\""),
+            Some(FilePath::from("path with space.rs"))
         );
     }
 

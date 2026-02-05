@@ -32,6 +32,7 @@ static CONVENTIONAL_COMMIT_PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| {
 /// (CI integration), Soft guides without blocking (developer experience), Disabled
 /// allows custom workflows (automated tools, migrations).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ValidationMode {
     /// Reject messages exceeding the limit

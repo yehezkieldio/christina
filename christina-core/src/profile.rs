@@ -136,7 +136,8 @@ impl ProviderProfile<String> {
 /// ```
 ///
 /// See module-level documentation for usage patterns and best practices.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct Profiles<S = String> {
     pub active: Option<String>,
@@ -232,6 +233,15 @@ impl<S> Profiles<S> {
 
         self.definitions.insert(name.to_string(), profile);
         Ok(())
+    }
+}
+
+impl<S> Default for Profiles<S> {
+    fn default() -> Self {
+        Self {
+            active: None,
+            definitions: HashMap::new(),
+        }
     }
 }
 

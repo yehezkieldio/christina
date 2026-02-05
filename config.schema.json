@@ -5,12 +5,19 @@
   "type": "object",
   "properties": {
     "active_profile": {
-      "description": "Active profile name",
+      "description": "Active profile name (legacy alias, preferred via profiles.active)",
       "default": null,
       "type": [
         "string",
         "null"
       ]
+    },
+    "commit_history_depth": {
+      "description": "Number of recent commits to include for style analysis",
+      "default": 5,
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0.0
     },
     "commit_message_max_length": {
       "description": "Maximum commit message length (None = 72)",
@@ -21,6 +28,15 @@
       ],
       "format": "uint",
       "minimum": 0.0
+    },
+    "commit_message_validation_mode": {
+      "description": "Validation mode for commit message length",
+      "default": "soft",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ValidationMode"
+        }
+      ]
     },
     "free_tier": {
       "description": "Free-tier limits applied when usage_tier is set to free",
@@ -39,21 +55,18 @@
     "ignore_files": {
       "description": "Files to exclude from AI processing",
       "default": [
-        "Cargo.lock",
         "package-lock.json",
         "yarn.lock",
         "pnpm-lock.yaml",
-        "*.lock"
+        "bun.lock",
+        "Cargo.lock",
+        "poetry.lock",
+        "Gemfile.lock"
       ],
       "type": "array",
       "items": {
         "type": "string"
       }
-    },
-    "include_file_diffs": {
-      "description": "Whether to enable file diffs in output",
-      "default": false,
-      "type": "boolean"
     },
     "lockfile_token_limit": {
       "description": "Maximum tokens to include from lockfiles when truncating",
@@ -64,6 +77,13 @@
         }
       ]
     },
+    "max_concurrent_requests": {
+      "description": "Maximum concurrent LLM requests",
+      "default": 4,
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0.0
+    },
     "max_partial_failure_rate": {
       "description": "Maximum allowed fraction of chunk failures before aborting map phase",
       "default": 0.1,
@@ -71,12 +91,28 @@
       "format": "double"
     },
     "profiles": {
-      "description": "Provider profiles (with SecretRef for file storage)",
-      "default": {},
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/ProviderProfile_for_SecretRef"
-      }
+      "description": "Provider profiles",
+      "default": {
+        "active": null
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/Profiles_for_String"
+        }
+      ]
+    },
+    "prompt_failure_rate_threshold": {
+      "description": "Failure rate threshold for prompting user confirmation",
+      "default": 0.05,
+      "type": "number",
+      "format": "double"
+    },
+    "schema_version": {
+      "description": "Schema version for config file format migrations",
+      "default": 1,
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
     },
     "usage_tier": {
       "description": "Usage tier for rate-limit-aware defaults",
@@ -86,6 +122,11 @@
           "$ref": "#/definitions/UsageTier"
         }
       ]
+    },
+    "use_commit_history": {
+      "description": "Whether to include commit history context in LLM prompts",
+      "default": true,
+      "type": "boolean"
     }
   },
   "definitions": {
@@ -127,6 +168,19 @@
       "description": "LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')",
       "type": "string"
     },
+    "Profiles_for_String": {
+      "description": "Collection of provider profiles with an active profile selection.\n\nGeneric parameter `S` determines secret storage strategy: - `S = String`: Direct string values, serializable - `S = SecretRef`: References to secrets (env vars, keyring), serializable - `S = SecretString`: Resolved secret values, NOT serializable\n\nThe `definitions` field uses serde's `flatten` attribute to serialize profiles directly into the parent config structure, enabling TOML files like: ```toml [profiles.default] provider = \"openai\" model = \"gpt-4\" ```\n\nSee module-level documentation for usage patterns and best practices.",
+      "type": "object",
+      "properties": {
+        "active": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "ProviderKind": {
       "description": "Supported LLM API providers.\n\nThis enum drives client instantiation and request formatting. Each variant corresponds to a distinct API contract.",
       "type": "string",
@@ -136,7 +190,7 @@
         "groq"
       ]
     },
-    "ProviderProfile_for_SecretRef": {
+    "ProviderProfile_for_String": {
       "description": "Configuration for an LLM provider (API credentials, model, token limits).\n\nGeneric parameter `S` determines secret storage strategy: - `S = String` or `S = SecretRef`: Disk storage, fully serializable - `S = SecretString`: Runtime secrets, NOT serializable\n\nSee module-level documentation for detailed usage patterns.",
       "type": "object",
       "required": [
@@ -149,7 +203,7 @@
       ],
       "properties": {
         "api_key": {
-          "$ref": "#/definitions/Secret_for_SecretRef"
+          "$ref": "#/definitions/Secret_for_String"
         },
         "api_url": {
           "type": [
@@ -193,66 +247,7 @@
         }
       }
     },
-    "SecretRef": {
-      "description": "On-disk reference (env var or keyring)",
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "value"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "env"
-              ]
-            },
-            "value": {
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "value"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "keyring"
-              ]
-            },
-            "value": {
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "value"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "value"
-              ]
-            },
-            "value": {
-              "type": "string"
-            }
-          }
-        }
-      ]
-    },
-    "Secret_for_SecretRef": {
+    "Secret_for_String": {
       "description": "Generic secret container\n\n**Important**: This type implements a custom Debug impl that redacts all secrets for security. To access secret values, use `expose_secret()` or resolver methods.",
       "oneOf": [
         {
@@ -262,7 +257,7 @@
           ],
           "properties": {
             "Value": {
-              "$ref": "#/definitions/SecretRef"
+              "type": "string"
             }
           },
           "additionalProperties": false
@@ -305,6 +300,32 @@
       "enum": [
         "standard",
         "free"
+      ]
+    },
+    "ValidationMode": {
+      "description": "Validation mode for commit message length checks.\n\nWHY three modes: Different teams have different policies. Strict enforces limits (CI integration), Soft guides without blocking (developer experience), Disabled allows custom workflows (automated tools, migrations).",
+      "oneOf": [
+        {
+          "description": "Reject messages exceeding the limit",
+          "type": "string",
+          "enum": [
+            "strict"
+          ]
+        },
+        {
+          "description": "Warn but allow messages exceeding the limit",
+          "type": "string",
+          "enum": [
+            "soft"
+          ]
+        },
+        {
+          "description": "Skip length check entirely",
+          "type": "string",
+          "enum": [
+            "disabled"
+          ]
+        }
       ]
     }
   }

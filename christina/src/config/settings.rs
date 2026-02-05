@@ -5,8 +5,8 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use tracing;
 
-use super::diff_tool::DiffConfig;
 use christina_core::{
+    ConfigFile,
     profile::{Profiles, ProviderProfile},
     types::{
         FreeTierLimits, ModelName, ProviderKind, TokenCount, UsageTier,
@@ -18,6 +18,17 @@ use url::Url;
 
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct LocalConfigSafe {
+    ignore_files: Option<Vec<String>>,
+    lockfile_token_limit: Option<TokenCount>,
+    commit_message_max_length: Option<usize>,
+    commit_message_validation_mode: Option<ValidationMode>,
+    use_commit_history: Option<bool>,
+    commit_history_depth: Option<usize>,
+}
 
 /// Default schema version for config files
 fn default_schema_version() -> u32 {
@@ -122,10 +133,6 @@ pub struct Config {
     #[serde(default)]
     pub profiles: Profiles,
 
-    /// Diff tool configuration
-    #[serde(default)]
-    pub diff: DiffConfig,
-
     /// Maximum length for commit messages (None = 72)
     pub commit_message_max_length: Option<usize>,
 
@@ -183,7 +190,6 @@ impl Default for Config {
             usage_tier: UsageTier::Standard,
             free_tier: FreeTierLimits::default(),
             profiles: Profiles::new(),
-            diff: DiffConfig::default(),
             commit_message_max_length: None,
             commit_message_validation_mode: ValidationMode::default(),
             use_commit_history: true,
@@ -198,31 +204,30 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Result<Self> {
-        let mut builder = config::Config::builder();
-
-        // Layer 4: Defaults
-        builder = builder.add_source(config::Config::try_from(&Config::default())?);
+        let mut config = Config::default();
 
         // Layer 3: Global config file
         if let Some(global_path) = Self::global_config_path()
             && global_path.exists()
         {
-            builder = builder.add_source(config::File::from(global_path).required(false));
+            let content =
+                std::fs::read_to_string(&global_path).context("Failed to read global config")?;
+            let config_file: ConfigFile =
+                toml::from_str(&content).context("Failed to parse global config")?;
+            config.apply_config_file(config_file);
         }
-
-        let local_path = std::path::Path::new("./christina.toml");
-        if local_path.exists() {
-            builder = builder.add_source(config::File::from(local_path).required(false));
-        }
-        let mut config = builder
-            .clone()
-            .build()
-            .context("Failed to build configuration")?
-            .try_deserialize::<Config>()
-            .context("Failed to deserialize configuration")?;
 
         // Fix profile names after deserialization (HashMap keys become names)
         config.profiles.fix_names();
+
+        let local_path = std::path::Path::new("./christina.toml");
+        if local_path.exists() {
+            let local_content = std::fs::read_to_string(local_path)
+                .context("Failed to read local config (christina.toml)")?;
+            let local_safe: LocalConfigSafe = toml::from_str(&local_content)
+                .context("Failed to parse local config (christina.toml)")?;
+            config.apply_local_safe_overrides(local_safe);
+        }
 
         // Create default profile if no profiles exist
         // Preserve token limits from current config (which may include env var overrides)
@@ -319,8 +324,6 @@ impl Config {
             config.max_partial_failure_rate = v;
         }
 
-        config.diff = config.diff.with_env_override();
-
         // Validate and clamp token values to hard limits after all configuration is loaded
         let warnings = config.validate();
         for warning in warnings {
@@ -336,6 +339,48 @@ impl Config {
         tokio::task::spawn_blocking(Self::load)
             .await
             .map_err(|e| anyhow::anyhow!("Config load task failed: {}", e))?
+    }
+
+    fn apply_config_file(&mut self, file: ConfigFile) {
+        self.schema_version = file.schema_version;
+        self.profiles = file.profiles;
+        if self.profiles.active.is_none() && file.active_profile.is_some() {
+            self.profiles.active = file.active_profile;
+        }
+        self.commit_message_max_length = file.commit_message_max_length;
+        self.commit_message_validation_mode = file.commit_message_validation_mode;
+        self.ignore_files = file.ignore_files;
+        self.lockfile_token_limit = file.lockfile_token_limit;
+        self.usage_tier = file.usage_tier;
+        self.free_tier = file.free_tier;
+        self.use_commit_history = file.use_commit_history;
+        self.commit_history_depth = file.commit_history_depth;
+        self.max_concurrent_requests = file.max_concurrent_requests;
+        self.max_partial_failure_rate = file.max_partial_failure_rate;
+        self.prompt_failure_rate_threshold = file.prompt_failure_rate_threshold;
+    }
+
+    fn to_config_file(&self) -> ConfigFile {
+        let mut profiles = self.profiles.clone();
+        let active_profile = profiles.active.clone();
+        profiles.active = None;
+
+        ConfigFile {
+            schema_version: self.schema_version,
+            active_profile,
+            profiles,
+            commit_message_max_length: self.commit_message_max_length,
+            commit_message_validation_mode: self.commit_message_validation_mode,
+            ignore_files: self.ignore_files.clone(),
+            lockfile_token_limit: self.lockfile_token_limit,
+            usage_tier: self.usage_tier,
+            free_tier: self.free_tier.clone(),
+            use_commit_history: self.use_commit_history,
+            commit_history_depth: self.commit_history_depth,
+            max_concurrent_requests: self.max_concurrent_requests,
+            max_partial_failure_rate: self.max_partial_failure_rate,
+            prompt_failure_rate_threshold: self.prompt_failure_rate_threshold,
+        }
     }
 
     /// Validate and clamp token values to hard limits.
@@ -445,8 +490,9 @@ impl Config {
         let config_path = config_dir.join("config.toml");
         let temp_path = config_dir.join("config.toml.tmp");
 
+        let config_file = self.to_config_file();
         let toml_content =
-            toml::to_string_pretty(self).context("Failed to serialize configuration")?;
+            toml::to_string_pretty(&config_file).context("Failed to serialize configuration")?;
 
         {
             let mut temp_file =
@@ -512,8 +558,6 @@ impl Config {
                 ValidationMode::Soft => "soft".to_string(),
                 ValidationMode::Disabled => "disabled".to_string(),
             }),
-            "diff_tool" => Some(self.diff.tool.to_string()),
-            "diff_show_preview" => Some(self.diff.show_preview.to_string()),
             "use_commit_history" => Some(self.use_commit_history.to_string()),
             "commit_history_depth" => Some(self.commit_history_depth.to_string()),
             "max_concurrent_requests" => Some(self.max_concurrent_requests.to_string()),
@@ -691,12 +735,6 @@ impl Config {
                     }
                 };
             }
-            "diff_tool" => {
-                self.diff.tool = value.parse().map_err(anyhow::Error::msg)?;
-            }
-            "diff_show_preview" => {
-                self.diff.show_preview = parse_bool(value)?;
-            }
             "use_commit_history" => {
                 self.use_commit_history = parse_bool(value)?;
             }
@@ -764,6 +802,32 @@ impl Config {
             #[cfg(not(feature = "keyring-support"))]
             christina_core::config::Secret::Keyring(_) => None,
         };
+    }
+
+    fn apply_local_safe_overrides(&mut self, local: LocalConfigSafe) {
+        if let Some(ignore_files) = local.ignore_files {
+            self.ignore_files = ignore_files;
+        }
+
+        if let Some(limit) = local.lockfile_token_limit {
+            self.lockfile_token_limit = limit;
+        }
+
+        if let Some(max_len) = local.commit_message_max_length {
+            self.commit_message_max_length = Some(max_len);
+        }
+
+        if let Some(mode) = local.commit_message_validation_mode {
+            self.commit_message_validation_mode = mode;
+        }
+
+        if let Some(use_history) = local.use_commit_history {
+            self.use_commit_history = use_history;
+        }
+
+        if let Some(depth) = local.commit_history_depth {
+            self.commit_history_depth = depth.clamp(0, 50);
+        }
     }
 
     pub fn load_active_profile(&mut self) {
@@ -1101,41 +1165,6 @@ mod tests {
     }
 
     #[test]
-    fn set_diff_tool() {
-        let mut config = Config::default();
-        config
-            .set("diff_tool", "delta")
-            .expect("should set diff tool");
-        assert_eq!(config.diff.tool.to_string(), "delta");
-    }
-
-    #[test]
-    fn set_diff_tool_invalid() {
-        let mut config = Config::default();
-        assert!(config.set("diff_tool", "unknown_tool").is_err());
-    }
-
-    #[test]
-    fn set_diff_show_preview() {
-        let mut config = Config::default();
-        config
-            .set("diff_show_preview", "true")
-            .expect("should set to true");
-        assert!(config.diff.show_preview);
-
-        config
-            .set("diff_show_preview", "false")
-            .expect("should set to false");
-        assert!(!config.diff.show_preview);
-    }
-
-    #[test]
-    fn set_diff_show_preview_invalid() {
-        let mut config = Config::default();
-        assert!(config.set("diff_show_preview", "not_bool").is_err());
-    }
-
-    #[test]
     fn set_unknown_key() {
         let mut config = Config::default();
         let result = config.set("unknown_key", "value");
@@ -1257,13 +1286,6 @@ mod tests {
     }
 
     #[test]
-    fn get_diff_fields() {
-        let config = Config::default();
-        assert_eq!(config.get("diff_tool"), Some("auto".to_string()));
-        assert_eq!(config.get("diff_show_preview"), Some("true".to_string()));
-    }
-
-    #[test]
     fn get_unknown_key() {
         let config = Config::default();
         assert_eq!(config.get("unknown_key"), None);
@@ -1314,14 +1336,17 @@ mod tests {
     #[test]
     fn config_serialize_deserialize() {
         let config = Config::default();
-        let toml_str = toml::to_string(&config).expect("should serialize to TOML");
+        let toml_str = toml::to_string(&config.to_config_file()).expect("should serialize to TOML");
 
         assert!(!toml_str.contains("max_input_tokens"));
         assert!(!toml_str.contains("max_output_tokens"));
         assert!(!toml_str.contains("api_key"));
 
-        let deserialized: Config = toml::from_str(&toml_str).expect("should deserialize from TOML");
-        assert_eq!(deserialized.ignore_files, config.ignore_files);
+        let deserialized: ConfigFile =
+            toml::from_str(&toml_str).expect("should deserialize from TOML");
+        let mut roundtrip = Config::default();
+        roundtrip.apply_config_file(deserialized);
+        assert_eq!(roundtrip.ignore_files, config.ignore_files);
     }
 
     #[test]
@@ -1329,7 +1354,10 @@ mod tests {
         let minimal_toml = r#"
         ignore_files = ["test.lock"]
         "#;
-        let config: Config = toml::from_str(minimal_toml).expect("should use defaults");
+        let config_file: ConfigFile =
+            toml::from_str(minimal_toml).expect("should use defaults");
+        let mut config = Config::default();
+        config.apply_config_file(config_file);
         assert_eq!(config.ignore_files, vec!["test.lock"]);
         assert_eq!(config.max_input_tokens.get(), 4096);
     }

@@ -106,8 +106,6 @@ fn handle_list_with_config(config: &Config) {
             christina_core::types::commit_message::ValidationMode::Disabled => "disabled",
         }
     );
-    println!("  diff_tool: {}", config.diff.tool);
-    println!("  diff_show_preview: {}", config.diff.show_preview);
     println!("  use_commit_history: {}", config.use_commit_history);
     println!("  commit_history_depth: {}", config.commit_history_depth);
     println!(

@@ -208,6 +208,9 @@ Support for multiple diff tools:
 - git (native)
 - basic (plain)
 
+Note: CLI configuration no longer exposes diff tool settings. Diff tool selection
+will return when the TUI (and preview rendering) is reintroduced.
+
 ## Re-integration Strategy
 
 ### Phase 1: Foundation

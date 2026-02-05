@@ -4,7 +4,6 @@ use tracing::info;
 
 use christina_core::{
     Tokenizer,
-    error::DiffError,
     git::{DiffChunk, MAX_DIFF_SIZE},
     types::TokenCount,
 };
@@ -234,22 +233,37 @@ impl DiffProcessor {
         )
     }
 
-    pub fn process_safe(&self, diff: &str) -> Result<Vec<DiffChunk>, DiffError> {
+    pub fn process_safe(&self, diff: &str) -> Vec<DiffChunk> {
+        let mut truncation_notice = None;
+        let mut diff_content = diff;
         if diff.len() > self.max_diff_size {
-            return Err(DiffError::SizeExceeded {
-                actual: diff.len(),
-                max: self.max_diff_size,
-            });
+            let truncated = parsing::safe_truncate(diff, self.max_diff_size);
+            let omitted = diff.len().saturating_sub(truncated.len());
+            truncation_notice = Some(format!(
+                "[Diff truncated: {} bytes omitted; processed first {} bytes]",
+                omitted,
+                truncated.len()
+            ));
+            diff_content = truncated;
         }
 
-        let file_diffs = parsing::split_by_files(diff, self.tokenizer.as_ref());
+        let file_diffs = parsing::split_by_files(diff_content, self.tokenizer.as_ref());
 
         if file_diffs.is_empty() {
-            return Ok(Vec::new());
+            if let Some(notice) = truncation_notice {
+                let token_count = self.tokenizer.count_tokens(&notice);
+                return vec![DiffChunk::new(Arc::from(notice), Vec::new(), token_count)];
+            }
+            return Vec::new();
         }
 
         let mut chunks = Vec::new();
         let mut has_text_content = false;
+
+        if let Some(notice) = truncation_notice {
+            let token_count = self.tokenizer.count_tokens(&notice);
+            chunks.push(DiffChunk::new(Arc::from(notice), Vec::new(), token_count));
+        }
 
         for file_diff in file_diffs {
             if self.is_binary_content(&file_diff.content) {
@@ -268,10 +282,10 @@ impl DiffProcessor {
         }
 
         if !has_text_content {
-            return Ok(chunks);
+            return chunks;
         }
 
-        Ok(chunks)
+        chunks
     }
 }
 
@@ -509,18 +523,15 @@ mod tests {
     #[test]
     fn process_safe_empty_diff() {
         let processor = create_processor(1000);
-        let result = processor.process_safe("");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 0);
+        let chunks = processor.process_safe("");
+        assert_eq!(chunks.len(), 0);
     }
 
     #[test]
     fn process_safe_text_file_only() {
         let processor = create_processor(1000);
         let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+new line\n";
-        let result = processor.process_safe(diff);
-        assert!(result.is_ok());
-        let chunks = result.unwrap();
+        let chunks = processor.process_safe(diff);
         assert!(!chunks.is_empty());
     }
 
@@ -528,9 +539,7 @@ mod tests {
     fn process_safe_binary_file_generates_notice() {
         let processor = create_processor(1000);
         let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+text content\ndiff --git a/test.bin b/test.bin\nindex 1234567..abcdefg\n--- a/test.bin\n+++ b/test.bin\n@@ -0,0 +1 @@\n\0binary content";
-        let result = processor.process_safe(diff);
-        assert!(result.is_ok());
-        let chunks = result.unwrap();
+        let chunks = processor.process_safe(diff);
         assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
     }
 
@@ -538,9 +547,7 @@ mod tests {
     fn process_safe_all_binary_files_returns_chunks() {
         let processor = create_processor(1000);
         let diff = "diff --git a/test.bin b/test.bin\n\0binary\n";
-        let result = processor.process_safe(diff);
-        assert!(result.is_ok());
-        let chunks = result.unwrap();
+        let chunks = processor.process_safe(diff);
         assert!(!chunks.is_empty());
         assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
     }
@@ -549,9 +556,7 @@ mod tests {
     fn process_safe_mixed_binary_and_text() {
         let processor = create_processor(1000);
         let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+text content\n";
-        let result = processor.process_safe(diff);
-        assert!(result.is_ok());
-        let chunks = result.unwrap();
+        let chunks = processor.process_safe(diff);
         assert!(!chunks.is_empty());
     }
 
@@ -559,21 +564,17 @@ mod tests {
     fn process_safe_respects_max_diff_size() {
         let processor = create_processor(1000);
         let huge_diff = "a".repeat(MAX_DIFF_SIZE + 1000);
-        let result = processor.process_safe(&huge_diff);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            DiffError::SizeExceeded { .. }
-        ));
+        let chunks = processor.process_safe(&huge_diff);
+        assert!(chunks
+            .iter()
+            .any(|chunk| chunk.content.contains("Diff truncated")));
     }
 
     #[test]
     fn process_safe_binary_extension_image() {
         let processor = create_processor(1000);
         let diff = "diff --git a/readme.txt b/readme.txt\nindex 1234567..abcdefg\n--- a/readme.txt\n+++ b/readme.txt\n@@ -0,0 +1 @@\n+text\ndiff --git a/logo.png b/logo.png\nindex 1234567..abcdefg\n--- a/logo.png\n+++ b/logo.png\n@@ -0,0 +1 @@\n";
-        let result = processor.process_safe(diff);
-        assert!(result.is_ok());
-        let chunks = result.unwrap();
+        let chunks = processor.process_safe(diff);
         assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
     }
 

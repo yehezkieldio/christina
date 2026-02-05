@@ -48,6 +48,24 @@ fn parse_azure_endpoint(url: &url::Url) -> (Option<String>, Option<String>) {
     (api_version, deployment_id)
 }
 
+fn has_azure_deployment_path(url: &url::Url) -> bool {
+    url.path_segments()
+        .map(|mut segments| segments.any(|segment| segment == "deployments"))
+        .unwrap_or(false)
+}
+
+fn normalize_azure_endpoint(url: &url::Url) -> String {
+    let mut clean = url.clone();
+    clean.set_path("");
+    clean.set_query(None);
+    clean.set_fragment(None);
+    let mut endpoint = clean.to_string();
+    if endpoint.ends_with('/') {
+        endpoint.pop();
+    }
+    endpoint
+}
+
 /// API key wrapper with secure defaults.
 ///
 /// The inner `String` is private to prevent accidental exposure through pattern matching
@@ -131,6 +149,7 @@ impl Provider {
 
                 // Try to extract from URL if not explicitly provided
                 let (url_api_version, url_deployment_id) = parse_azure_endpoint(url);
+                let has_deployment_path = has_azure_deployment_path(url);
 
                 let api_version = profile
                     .azure_api_version
@@ -145,21 +164,31 @@ impl Provider {
                 let deployment_id = profile
                     .azure_deployment_id
                     .clone()
-                    .or(url_deployment_id)
+                    .or(url_deployment_id.clone())
                     .ok_or_else(|| {
                         ProviderError::MissingConfig(
                             "azure_deployment_id (not found in config or URL)".to_string(),
                         )
                     })?;
 
-                // Strip query parameters from endpoint if present
-                let endpoint = if url.query().is_some() {
-                    let mut clean_url = url.clone();
-                    clean_url.set_query(None);
-                    clean_url.to_string()
-                } else {
-                    url.to_string()
-                };
+                if profile.azure_deployment_id.is_some() && url_deployment_id.is_some() {
+                    return Err(ProviderError::InvalidConfig(
+                        "azure_deployment_id provided in config and URL; use one source only"
+                            .to_string(),
+                    )
+                    .into());
+                }
+
+                if profile.azure_deployment_id.is_some() && has_deployment_path {
+                    return Err(ProviderError::InvalidConfig(
+                        "model_api_url contains /openai/deployments while azure_deployment_id is set; \
+                         use a resource root URL or remove azure_deployment_id"
+                            .to_string(),
+                    )
+                    .into());
+                }
+
+                let endpoint = normalize_azure_endpoint(url);
 
                 Ok(Provider::Azure {
                     model: profile.model.clone(),
@@ -487,7 +516,7 @@ mod tests {
         );
         profile.api_url = Some(
             url::Url::parse(
-                "https://test.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15"
+                "https://test.openai.azure.com/?api-version=2024-02-15"
             )
             .unwrap(),
         );
@@ -504,6 +533,7 @@ mod tests {
                 ..
             } => {
                 assert!(endpoint.contains("azure.com"));
+                assert!(!endpoint.contains("openai/deployments"));
                 assert!(!endpoint.contains("api-version"));
                 assert_eq!(api_version, "2024-02-15");
                 assert_eq!(deployment_id, "gpt-4");
@@ -561,6 +591,30 @@ mod tests {
             }
             _ => panic!("Expected Azure provider"),
         }
+    }
+
+    #[test]
+    fn test_provider_from_profile_azure_rejects_conflicting_deployment() {
+        let mut profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4"),
+        );
+        profile.api_url = Some(
+            url::Url::parse(
+                "https://test.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2024-02-15"
+            )
+            .unwrap(),
+        );
+        profile.azure_api_version = Some("2024-02-15".to_string());
+        profile.azure_deployment_id = Some("explicit".to_string());
+
+        let result = Provider::from_profile(&profile, "sk-test");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("azure_deployment_id"));
     }
 
     #[test]
