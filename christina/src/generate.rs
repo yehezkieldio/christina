@@ -140,6 +140,10 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("No processable diff content found");
     }
 
+    let binary_only = chunks
+        .iter()
+        .all(|chunk| chunk.content.starts_with("[Binary file:"));
+
     let total_tokens = chunks
         .iter()
         .map(|chunk| chunk.token_count.get() as u64)
@@ -231,7 +235,7 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
-    let result = orchestrator
+    let mut result = orchestrator
         .generate_commit_message(
             chunks,
             user_context.as_deref(),
@@ -240,6 +244,12 @@ async fn generate_commit_message_with_progress_impl(
             history_context,
         )
         .await?;
+
+    if binary_only {
+        result.validation_warnings.push(
+            "Only binary files detected; commit message may be generic.".to_string(),
+        );
+    }
 
     if progress_tx
         .send(Event::GenerationProgress {

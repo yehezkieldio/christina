@@ -272,23 +272,52 @@ impl Config {
         config.diff = config.diff.with_env_override();
 
         // Validate and clamp token values to hard limits after all configuration is loaded
-        config.validate();
+        let warnings = config.validate();
+        for warning in warnings {
+            tracing::warn!("{}", warning);
+            eprintln!("Warning: {}", warning);
+        }
 
         Ok(config)
     }
 
     /// Validate and clamp token values to hard limits.
     /// Also validates provider name against the registry.
-    fn validate(&mut self) {
+    fn validate(&mut self) -> Vec<String> {
+        let mut warnings = Vec::new();
         let max_input = TokenCount::new_at_least_one(MAX_INPUT);
         let max_output = TokenCount::new_at_least_one(MAX_OUTPUT);
-        self.max_input_tokens = self.max_input_tokens.min(max_input);
-        self.max_output_tokens = self.max_output_tokens.min(max_output);
+
+        if self.max_input_tokens > max_input {
+            warnings.push(format!(
+                "max_input_tokens clamped from {} to {}",
+                self.max_input_tokens.get(),
+                max_input.get()
+            ));
+            self.max_input_tokens = max_input;
+        }
+
+        if self.max_output_tokens > max_output {
+            warnings.push(format!(
+                "max_output_tokens clamped from {} to {}",
+                self.max_output_tokens.get(),
+                max_output.get()
+            ));
+            self.max_output_tokens = max_output;
+        }
 
         // Clamp temperature to valid range (0.0 to 2.0)
+        let original_temperature = self.model_temperature;
         self.model_temperature = self.model_temperature.clamp(0.0, 2.0);
+        if (self.model_temperature - original_temperature).abs() > f32::EPSILON {
+            warnings.push(format!(
+                "model_temperature clamped from {} to {}",
+                original_temperature, self.model_temperature
+            ));
+        }
 
         // Warn if provider is unknown (but don't fail - let factory handle it)
+        warnings
     }
 
     pub fn global_config_dir() -> Option<PathBuf> {
@@ -1070,16 +1099,19 @@ mod tests {
     fn validate_clamps_temperature() {
         let mut config = Config::default();
         config.model_temperature = 3.0;
-        config.validate();
+        let warnings = config.validate();
         assert_eq!(config.model_temperature, 2.0);
+        assert!(warnings.iter().any(|w| w.contains("model_temperature")));
 
         config.model_temperature = -1.0;
-        config.validate();
+        let warnings = config.validate();
         assert_eq!(config.model_temperature, 0.0);
+        assert!(warnings.iter().any(|w| w.contains("model_temperature")));
 
         config.model_temperature = 1.5;
-        config.validate();
+        let warnings = config.validate();
         assert_eq!(config.model_temperature, 1.5);
+        assert!(warnings.is_empty());
     }
 
     #[test]
@@ -1089,7 +1121,7 @@ mod tests {
         config.max_input_tokens = TokenCount::new_at_least_one(MAX_INPUT + 1000);
         config.max_output_tokens = TokenCount::new_at_least_one(MAX_OUTPUT + 1000);
 
-        config.validate();
+        let warnings = config.validate();
 
         assert_eq!(
             config.max_input_tokens.get(),
@@ -1101,6 +1133,8 @@ mod tests {
             MAX_OUTPUT,
             "should clamp output tokens to hard limit"
         );
+        assert!(warnings.iter().any(|w| w.contains("max_input_tokens")));
+        assert!(warnings.iter().any(|w| w.contains("max_output_tokens")));
     }
 
     #[test]

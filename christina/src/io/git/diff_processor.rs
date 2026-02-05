@@ -267,7 +267,7 @@ impl DiffProcessor {
         }
 
         if !has_text_content {
-            return Err(DiffError::NoContent);
+            return Ok(chunks);
         }
 
         Ok(chunks)
@@ -537,12 +537,14 @@ mod tests {
     }
 
     #[test]
-    fn process_safe_all_binary_files_returns_error() {
+    fn process_safe_all_binary_files_returns_chunks() {
         let processor = create_processor(1000);
         let diff = "diff --git a/test.bin b/test.bin\n\0binary\n";
         let result = processor.process_safe(diff);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), DiffError::NoContent));
+        assert!(result.is_ok());
+        let chunks = result.unwrap();
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
     }
 
     #[test]

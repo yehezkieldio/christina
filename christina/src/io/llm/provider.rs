@@ -15,6 +15,8 @@ use christina_core::{
 
 use crate::io::llm::{azure, groq, openai};
 
+// NOTE: AtomicU64::fetch_add wraps on overflow. Wraparound is acceptable here
+// because IDs are used for logging/correlation, not long-term uniqueness.
 static REQUEST_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Parse Azure OpenAI endpoint URL and extract api_version and deployment_id if present.

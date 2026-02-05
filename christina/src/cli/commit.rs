@@ -137,7 +137,6 @@ async fn generate_commit(diff: String, context: Option<String>) -> Result<String
     let generation_result =
         generate_commit_message_with_progress(config, diff, repo_path, progress_tx, context).await;
 
-    progress_handle.abort();
     let _ = progress_handle.await;
     spinner.finish_and_clear();
 
