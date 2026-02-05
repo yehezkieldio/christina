@@ -156,12 +156,36 @@ pub fn split_recursive(
 /// WHY Path methods over string ends_with: Path::file_name() and Path::extension()
 /// properly handle UTF-8 encoded paths, including Unicode-normalized filenames.
 /// String ends_with is naive and can break with composed characters or multi-byte sequences.
+/// Check if a file should have content limit applied based on ignore patterns.
+///
+/// Pattern matching rules:
+/// - Exact filename: "Cargo.lock" matches only files named "Cargo.lock"
+/// - Simple glob: "*.lock" matches any file ending with ".lock"
+/// - Path suffix: "vendor/" matches any file under a vendor directory
+///
+/// WHY not true glob: Most ignore patterns are simple (lockfiles, vendor dirs).
+/// Supporting `*` prefix and suffix patterns covers >95% of use cases without
+/// adding glob crate dependency. Full glob (e.g., `**/*.lock`) can be added later.
 fn should_limit_file(path: &FilePath, ignore_patterns: &[String]) -> bool {
     let path_ref: &std::path::Path = path.as_ref();
+    let Some(path_str) = path_ref.to_str() else {
+        return false;
+    };
+
     ignore_patterns.iter().any(|pattern| {
-        path_ref
-            .to_str()
-            .is_some_and(|path_str| path_str.ends_with(pattern))
+        if let Some(suffix) = pattern.strip_prefix('*') {
+            // Suffix wildcard: "*.lock" matches "Cargo.lock"
+            path_str.ends_with(suffix)
+        } else if pattern.ends_with('/') || pattern.ends_with('\\') {
+            // Directory prefix: "vendor/" matches "vendor/pkg/file.go"
+            path_str.contains(pattern)
+        } else {
+            // Exact filename match: "Cargo.lock" matches only "Cargo.lock", not "unlock.txt"
+            path_ref
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|filename| filename == pattern)
+        }
     })
 }
 
@@ -852,5 +876,67 @@ mod tests {
             let truncated = truncate_to_token_limit(&content, TokenCount::new_at_least_one(100), &tokenizer);
             prop_assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
         }
+    }
+
+    #[test]
+    fn should_limit_file_exact_filename_match() {
+        let patterns = vec!["Cargo.lock".to_string(), "package.json".to_string()];
+        
+        // Should match exact filename
+        assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
+        assert!(should_limit_file(&FilePath::from("path/to/Cargo.lock"), &patterns));
+        assert!(should_limit_file(&FilePath::from("package.json"), &patterns));
+        
+        // Should NOT match partial matches
+        assert!(!should_limit_file(&FilePath::from("unlock.txt"), &patterns));
+        assert!(!should_limit_file(&FilePath::from("Cargo.lock.bak"), &patterns));
+        assert!(!should_limit_file(&FilePath::from("my-package.json"), &patterns));
+    }
+
+    #[test]
+    fn should_limit_file_wildcard_pattern() {
+        let patterns = vec!["*.lock".to_string(), "*.min.js".to_string()];
+        
+        // Should match wildcard suffix
+        assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
+        assert!(should_limit_file(&FilePath::from("yarn.lock"), &patterns));
+        assert!(should_limit_file(&FilePath::from("app.min.js"), &patterns));
+        
+        // Should NOT match if suffix doesn't match
+        assert!(!should_limit_file(&FilePath::from("unlock.txt"), &patterns));
+        assert!(!should_limit_file(&FilePath::from("app.js"), &patterns));
+    }
+
+    #[test]
+    fn should_limit_file_directory_pattern() {
+        let patterns = vec!["vendor/".to_string(), "node_modules/".to_string()];
+        
+        // Should match directory prefix
+        assert!(should_limit_file(&FilePath::from("vendor/package/file.go"), &patterns));
+        assert!(should_limit_file(&FilePath::from("node_modules/react/index.js"), &patterns));
+        
+        // Should NOT match if not in directory
+        assert!(!should_limit_file(&FilePath::from("src/vendor.go"), &patterns));
+        assert!(!should_limit_file(&FilePath::from("my_node_modules.txt"), &patterns));
+    }
+
+    #[test]
+    fn should_limit_file_mixed_patterns() {
+        let patterns = vec![
+            "Cargo.lock".to_string(),
+            "*.min.js".to_string(),
+            "dist/".to_string(),
+        ];
+        
+        assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
+        assert!(should_limit_file(&FilePath::from("app.min.js"), &patterns));
+        assert!(should_limit_file(&FilePath::from("dist/bundle.js"), &patterns));
+        assert!(!should_limit_file(&FilePath::from("src/main.rs"), &patterns));
+    }
+
+    #[test]
+    fn should_limit_file_empty_patterns() {
+        let patterns: Vec<String> = vec![];
+        assert!(!should_limit_file(&FilePath::from("any/file.txt"), &patterns));
     }
 }

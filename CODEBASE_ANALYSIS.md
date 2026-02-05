@@ -138,15 +138,10 @@
 ### B-002: should_limit_file Uses ends_with on Patterns
 
 **Finding**: In chunking.rs line 163, ignore patterns are matched via `path_str.ends_with(pattern)`. This means pattern "lock" matches "package-lock" but also "unlock.txt".
-**Status**: Open
-**Rationale**: Pattern matching is imprecise. Users expect glob-style matching.
+**Status**: Resolved
+**Resolution**: Implemented precise pattern matching without adding dependencies. Supports three pattern types: (1) Exact filename match - "Cargo.lock" matches only files named "Cargo.lock", not "unlock.txt"; (2) Wildcard suffix - "*.lock" matches any file ending with ".lock"; (3) Directory prefix - "vendor/" matches any file under vendor directory. Added comprehensive tests covering all pattern types and edge cases. Pattern matching is now precise and intuitive.
 
 **Assumptions**: Current patterns are full filenames like "Cargo.lock".
-
-**Approach**:
-1. Switch to glob pattern matching (the glob crate is available)
-2. Or document that patterns are suffix matches, not glob patterns
-3. Validate patterns at config load time
 
 ---
 
