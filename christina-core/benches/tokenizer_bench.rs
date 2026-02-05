@@ -20,12 +20,15 @@ use url as _;
 struct MockTokenizer;
 
 impl Tokenizer for MockTokenizer {
-    fn count_tokens(&self, text: &str) -> TokenCount {
+    fn count_tokens_exact(&self, text: &str) -> u32 {
         if text.is_empty() {
-            return TokenCount::new_at_least_one(0);
+            return 0;
         }
-        let count = text.split_whitespace().count();
-        TokenCount::new_at_least_one(count as u32)
+        text.split_whitespace().count() as u32
+    }
+
+    fn count_tokens(&self, text: &str) -> TokenCount {
+        TokenCount::new_at_least_one(self.count_tokens_exact(text))
     }
 
     fn encoding_name(&self) -> &str {

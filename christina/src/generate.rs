@@ -13,7 +13,8 @@ use crate::io::llm::tokenizer::get_tokenizer;
 use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
 use christina_core::ProviderProfile;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
-use christina_core::types::TokenCount;
+use christina_core::types::{ProviderKind, TokenCount};
+use crate::config::settings::UsageTier;
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -75,13 +76,25 @@ pub async fn generate_commit_message_with_progress(
 }
 
 async fn generate_commit_message_with_progress_impl(
-    config: Config,
+    mut config: Config,
     diff: String,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
 ) -> Result<GenerationResult> {
+    if config.usage_tier == UsageTier::Free && config.model_provider == ProviderKind::Groq {
+        let warnings = apply_free_tier_limits(&mut config);
+        for warning in warnings {
+            warn!("{}", warning);
+            eprintln!("Warning: {}", warning);
+        }
+    } else if config.usage_tier == UsageTier::Free {
+        warn!(
+            "usage_tier=free is configured but provider is {}, free-tier limits not applied",
+            config.model_provider
+        );
+    }
     // Validate configuration before starting progress events
     let api_key = match &config.api_key {
         Some(key) if !key.is_empty() => key.clone(),
@@ -273,6 +286,47 @@ async fn generate_commit_message_with_progress_impl(
     }
 
     Ok(result)
+}
+
+fn apply_free_tier_limits(config: &mut Config) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let limits = &config.free_tier;
+
+    if config.max_input_tokens > limits.max_input_tokens {
+        warnings.push(format!(
+            "Free-tier mode: max_input_tokens reduced from {} to {}",
+            config.max_input_tokens.get(),
+            limits.max_input_tokens.get()
+        ));
+        config.max_input_tokens = limits.max_input_tokens;
+    }
+
+    if config.max_output_tokens > limits.max_output_tokens {
+        warnings.push(format!(
+            "Free-tier mode: max_output_tokens reduced from {} to {}",
+            config.max_output_tokens.get(),
+            limits.max_output_tokens.get()
+        ));
+        config.max_output_tokens = limits.max_output_tokens;
+    }
+
+    if config.max_concurrent_requests > limits.max_concurrent_requests {
+        warnings.push(format!(
+            "Free-tier mode: max_concurrent_requests reduced from {} to {}",
+            config.max_concurrent_requests, limits.max_concurrent_requests
+        ));
+        config.max_concurrent_requests = limits.max_concurrent_requests;
+    }
+
+    if config.commit_history_depth > limits.commit_history_depth {
+        warnings.push(format!(
+            "Free-tier mode: commit_history_depth reduced from {} to {}",
+            config.commit_history_depth, limits.commit_history_depth
+        ));
+        config.commit_history_depth = limits.commit_history_depth;
+    }
+
+    warnings
 }
 
 #[derive(Debug, Clone)]

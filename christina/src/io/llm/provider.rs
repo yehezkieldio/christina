@@ -615,7 +615,7 @@ mod tests {
         let responses = vec![
             Ok("first".to_string()),
             Ok("second".to_string()),
-            Err(CompletionError::RateLimited),
+            Err(CompletionError::RateLimited { retry_after: None }),
         ];
         let provider = Provider::mock_sequence(responses);
         let messages = vec![ChatMessage::user("test")];
@@ -699,7 +699,7 @@ mod tests {
     async fn test_provider_error_sequence_mixed() {
         let provider = Provider::mock_sequence(vec![
             Ok("success".to_string()),
-            Err(CompletionError::RateLimited),
+            Err(CompletionError::RateLimited { retry_after: None }),
             Ok("recovered".to_string()),
             Err(CompletionError::Timeout),
         ]);
@@ -708,7 +708,7 @@ mod tests {
         assert_eq!(provider.generate(&messages).await.unwrap(), "success");
         assert!(matches!(
             provider.generate(&messages).await,
-            Err(CompletionError::RateLimited)
+            Err(CompletionError::RateLimited { .. })
         ));
         assert_eq!(provider.generate(&messages).await.unwrap(), "recovered");
         assert!(matches!(

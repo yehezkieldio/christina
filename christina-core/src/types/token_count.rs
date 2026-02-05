@@ -36,12 +36,24 @@ impl TokenCount {
     /// you need a guaranteed non-zero value and treating empty input as "at least
     /// one token" is acceptable (e.g., for limits where zero would be nonsensical).
     ///
+    /// For exact counts that may be zero (e.g., empty strings), use
+    /// [`Self::zero_or_at_least_one`] or the tokenizer's `count_tokens_exact()`
+    /// method to preserve the zero value before converting to a TokenCount.
+    ///
     /// For cases where zero should remain distinct (e.g., counting actual tokens
     /// in empty text), use [`Self::new`] which returns `Option<TokenCount>`.
     pub fn new_at_least_one(value: u32) -> Self {
         NonZeroU32::new(value)
             .map(Self)
             .unwrap_or(Self(NonZeroU32::MIN))
+    }
+
+    /// Creates a TokenCount that is zero-aware.
+    ///
+    /// Returns `None` when the input is 0, allowing callers to preserve the
+    /// distinction between empty content and non-zero token counts.
+    pub fn zero_or_at_least_one(value: u32) -> Option<Self> {
+        Self::new(value)
     }
 
     pub fn try_from_usize(value: usize) -> Result<Self, String> {
@@ -105,6 +117,12 @@ mod tests {
     fn token_count_new_at_least_one() {
         assert_eq!(TokenCount::new_at_least_one(0).get(), 1);
         assert_eq!(TokenCount::new_at_least_one(50).get(), 50);
+    }
+
+    #[test]
+    fn token_count_zero_or_at_least_one() {
+        assert!(TokenCount::zero_or_at_least_one(0).is_none());
+        assert_eq!(TokenCount::zero_or_at_least_one(5).unwrap().get(), 5);
     }
 
     #[test]

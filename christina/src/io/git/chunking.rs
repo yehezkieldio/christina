@@ -835,11 +835,15 @@ mod tests {
         struct FailingDecodeTokenizer;
 
         impl Tokenizer for FailingDecodeTokenizer {
-            fn count_tokens(&self, text: &str) -> TokenCount {
+            fn count_tokens_exact(&self, text: &str) -> u32 {
                 if text.is_empty() {
-                    return TokenCount::new_at_least_one(0);
+                    return 0;
                 }
-                TokenCount::new_at_least_one(text.split_whitespace().count() as u32)
+                text.split_whitespace().count() as u32
+            }
+
+            fn count_tokens(&self, text: &str) -> TokenCount {
+                TokenCount::new_at_least_one(self.count_tokens_exact(text))
             }
 
             fn encoding_name(&self) -> &str {
@@ -870,9 +874,13 @@ mod tests {
         struct FailingDecodeTokenizer;
 
         impl Tokenizer for FailingDecodeTokenizer {
-            fn count_tokens(&self, text: &str) -> TokenCount {
+            fn count_tokens_exact(&self, text: &str) -> u32 {
                 // Simulate realistic token counts (roughly 4 chars per token)
-                TokenCount::new_at_least_one((text.len() / 4).max(1) as u32)
+                (text.len() / 4) as u32
+            }
+
+            fn count_tokens(&self, text: &str) -> TokenCount {
+                TokenCount::new_at_least_one(self.count_tokens_exact(text))
             }
 
             fn encoding_name(&self) -> &str {

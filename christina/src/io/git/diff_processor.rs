@@ -287,8 +287,12 @@ mod tests {
     struct SimpleTokenizer;
 
     impl Tokenizer for SimpleTokenizer {
+        fn count_tokens_exact(&self, text: &str) -> u32 {
+            (text.len() / 4) as u32
+        }
+
         fn count_tokens(&self, text: &str) -> TokenCount {
-            TokenCount::new_at_least_one((text.len() / 4).max(1) as u32)
+            TokenCount::new_at_least_one(self.count_tokens_exact(text))
         }
 
         fn encoding_name(&self) -> &str {

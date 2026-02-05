@@ -46,6 +46,19 @@
       "default": false,
       "type": "boolean"
     },
+    "usage_tier": {
+      "description": "Usage tier for rate-limit-aware defaults",
+      "default": "standard",
+      "type": "string",
+      "enum": [
+        "standard",
+        "free"
+      ]
+    },
+    "free_tier": {
+      "description": "Free-tier limits applied when usage_tier is set to free",
+      "$ref": "#/definitions/FreeTierLimits"
+    },
     "max_partial_failure_rate": {
       "description": "Maximum allowed fraction of chunk failures before aborting map phase",
       "default": 0.1,
@@ -237,6 +250,29 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 1.0
+    },
+    "FreeTierLimits": {
+      "type": "object",
+      "properties": {
+        "max_input_tokens": {
+          "$ref": "#/definitions/TokenCount",
+          "default": 16000
+        },
+        "max_output_tokens": {
+          "$ref": "#/definitions/TokenCount",
+          "default": 512
+        },
+        "max_concurrent_requests": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1
+        },
+        "commit_history_depth": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 0
+        }
+      }
     }
   }
 }

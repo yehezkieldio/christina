@@ -1,7 +1,15 @@
 /// Trait for token counting and encoding operations.
 pub trait Tokenizer: Send + Sync {
     /// Count the number of tokens in the given text.
-    fn count_tokens(&self, text: &str) -> crate::types::TokenCount;
+    ///
+    /// Note: This clamps empty input to at least one token. Use
+    /// [`Self::count_tokens_exact`] when you need to preserve zero counts.
+    fn count_tokens(&self, text: &str) -> crate::types::TokenCount {
+        crate::types::TokenCount::new_at_least_one(self.count_tokens_exact(text))
+    }
+
+    /// Count the exact number of tokens in the given text (can be zero).
+    fn count_tokens_exact(&self, text: &str) -> u32;
 
     /// Get the name of the encoding used by this tokenizer.
     fn encoding_name(&self) -> &str;
@@ -81,12 +89,11 @@ mod tests {
     struct MockTokenizer;
 
     impl Tokenizer for MockTokenizer {
-        fn count_tokens(&self, text: &str) -> crate::types::TokenCount {
+        fn count_tokens_exact(&self, text: &str) -> u32 {
             if text.is_empty() {
-                return crate::types::TokenCount::new_at_least_one(0);
+                return 0;
             }
-            let count = text.split_whitespace().count();
-            crate::types::TokenCount::new_at_least_one(count as u32)
+            text.split_whitespace().count() as u32
         }
 
         fn encoding_name(&self) -> &str {
@@ -136,6 +143,7 @@ mod tests {
     #[test]
     fn mock_tokenizer_count_tokens_empty_string() {
         let tokenizer = MockTokenizer;
+        assert_eq!(tokenizer.count_tokens_exact(""), 0);
         assert_eq!(
             tokenizer.count_tokens(""),
             crate::types::TokenCount::new_at_least_one(0)
@@ -145,6 +153,7 @@ mod tests {
     #[test]
     fn mock_tokenizer_count_tokens_only_whitespace() {
         let tokenizer = MockTokenizer;
+        assert_eq!(tokenizer.count_tokens_exact("   \t  \n  "), 0);
         assert_eq!(
             tokenizer.count_tokens("   \t  \n  "),
             crate::types::TokenCount::new_at_least_one(0)

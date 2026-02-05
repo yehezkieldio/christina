@@ -13,6 +13,7 @@
 //! automatic From conversions to reduce boilerplate.
 
 use std::fmt;
+use std::time::Duration;
 use thiserror::Error;
 
 /// Trait for errors that can be retried
@@ -93,7 +94,7 @@ pub enum CompletionError {
 
     /// Rate limit exceeded
     #[error("Rate limited")]
-    RateLimited,
+    RateLimited { retry_after: Option<Duration> },
 
     /// Request timeout
     #[error("Request timed out")]
@@ -121,7 +122,7 @@ impl CompletionError {
     pub fn is_transient(&self) -> bool {
         matches!(
             self,
-            CompletionError::RateLimited
+            CompletionError::RateLimited { .. }
                 | CompletionError::Timeout
                 | CompletionError::ServerError(_)
                 | CompletionError::NetworkError(_)
@@ -133,9 +134,17 @@ impl CompletionError {
         matches!(
             self,
             CompletionError::Unauthorized(_)
-                | CompletionError::RateLimited
+                | CompletionError::RateLimited { .. }
                 | CompletionError::ServerError(_)
         )
+    }
+
+    /// Returns Retry-After duration when available.
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            CompletionError::RateLimited { retry_after } => *retry_after,
+            _ => None,
+        }
     }
 
     /// Parse an API error message to create appropriate error variant.
@@ -165,7 +174,8 @@ impl CompletionError {
             || msg_lower.contains("rate limit")
             || msg_lower.contains("quota")
         {
-            CompletionError::RateLimited
+            let retry_after = parse_retry_after_seconds(msg);
+            CompletionError::RateLimited { retry_after }
         }
         // Request validation and resource not found errors (permanent)
         else if msg_lower.contains("400")
@@ -223,12 +233,36 @@ impl IsTransient for CompletionError {
     fn is_transient(&self) -> bool {
         matches!(
             self,
-            CompletionError::RateLimited
+            CompletionError::RateLimited { .. }
                 | CompletionError::Timeout
                 | CompletionError::ServerError(_)
                 | CompletionError::NetworkError(_)
         )
     }
+}
+
+fn parse_retry_after_seconds(msg: &str) -> Option<Duration> {
+    let lower = msg.to_lowercase();
+    let markers = ["retry-after", "retry after", "retry_after"];
+
+    for marker in markers {
+        if let Some(index) = lower.find(marker) {
+            let rest = &lower[index + marker.len()..];
+            let digits: String = rest
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+
+            if !digits.is_empty()
+                && let Ok(seconds) = digits.parse::<u64>()
+            {
+                return Some(Duration::from_secs(seconds));
+            }
+        }
+    }
+
+    None
 }
 
 /// Error type for LLM provider configuration
@@ -406,7 +440,7 @@ mod tests {
     #[test]
     fn completion_error_is_transient() {
         assert!(CompletionError::Timeout.is_transient());
-        assert!(CompletionError::RateLimited.is_transient());
+        assert!(CompletionError::RateLimited { retry_after: None }.is_transient());
         assert!(CompletionError::ServerError("test".to_string()).is_transient());
         assert!(CompletionError::NetworkError("test".to_string()).is_transient());
 
@@ -420,7 +454,7 @@ mod tests {
         assert!(matches!(err, CompletionError::Unauthorized(_)));
 
         let err = CompletionError::from_api_error("rate limit exceeded");
-        assert!(matches!(err, CompletionError::RateLimited));
+        assert!(matches!(err, CompletionError::RateLimited { .. }));
 
         let err = CompletionError::from_api_error("Request timeout");
         assert!(matches!(err, CompletionError::Timeout));
@@ -500,7 +534,7 @@ mod tests {
     #[test]
     fn completion_error_is_provider_error() {
         assert!(CompletionError::Unauthorized("test".to_string()).is_provider_error());
-        assert!(CompletionError::RateLimited.is_provider_error());
+        assert!(CompletionError::RateLimited { retry_after: None }.is_provider_error());
         assert!(CompletionError::ServerError("test".to_string()).is_provider_error());
 
         assert!(!CompletionError::Timeout.is_provider_error());
@@ -522,13 +556,24 @@ mod tests {
     #[test]
     fn completion_error_from_api_error_rate_limit_variations() {
         let err = CompletionError::from_api_error("429 Too Many Requests");
-        assert!(matches!(err, CompletionError::RateLimited));
+        assert!(matches!(err, CompletionError::RateLimited { .. }));
 
         let err = CompletionError::from_api_error("Rate limit exceeded");
-        assert!(matches!(err, CompletionError::RateLimited));
+        assert!(matches!(err, CompletionError::RateLimited { .. }));
 
         let err = CompletionError::from_api_error("Quota exceeded");
-        assert!(matches!(err, CompletionError::RateLimited));
+        assert!(matches!(err, CompletionError::RateLimited { .. }));
+    }
+
+    #[test]
+    fn completion_error_rate_limit_parses_retry_after() {
+        let err = CompletionError::from_api_error("429 Too Many Requests; Retry-After: 12");
+        match err {
+            CompletionError::RateLimited { retry_after } => {
+                assert_eq!(retry_after, Some(Duration::from_secs(12)));
+            }
+            _ => panic!("Expected rate limited error"),
+        }
     }
 
     #[test]

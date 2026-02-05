@@ -1,6 +1,9 @@
 use std::num::NonZeroUsize;
 use std::sync::{Arc, OnceLock};
 
+#[cfg(test)]
+use std::cell::RefCell;
+
 use ahash::RandomState;
 use christina_core::{
     Tokenizer,
@@ -15,12 +18,34 @@ pub type Result<T> = TokenizerResult<T>;
 
 static TOKENIZER: OnceLock<Arc<dyn Tokenizer>> = OnceLock::new();
 
+#[cfg(test)]
+thread_local! {
+    static TEST_TOKENIZER: RefCell<Option<Arc<dyn Tokenizer>>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+pub fn set_test_tokenizer(tokenizer: Option<Arc<dyn Tokenizer>>) {
+    TEST_TOKENIZER.with(|cell| {
+        *cell.borrow_mut() = tokenizer;
+    });
+}
+
+#[cfg(test)]
+fn get_test_tokenizer() -> Option<Arc<dyn Tokenizer>> {
+    TEST_TOKENIZER.with(|cell| cell.borrow().clone())
+}
+
 /// Get the global tokenizer service instance.
 ///
 /// This initializes the tokenizer on first call and caches successful results.
 /// If the primary tokenizer fails to initialize, a whitespace-based fallback is
 /// installed and a warning is logged.
 pub fn get_tokenizer() -> Arc<dyn Tokenizer> {
+    #[cfg(test)]
+    if let Some(tokenizer) = get_test_tokenizer() {
+        return tokenizer;
+    }
+
     match TOKENIZER.get() {
         Some(cached) => Arc::clone(cached),
         None => {
@@ -53,9 +78,8 @@ pub fn get_tokenizer() -> Arc<dyn Tokenizer> {
 struct WhitespaceTokenizer;
 
 impl Tokenizer for WhitespaceTokenizer {
-    fn count_tokens(&self, text: &str) -> TokenCount {
-        let count = text.split_whitespace().count() as u32;
-        TokenCount::new_at_least_one(count)
+    fn count_tokens_exact(&self, text: &str) -> u32 {
+        text.split_whitespace().count() as u32
     }
 
     fn encoding_name(&self) -> &str {
@@ -80,7 +104,7 @@ const TOKEN_CACHE_CAPACITY: usize = 10_000;
 pub struct TokenizerService {
     bpe: CoreBPE,
     /// LRU cache for token counts, keyed by content hash.
-    token_cache: Cache<u64, TokenCount>,
+    token_cache: Cache<u64, u32>,
     hash_builder: RandomState,
 }
 
@@ -102,7 +126,7 @@ impl TokenizerService {
     }
 
     #[inline]
-    pub fn count_tokens(&self, text: &str) -> TokenCount {
+    pub fn count_tokens_exact(&self, text: &str) -> u32 {
         // Skip cache for very short strings (cache overhead > tokenization cost)
         // and for very large strings (hashing cost > tokenization cost, unlikely to repeat)
         //
@@ -115,13 +139,13 @@ impl TokenizerService {
         // is low. Bypass cache to avoid hashing overhead.
         if text.len() < 50 || text.len() > 100_000 {
             let count = self.bpe.encode_ordinary(text).len();
-            return TokenCount::new_at_least_one(count as u32);
+            return count as u32;
         }
 
         let hash = self.hash_builder.hash_one(text.as_bytes());
         self.token_cache.get_with(hash, || {
             let count = self.bpe.encode_ordinary(text).len();
-            TokenCount::new_at_least_one(count as u32)
+            count as u32
         })
     }
 
@@ -331,8 +355,8 @@ impl Default for TokenBudget {
 }
 
 impl Tokenizer for TokenizerService {
-    fn count_tokens(&self, text: &str) -> TokenCount {
-        self.count_tokens(text)
+    fn count_tokens_exact(&self, text: &str) -> u32 {
+        TokenizerService::count_tokens_exact(self, text)
     }
 
     fn encoding_name(&self) -> &str {
@@ -356,6 +380,8 @@ impl Tokenizer for TokenizerService {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::get_tokenizer;
+    #[cfg(test)]
+    use super::set_test_tokenizer;
     use super::*;
 
     #[test]
@@ -396,6 +422,42 @@ mod tests {
             tokenizer.slice_to_token_limit("", TokenCount::new_at_least_one(1)),
             ""
         );
+    }
+
+    #[test]
+    fn tokenizer_override_for_tests() {
+        struct TestTokenizer;
+
+        impl Tokenizer for TestTokenizer {
+            fn count_tokens_exact(&self, _text: &str) -> u32 {
+                7
+            }
+
+            fn encoding_name(&self) -> &str {
+                "test-tokenizer"
+            }
+
+            fn encode(&self, text: &str) -> Vec<u32> {
+                text.chars().map(|c| c as u32).collect()
+            }
+
+            fn decode(&self, tokens: &[u32]) -> Option<String> {
+                tokens
+                    .iter()
+                    .filter_map(|&token| char::from_u32(token))
+                    .collect::<String>()
+                    .into()
+            }
+        }
+
+        let override_tokenizer: Arc<dyn Tokenizer> = Arc::new(TestTokenizer);
+        set_test_tokenizer(Some(Arc::clone(&override_tokenizer)));
+
+        let tokenizer = get_tokenizer();
+        assert!(Arc::ptr_eq(&tokenizer, &override_tokenizer));
+        assert_eq!(tokenizer.count_tokens_exact("anything"), 7);
+
+        set_test_tokenizer(None);
     }
 
     #[test]

@@ -142,13 +142,14 @@ pub struct DeterministicTokenizer;
 impl Tokenizer for DeterministicTokenizer {
     /// Counts tokens by splitting on whitespace.
     ///
-    /// Empty strings and whitespace-only strings return a token count of 0.
+    /// Empty strings and whitespace-only strings return a token count of 0 via
+    /// `count_tokens_exact`, while `count_tokens` clamps to at least one token.
+    fn count_tokens_exact(&self, text: &str) -> u32 {
+        text.split_whitespace().count() as u32
+    }
+
     fn count_tokens(&self, text: &str) -> TokenCount {
-        if text.is_empty() {
-            return TokenCount::new_at_least_one(0);
-        }
-        let count = text.split_whitespace().count();
-        TokenCount::new_at_least_one(count as u32)
+        TokenCount::new_at_least_one(self.count_tokens_exact(text))
     }
 
     fn encoding_name(&self) -> &str {
@@ -305,7 +306,12 @@ mod tests {
             TokenCount::new(2).unwrap()
         );
         assert_eq!(tokenizer.count_tokens("one"), TokenCount::new(1).unwrap());
+        assert_eq!(tokenizer.count_tokens_exact(""), 0);
         assert_eq!(tokenizer.count_tokens(""), TokenCount::new_at_least_one(0));
+        assert_eq!(
+            tokenizer.count_tokens_exact("   \t  \n  "),
+            0
+        );
         assert_eq!(
             tokenizer.count_tokens("   \t  \n  "),
             TokenCount::new_at_least_one(0)
@@ -641,12 +647,15 @@ impl Default for MockTokenizer {
 }
 
 impl Tokenizer for MockTokenizer {
-    fn count_tokens(&self, text: &str) -> TokenCount {
-        let count = match self.fixed_count {
+    fn count_tokens_exact(&self, text: &str) -> u32 {
+        match self.fixed_count {
             Some(fixed) => fixed,
             None => text.len() as u32,
-        };
-        TokenCount::new_at_least_one(count)
+        }
+    }
+
+    fn count_tokens(&self, text: &str) -> TokenCount {
+        TokenCount::new_at_least_one(self.count_tokens_exact(text))
     }
 
     fn encoding_name(&self) -> &str {

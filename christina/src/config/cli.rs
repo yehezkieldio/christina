@@ -121,6 +121,29 @@ fn handle_list_with_config(config: &Config) {
         "  prompt_failure_rate_threshold: {}",
         config.prompt_failure_rate_threshold
     );
+    println!(
+        "  usage_tier: {}",
+        match config.usage_tier {
+            crate::config::settings::UsageTier::Standard => "standard",
+            crate::config::settings::UsageTier::Free => "free",
+        }
+    );
+    println!(
+        "  free_tier_max_input_tokens: {}",
+        config.free_tier.max_input_tokens.get()
+    );
+    println!(
+        "  free_tier_max_output_tokens: {}",
+        config.free_tier.max_output_tokens.get()
+    );
+    println!(
+        "  free_tier_max_concurrent_requests: {}",
+        config.free_tier.max_concurrent_requests
+    );
+    println!(
+        "  free_tier_commit_history_depth: {}",
+        config.free_tier.commit_history_depth
+    );
     println!();
     println!(
         "  Active profile: {}",

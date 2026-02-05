@@ -5,7 +5,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tracing;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Errors that can occur during secret resolution
 #[derive(Debug, Error)]
@@ -293,7 +293,7 @@ impl SecretRef {
 ///
 /// # Security
 ///
-/// `SecretString` implements custom `Drop` to securely clear sensitive data from
+/// `SecretString` uses `ZeroizeOnDrop` to securely clear sensitive data from
 /// memory when dropped. The inner `String` buffer is zeroed before deallocation,
 /// reducing the window for secrets to leak through memory dumps, swap files, or
 /// allocator reuse.
@@ -301,6 +301,7 @@ impl SecretRef {
 /// Note: This provides defense-in-depth but is not foolproof. Secrets may still be
 /// copied during normal operations (e.g., cloning, serialization). Minimize secret
 /// lifetime and avoid unnecessary copies.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SecretString(String);
 
 impl SecretString {
@@ -325,17 +326,6 @@ impl Clone for SecretString {
     }
 }
 
-#[allow(unsafe_code)]
-impl Drop for SecretString {
-    fn drop(&mut self) {
-        // Zeroize the String's internal buffer before dropping
-        // SAFETY: We're about to drop self anyway, mutating is safe
-        unsafe {
-            let bytes = self.0.as_mut_vec();
-            bytes.zeroize();
-        }
-    }
-}
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
@@ -585,6 +575,17 @@ mod tests {
     fn secret_string_new() {
         let secret = SecretString::new("test".to_string());
         assert_eq!(secret.expose_secret(), "test");
+    }
+
+    #[test]
+    fn secret_string_zeroize_clears_bytes() {
+        let mut secret = SecretString::new("my_secret".to_string());
+        secret.zeroize();
+        assert!(secret
+            .expose_secret()
+            .as_bytes()
+            .iter()
+            .all(|byte| *byte == 0));
     }
 
     #[test]

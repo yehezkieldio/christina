@@ -28,6 +28,39 @@ fn default_lockfile_token_limit() -> TokenCount {
     TokenCount::new_at_least_one(100)
 }
 
+const FREE_TIER_MAX_INPUT_TOKENS: u32 = 16_000;
+const FREE_TIER_MAX_OUTPUT_TOKENS: u32 = 512;
+const FREE_TIER_MAX_CONCURRENT_REQUESTS: usize = 1;
+const FREE_TIER_COMMIT_HISTORY_DEPTH: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum UsageTier {
+    #[default]
+    Standard,
+    Free,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FreeTierLimits {
+    pub max_input_tokens: TokenCount,
+    pub max_output_tokens: TokenCount,
+    pub max_concurrent_requests: usize,
+    pub commit_history_depth: usize,
+}
+
+impl Default for FreeTierLimits {
+    fn default() -> Self {
+        Self {
+            max_input_tokens: TokenCount::new_at_least_one(FREE_TIER_MAX_INPUT_TOKENS),
+            max_output_tokens: TokenCount::new_at_least_one(FREE_TIER_MAX_OUTPUT_TOKENS),
+            max_concurrent_requests: FREE_TIER_MAX_CONCURRENT_REQUESTS,
+            commit_history_depth: FREE_TIER_COMMIT_HISTORY_DEPTH,
+        }
+    }
+}
+
 fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {
     let mut warnings = Vec::new();
 
@@ -110,6 +143,14 @@ pub struct Config {
     #[serde(default = "default_lockfile_token_limit")]
     pub lockfile_token_limit: TokenCount,
 
+    /// Usage tier for rate-limit-aware defaults (standard or free)
+    #[serde(default)]
+    pub usage_tier: UsageTier,
+
+    /// Free-tier limits applied when usage_tier is set to free
+    #[serde(default)]
+    pub free_tier: FreeTierLimits,
+
     /// Provider profiles for quick switching
     #[serde(default)]
     pub profiles: Profiles,
@@ -172,6 +213,8 @@ impl Default for Config {
                 "Gemfile.lock".to_string(),
             ],
             lockfile_token_limit: default_lockfile_token_limit(),
+            usage_tier: UsageTier::Standard,
+            free_tier: FreeTierLimits::default(),
             profiles: Profiles::new(),
             diff: DiffConfig::default(),
             commit_message_max_length: None,
@@ -363,6 +406,44 @@ impl Config {
             ));
         }
 
+        if self.free_tier.max_input_tokens > max_input {
+            warnings.push(format!(
+                "free_tier.max_input_tokens clamped from {} to {}",
+                self.free_tier.max_input_tokens.get(),
+                max_input.get()
+            ));
+            self.free_tier.max_input_tokens = max_input;
+        }
+
+        if self.free_tier.max_output_tokens > max_output {
+            warnings.push(format!(
+                "free_tier.max_output_tokens clamped from {} to {}",
+                self.free_tier.max_output_tokens.get(),
+                max_output.get()
+            ));
+            self.free_tier.max_output_tokens = max_output;
+        }
+
+        let original_free_concurrency = self.free_tier.max_concurrent_requests;
+        self.free_tier.max_concurrent_requests =
+            self.free_tier.max_concurrent_requests.clamp(1, 20);
+        if self.free_tier.max_concurrent_requests != original_free_concurrency {
+            warnings.push(format!(
+                "free_tier.max_concurrent_requests clamped from {} to {}",
+                original_free_concurrency, self.free_tier.max_concurrent_requests
+            ));
+        }
+
+        let original_free_history = self.free_tier.commit_history_depth;
+        self.free_tier.commit_history_depth =
+            self.free_tier.commit_history_depth.clamp(0, 50);
+        if self.free_tier.commit_history_depth != original_free_history {
+            warnings.push(format!(
+                "free_tier.commit_history_depth clamped from {} to {}",
+                original_free_history, self.free_tier.commit_history_depth
+            ));
+        }
+
         let original_failure_rate = self.max_partial_failure_rate;
         let (clamped_failure_rate, mut failure_warnings) =
             clamp_partial_failure_rate(original_failure_rate);
@@ -435,6 +516,18 @@ impl Config {
             "azure_deployment_id" => self.azure_deployment_id.clone(),
             "ignore_files" => Some(self.ignore_files.join(",")),
             "lockfile_token_limit" => Some(self.lockfile_token_limit.get().to_string()),
+            "usage_tier" => Some(match self.usage_tier {
+                UsageTier::Standard => "standard".to_string(),
+                UsageTier::Free => "free".to_string(),
+            }),
+            "free_tier_max_input_tokens" => Some(self.free_tier.max_input_tokens.get().to_string()),
+            "free_tier_max_output_tokens" => Some(self.free_tier.max_output_tokens.get().to_string()),
+            "free_tier_max_concurrent_requests" => {
+                Some(self.free_tier.max_concurrent_requests.to_string())
+            }
+            "free_tier_commit_history_depth" => {
+                Some(self.free_tier.commit_history_depth.to_string())
+            }
             "commit_message_max_length" => self.commit_message_max_length.map(|v| v.to_string()),
             "commit_message_validation_mode" => Some(match self.commit_message_validation_mode {
                 ValidationMode::Strict => "strict".to_string(),
@@ -563,6 +656,41 @@ impl Config {
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
                 self.lockfile_token_limit = parsed;
+            }
+            "usage_tier" => {
+                self.usage_tier = match value.to_lowercase().as_str() {
+                    "standard" => UsageTier::Standard,
+                    "free" => UsageTier::Free,
+                    _ => anyhow::bail!("Invalid usage_tier: must be standard or free"),
+                };
+            }
+            "free_tier_max_input_tokens" => {
+                let parsed: TokenCount = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.free_tier.max_input_tokens = parsed;
+            }
+            "free_tier_max_output_tokens" => {
+                let parsed: TokenCount = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.free_tier.max_output_tokens = parsed;
+            }
+            "free_tier_max_concurrent_requests" => {
+                let parsed: usize = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.free_tier.max_concurrent_requests = parsed;
+            }
+            "free_tier_commit_history_depth" => {
+                let parsed: usize = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.free_tier.commit_history_depth = parsed;
             }
             "commit_message_max_length" => {
                 if value.is_empty() {

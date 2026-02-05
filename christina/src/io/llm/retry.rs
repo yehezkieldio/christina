@@ -16,7 +16,7 @@ use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use christina_core::error::IsTransient;
+use christina_core::error::{CompletionError, IsTransient};
 use tokio::time::sleep;
 
 /// Retry policy configuration.
@@ -28,6 +28,16 @@ pub struct RetryPolicy {
     pub base_delay_ms: u64,
     /// Whether to use full jitter (0 to max) instead of deterministic delay.
     pub with_jitter: bool,
+}
+
+pub trait RetryAfter {
+    fn retry_after(&self) -> Option<Duration>;
+}
+
+impl RetryAfter for CompletionError {
+    fn retry_after(&self) -> Option<Duration> {
+        CompletionError::retry_after(self)
+    }
 }
 
 impl Default for RetryPolicy {
@@ -99,7 +109,7 @@ pub async fn retry_with_backoff<F, Fut, T, E>(policy: &RetryPolicy, operation: F
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
-    E: IsTransient,
+    E: IsTransient + RetryAfter,
 {
     let mut attempt = 0usize;
 
@@ -115,7 +125,10 @@ where
                     return Err(err);
                 }
 
-                let delay = policy.calculate_delay(attempt as u32);
+                let backoff = policy.calculate_delay(attempt as u32);
+                let delay = err.retry_after().map_or(backoff, |retry_after| {
+                    std::cmp::min(retry_after, backoff)
+                });
                 sleep(delay).await;
                 attempt += 1;
             }
@@ -172,6 +185,12 @@ mod tests {
     impl IsTransient for TestError {
         fn is_transient(&self) -> bool {
             self.transient
+        }
+    }
+
+    impl RetryAfter for TestError {
+        fn retry_after(&self) -> Option<Duration> {
+            None
         }
     }
 

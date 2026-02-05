@@ -41,6 +41,16 @@ lockfile_token_limit = 100
 # 0.0 fails on any chunk error, 1.0 allows all failures
 max_partial_failure_rate = 0.10
 
+# Usage tier for rate-limit-aware defaults: standard | free
+usage_tier = "standard"
+
+# Free-tier limits applied when usage_tier = "free"
+[free_tier]
+max_input_tokens = 16000
+max_output_tokens = 512
+max_concurrent_requests = 1
+commit_history_depth = 3
+
 # Provider Profiles
 #
 # Each profile defines a connection to an LLM provider.
