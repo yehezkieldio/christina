@@ -374,4 +374,227 @@ mod tests {
         assert_eq!(api_version, None);
         assert_eq!(deployment_id, None);
     }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn test_parse_azure_endpoint_with_multiple_query_params() {
+        let url = url::Url::parse(
+            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15&param=value"
+        ).expect("valid URL");
+
+        let (api_version, deployment_id) = parse_azure_endpoint(&url);
+
+        assert_eq!(api_version, Some("2024-02-15".to_string()));
+        assert_eq!(deployment_id, Some("gpt-4".to_string()));
+    }
+
+    #[test]
+    fn test_temperature_new_clamps() {
+        let temp = Temperature::new(-1.0);
+        assert_eq!(temp.value(), 0.0);
+
+        let temp = Temperature::new(3.0);
+        assert_eq!(temp.value(), 2.0);
+
+        let temp = Temperature::new(1.0);
+        assert_eq!(temp.value(), 1.0);
+    }
+
+    #[test]
+    fn test_api_key_debug_redacts() {
+        let key = ApiKey::new("sk-secret123");
+        let debug_str = format!("{:?}", key);
+        assert!(debug_str.contains("REDACTED"));
+        assert!(!debug_str.contains("secret"));
+    }
+
+    #[test]
+    fn test_api_key_as_str() {
+        let key = ApiKey::new("sk-test");
+        assert_eq!(key.as_str(), "sk-test");
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_provider_from_profile_openai() {
+        let mut profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4"),
+        );
+        profile.temperature = Some(0.5);
+
+        let provider = Provider::from_profile(&profile, "sk-test").unwrap();
+
+        match provider {
+            Provider::OpenAI {
+                model,
+                temperature,
+                max_tokens,
+                ..
+            } => {
+                assert_eq!(model, ModelName::from("gpt-4"));
+                assert_eq!(temperature.value(), 0.5);
+                assert!(max_tokens.get() > 0);
+            }
+            _ => panic!("Expected OpenAI provider"),
+        }
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_provider_from_profile_azure_with_url() {
+        let mut profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4"),
+        );
+        profile.api_url = Some(
+            url::Url::parse(
+                "https://test.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15"
+            )
+            .unwrap(),
+        );
+        profile.azure_api_version = Some("2024-02-15".to_string());
+        profile.azure_deployment_id = Some("gpt-4".to_string());
+
+        let provider = Provider::from_profile(&profile, "sk-test").unwrap();
+
+        match provider {
+            Provider::Azure {
+                endpoint,
+                api_version,
+                deployment_id,
+                ..
+            } => {
+                assert!(endpoint.contains("azure.com"));
+                assert!(!endpoint.contains("api-version"));
+                assert_eq!(api_version, "2024-02-15");
+                assert_eq!(deployment_id, "gpt-4");
+            }
+            _ => panic!("Expected Azure provider"),
+        }
+    }
+
+    #[test]
+    fn test_provider_from_profile_azure_missing_url() {
+        let profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4"),
+        );
+
+        let result = Provider::from_profile(&profile, "sk-test");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Azure endpoint required"));
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_provider_from_profile_azure_extracts_from_url() {
+        let mut profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4"),
+        );
+        profile.api_url = Some(
+            url::Url::parse(
+                "https://test.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2023-12-01"
+            )
+            .unwrap(),
+        );
+        // Clear defaults so URL values are extracted
+        profile.azure_api_version = None;
+        profile.azure_deployment_id = None;
+
+        let provider = Provider::from_profile(&profile, "sk-test").unwrap();
+
+        match provider {
+            Provider::Azure {
+                api_version,
+                deployment_id,
+                ..
+            } => {
+                assert_eq!(api_version, "2023-12-01");
+                assert_eq!(deployment_id, "my-deployment");
+            }
+            _ => panic!("Expected Azure provider"),
+        }
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_provider_from_profile_groq() {
+        let profile = ProviderProfile::new(
+            "test".to_string(),
+            ProviderKind::Groq,
+            ModelName::from("llama-3"),
+        );
+
+        let provider = Provider::from_profile(&profile, "gsk-test").unwrap();
+
+        match provider {
+            Provider::Groq { model, .. } => {
+                assert_eq!(model, ModelName::from("llama-3"));
+            }
+            _ => panic!("Expected Groq provider"),
+        }
+    }
+
+    #[test]
+    fn test_request_from_messages() {
+        let messages = vec![
+            ChatMessage::system("You are a helpful assistant"),
+            ChatMessage::user("Hello"),
+        ];
+        let max_tokens = TokenCount::new_saturating(100);
+
+        let request = request_from_messages(&messages, max_tokens, 0.7);
+
+        assert_eq!(request.messages.len(), 2);
+        assert_eq!(request.max_tokens, max_tokens);
+        assert_eq!(request.temperature, 0.7);
+    }
+
+    #[tokio::test]
+    async fn test_provider_mock() {
+        let provider = Provider::mock("test response");
+        let messages = vec![ChatMessage::user("test")];
+
+        let result = provider.generate(&messages).await.unwrap();
+        assert_eq!(result, "test response");
+    }
+
+    #[tokio::test]
+    async fn test_provider_mock_sequence() {
+        let responses = vec![
+            Ok("first".to_string()),
+            Ok("second".to_string()),
+            Err(CompletionError::RateLimited),
+        ];
+        let provider = Provider::mock_sequence(responses);
+        let messages = vec![ChatMessage::user("test")];
+
+        assert_eq!(provider.generate(&messages).await.unwrap(), "first");
+        assert_eq!(provider.generate(&messages).await.unwrap(), "second");
+        assert!(provider.generate(&messages).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_provider_mock_sequence_exhausted() {
+        let provider = Provider::mock_sequence(vec![Ok("only".to_string())]);
+        let messages = vec![ChatMessage::user("test")];
+
+        let _ = provider.generate(&messages).await;
+        let result = provider.generate(&messages).await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("sequence exhausted"));
+    }
 }

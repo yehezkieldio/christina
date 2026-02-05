@@ -301,4 +301,162 @@ mod tests {
         let resolved = secret.resolve().unwrap();
         assert_eq!(resolved.expose_secret(), "env_value");
     }
+
+    #[test]
+    fn secret_ref_parse_empty_env() {
+        let secret = SecretRef::parse("env:").unwrap();
+        assert!(matches!(secret, SecretRef::EnvVar(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn secret_ref_parse_empty_keyring() {
+        let secret = SecretRef::parse("keyring:").unwrap();
+        assert!(matches!(secret, SecretRef::Keyring(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn secret_ref_parse_empty_value() {
+        let secret = SecretRef::parse("value:").unwrap();
+        assert!(matches!(secret, SecretRef::Literal(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn secret_ref_parse_with_colons() {
+        let secret = SecretRef::parse("env:MY_VAR:WITH:COLONS").unwrap();
+        assert!(matches!(secret, SecretRef::EnvVar(s) if s == "MY_VAR:WITH:COLONS"));
+    }
+
+    #[test]
+    fn secret_string_clone() {
+        let original = SecretString::new("secret".to_string());
+        let cloned = original.clone();
+        assert_eq!(original.expose_secret(), cloned.expose_secret());
+    }
+
+    #[test]
+    fn secret_string_expose_multiple_times() {
+        let secret = SecretString::new("test".to_string());
+        assert_eq!(secret.expose_secret(), "test");
+        assert_eq!(secret.expose_secret(), "test");
+    }
+
+    #[test]
+    fn secret_value_clone() {
+        let original: Secret<String> = Secret::Value("test".to_string());
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn secret_env_var_clone() {
+        let original: Secret<String> = Secret::EnvVar("VAR".to_string());
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn secret_keyring_clone() {
+        let original: Secret<String> = Secret::Keyring("key".to_string());
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn secret_equality() {
+        let s1: Secret<String> = Secret::Value("test".to_string());
+        let s2: Secret<String> = Secret::Value("test".to_string());
+        let s3: Secret<String> = Secret::Value("other".to_string());
+
+        assert_eq!(s1, s2);
+        assert_ne!(s1, s3);
+    }
+
+    #[test]
+    fn secret_ref_equality() {
+        let r1 = SecretRef::EnvVar("VAR".to_string());
+        let r2 = SecretRef::EnvVar("VAR".to_string());
+        let r3 = SecretRef::EnvVar("OTHER".to_string());
+
+        assert_eq!(r1, r2);
+        assert_ne!(r1, r3);
+    }
+
+    #[test]
+    fn secret_error_display() {
+        let err = SecretError::EnvVarNotFound("MY_VAR".to_string());
+        assert!(err.to_string().contains("MY_VAR"));
+        assert!(err.to_string().contains("not found"));
+
+        let err = SecretError::KeyringFailed("key".to_string(), "reason".to_string());
+        assert!(err.to_string().contains("key"));
+        assert!(err.to_string().contains("reason"));
+
+        let err = SecretError::InvalidFormat("bad format".to_string());
+        assert!(err.to_string().contains("bad format"));
+    }
+
+    #[cfg(not(feature = "keyring-support"))]
+    #[test]
+    fn secret_resolve_keyring_without_feature() {
+        let secret = Secret::Keyring("test".to_string());
+        let result = secret.resolve();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Keyring support not compiled"));
+    }
+
+    #[cfg(not(feature = "keyring-support"))]
+    #[test]
+    fn secret_ref_resolve_keyring_without_feature() {
+        let secret = SecretRef::Keyring("test".to_string());
+        let result = secret.resolve();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Keyring support not compiled"));
+    }
+
+    #[test]
+    #[allow(unsafe_code)]
+    fn secret_resolve_env_var_actually_exists() {
+        unsafe {
+            std::env::set_var("CHRISTINA_TEST_SECRET_VAR_12345", "test_value");
+        }
+        let secret = Secret::EnvVar("CHRISTINA_TEST_SECRET_VAR_12345".to_string());
+        let resolved = secret.resolve().unwrap();
+        assert_eq!(resolved.expose_secret(), "test_value");
+        unsafe {
+            std::env::remove_var("CHRISTINA_TEST_SECRET_VAR_12345");
+        }
+    }
+
+    #[test]
+    #[allow(unsafe_code)]
+    fn secret_ref_resolve_env_var_actually_exists() {
+        unsafe {
+            std::env::set_var("CHRISTINA_TEST_REF_VAR_67890", "ref_value");
+        }
+        let secret = SecretRef::EnvVar("CHRISTINA_TEST_REF_VAR_67890".to_string());
+        let resolved = secret.resolve().unwrap();
+        assert_eq!(resolved.expose_secret(), "ref_value");
+        unsafe {
+            std::env::remove_var("CHRISTINA_TEST_REF_VAR_67890");
+        }
+    }
+
+    #[test]
+    fn secret_string_new() {
+        let secret = SecretString::new("test".to_string());
+        assert_eq!(secret.expose_secret(), "test");
+    }
+
+    #[test]
+    fn secret_ref_parse_long_api_key() {
+        // Should parse as literal but may log warning
+        let secret = SecretRef::parse("sk-1234567890123456789012345678901234567890").unwrap();
+        assert!(matches!(secret, SecretRef::Literal(_)));
+    }
 }

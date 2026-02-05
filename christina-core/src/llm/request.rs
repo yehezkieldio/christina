@@ -154,4 +154,160 @@ mod tests {
         assert_eq!(resp.content, "feat: add feature");
         assert!(resp.tokens_used.is_some());
     }
+
+    #[test]
+    fn chat_message_system() {
+        let msg = ChatMessage::system("You are a helpful assistant");
+        assert_eq!(msg.role, Role::System);
+        assert_eq!(msg.content, "You are a helpful assistant");
+    }
+
+    #[test]
+    fn chat_message_user() {
+        let msg = ChatMessage::user("Hello");
+        assert_eq!(msg.role, Role::User);
+        assert_eq!(msg.content, "Hello");
+    }
+
+    #[test]
+    fn chat_message_assistant() {
+        let msg = ChatMessage::assistant("Hi there!");
+        assert_eq!(msg.role, Role::Assistant);
+        assert_eq!(msg.content, "Hi there!");
+    }
+
+    #[test]
+    fn validate_request_valid() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 0.7,
+            system_prompt: None,
+        };
+
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_request_empty_messages() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 0.7,
+            system_prompt: None,
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("at least one message"));
+    }
+
+    #[test]
+    fn validate_request_temperature_nan() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: f32::NAN,
+            system_prompt: None,
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("valid number"));
+    }
+
+    #[test]
+    fn validate_request_temperature_negative() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: -0.5,
+            system_prompt: None,
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+    }
+
+    #[test]
+    fn validate_request_temperature_too_high() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 3.0,
+            system_prompt: None,
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+    }
+
+    #[test]
+    fn validate_request_temperature_boundaries() {
+        let req_min = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 0.0,
+            system_prompt: None,
+        };
+        assert!(req_min.validate().is_ok());
+
+        let req_max = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 2.0,
+            system_prompt: None,
+        };
+        assert!(req_max.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_request_with_system_prompt() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 0.7,
+            system_prompt: Some("You are a helpful assistant".to_string()),
+        };
+
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_request_multiple_messages() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![
+                ChatMessage::system("System context"),
+                ChatMessage::user("User query"),
+                ChatMessage::assistant("Assistant response"),
+                ChatMessage::user("Follow-up"),
+            ],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: 0.7,
+            system_prompt: None,
+        };
+
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn role_is_copy() {
+        let role1 = Role::User;
+        let role2 = role1;
+        assert_eq!(role1, role2);
+    }
 }

@@ -496,4 +496,201 @@ mod tests {
         assert_eq!(format!("{}", ErrorCategory::Git), "Git");
         assert_eq!(format!("{}", ErrorCategory::Llm), "LLM");
     }
+
+    #[test]
+    fn completion_error_is_provider_error() {
+        assert!(CompletionError::Unauthorized("test".to_string()).is_provider_error());
+        assert!(CompletionError::RateLimited.is_provider_error());
+        assert!(CompletionError::ServerError("test".to_string()).is_provider_error());
+
+        assert!(!CompletionError::Timeout.is_provider_error());
+        assert!(!CompletionError::NetworkError("test".to_string()).is_provider_error());
+    }
+
+    #[test]
+    fn completion_error_from_api_error_unauthorized_variations() {
+        let err = CompletionError::from_api_error("401 Unauthorized");
+        assert!(matches!(err, CompletionError::Unauthorized(_)));
+
+        let err = CompletionError::from_api_error("Invalid API key provided");
+        assert!(matches!(err, CompletionError::Unauthorized(_)));
+
+        let err = CompletionError::from_api_error("unauthorized access");
+        assert!(matches!(err, CompletionError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn completion_error_from_api_error_rate_limit_variations() {
+        let err = CompletionError::from_api_error("429 Too Many Requests");
+        assert!(matches!(err, CompletionError::RateLimited));
+
+        let err = CompletionError::from_api_error("Rate limit exceeded");
+        assert!(matches!(err, CompletionError::RateLimited));
+
+        let err = CompletionError::from_api_error("Quota exceeded");
+        assert!(matches!(err, CompletionError::RateLimited));
+    }
+
+    #[test]
+    fn completion_error_from_api_error_context_length() {
+        let err = CompletionError::from_api_error("context_length_exceeded");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+
+        let err = CompletionError::from_api_error("Maximum context length exceeded");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+
+        let err = CompletionError::from_api_error("Token limit exceeded");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn completion_error_from_api_error_malformed() {
+        let err = CompletionError::from_api_error("Malformed request");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn completion_error_from_api_error_network() {
+        let err = CompletionError::from_api_error("Network connection failed");
+        assert!(matches!(err, CompletionError::NetworkError(_)));
+        assert!(err.is_transient());
+
+        let err = CompletionError::from_api_error("DNS resolution failed");
+        assert!(matches!(err, CompletionError::NetworkError(_)));
+        assert!(err.is_transient());
+    }
+
+    #[test]
+    fn completion_error_from_api_error_unknown_defaults_to_server() {
+        let err = CompletionError::from_api_error("Unknown mysterious error");
+        assert!(matches!(err, CompletionError::ServerError(_)));
+        assert!(err.is_transient());
+    }
+
+    #[test]
+    fn git_error_transient_only_locked() {
+        assert!(GitError::Locked.is_transient());
+        assert!(!GitError::NotFound.is_transient());
+        assert!(!GitError::AuthFailed.is_transient());
+        assert!(!GitError::Git("test".to_string()).is_transient());
+    }
+
+    #[test]
+    fn provider_error_never_transient() {
+        let err = ProviderError::MissingConfig("test".to_string());
+        assert!(!err.is_transient());
+
+        let err = ProviderError::InvalidConfig("test".to_string());
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn tokenizer_error_never_transient() {
+        let err = TokenizerError::Tokenizer("test".to_string());
+        assert!(!err.is_transient());
+
+        let err = TokenizerError::ModelLoadFailed("test".to_string());
+        assert!(!err.is_transient());
+
+        let err = TokenizerError::EncodingFailed("test".to_string());
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn tokenizer_error_is_model_error() {
+        let err = TokenizerError::ModelLoadFailed("test".to_string());
+        assert!(err.is_model_error());
+
+        let err = TokenizerError::Tokenizer("test".to_string());
+        assert!(!err.is_model_error());
+    }
+
+    #[test]
+    fn diff_error_never_transient() {
+        let err = DiffError::SizeExceeded {
+            actual: 100,
+            max: 50,
+        };
+        assert!(!err.is_transient());
+
+        let err = DiffError::NoContent;
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn app_error_is_transient() {
+        let transient = AppError::Completion(CompletionError::Timeout);
+        assert!(transient.is_transient());
+
+        let non_transient = AppError::Provider(ProviderError::MissingConfig("test".to_string()));
+        assert!(!non_transient.is_transient());
+    }
+
+    #[test]
+    fn app_error_is_config_error() {
+        let config_err = AppError::Provider(ProviderError::MissingConfig("test".to_string()));
+        assert!(config_err.is_config_error());
+
+        let non_config = AppError::Completion(CompletionError::Timeout);
+        assert!(!non_config.is_config_error());
+    }
+
+    #[test]
+    fn git_error_signing_error_variants() {
+        let gpg_config = GitError::GpgConfigInvalid("bad config".to_string());
+        assert!(gpg_config.is_signing_error());
+
+        let gpg_signing = GitError::GpgSigningFailed("signature failed".to_string());
+        assert!(gpg_signing.is_signing_error());
+
+        let other = GitError::Other("unrelated".to_string());
+        assert!(!other.is_signing_error());
+    }
+
+    #[test]
+    fn provider_error_field_name_consistency() {
+        let missing = ProviderError::MissingConfig("api_key".to_string());
+        assert_eq!(missing.field_name(), "api_key");
+
+        let invalid = ProviderError::InvalidConfig("temperature".to_string());
+        assert_eq!(invalid.field_name(), "temperature");
+    }
+
+    #[test]
+    fn app_error_category_completeness() {
+        let git = AppError::Git(GitError::NotFound);
+        assert_eq!(git.category(), ErrorCategory::Git);
+
+        let completion = AppError::Completion(CompletionError::Timeout);
+        assert_eq!(completion.category(), ErrorCategory::Llm);
+
+        let provider = AppError::Provider(ProviderError::MissingConfig("x".to_string()));
+        assert_eq!(provider.category(), ErrorCategory::Llm);
+
+        let tokenizer = AppError::Tokenizer(TokenizerError::Tokenizer("x".to_string()));
+        assert_eq!(tokenizer.category(), ErrorCategory::Tokenizer);
+
+        let diff = AppError::Diff(DiffError::NoContent);
+        assert_eq!(diff.category(), ErrorCategory::General);
+
+        let other = AppError::Other("x".to_string());
+        assert_eq!(other.category(), ErrorCategory::General);
+    }
+
+    #[test]
+    fn git_error_from_conversion() {
+        #[cfg(feature = "git2-support")]
+        {
+            use git2::{Error, ErrorClass, ErrorCode};
+
+            let git2_err = Error::from_str("not found");
+            let err: GitError = git2_err.into();
+            // Basic conversion test - exact variant depends on git2 implementation
+            assert!(matches!(err, GitError::Git(_) | GitError::Other(_)));
+        }
+    }
 }

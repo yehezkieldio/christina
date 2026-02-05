@@ -417,3 +417,346 @@ fn handle_duplicate(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use christina_core::profile::{ProviderProfile, Profiles};
+    use christina_core::types::{ModelName, ProviderKind};
+    use std::io::{BufReader, Cursor};
+
+    struct MockConfigStore {
+        config: Config,
+        save_called: bool,
+    }
+
+    impl MockConfigStore {
+        fn new() -> Self {
+            Self {
+                config: Config {
+                    profiles: Profiles::new(),
+                    ..Default::default()
+                },
+                save_called: false,
+            }
+        }
+
+        fn with_profile(mut self, name: &str) -> Self {
+            let profile = ProviderProfile::new(
+                name.to_string(),
+                ProviderKind::OpenAI,
+                ModelName::from("gpt-4"),
+            );
+            self.config.profiles.add(profile).unwrap();
+            self
+        }
+
+        fn with_active(mut self, name: &str) -> Self {
+            self.config.profiles.set_active(name).unwrap();
+            self
+        }
+    }
+
+    impl ConfigStore for MockConfigStore {
+        fn load(&mut self) -> Result<Config> {
+            Ok(self.config.clone())
+        }
+
+        fn save(&mut self, config: &Config) -> Result<()> {
+            self.config = config.clone();
+            self.save_called = true;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_list_empty() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        handle_list(&mut store, &mut output).unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("No profiles configured"));
+    }
+
+    #[test]
+    fn test_list_with_profiles() {
+        let mut store = MockConfigStore::new()
+            .with_profile("dev")
+            .with_profile("prod")
+            .with_active("dev");
+        let mut output = Vec::new();
+
+        handle_list(&mut store, &mut output).unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("dev *"));
+        assert!(output_str.contains("prod"));
+    }
+
+    #[test]
+    fn test_show_existing_profile() {
+        let mut store = MockConfigStore::new().with_profile("test");
+        let mut output = Vec::new();
+
+        handle_show(&mut store, &mut output, "test").unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("Profile: test"));
+        assert!(output_str.contains("Provider: openai"));
+    }
+
+    #[test]
+    fn test_show_nonexistent_profile() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        let result = handle_show(&mut store, &mut output, "nonexistent");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_create_basic_profile() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        handle_create(
+            &mut store,
+            &mut output,
+            "new",
+            Some("openai".to_string()),
+            Some("gpt-4".to_string()),
+            Some("env:OPENAI_KEY".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(store.save_called);
+        assert!(store.config.profiles.exists("new"));
+        let profile = store.config.profiles.get("new").unwrap();
+        assert_eq!(profile.provider, ProviderKind::OpenAI);
+    }
+
+    #[test]
+    fn test_create_duplicate_profile() {
+        let mut store = MockConfigStore::new().with_profile("existing");
+        let mut output = Vec::new();
+
+        let result = handle_create(
+            &mut store,
+            &mut output,
+            "existing",
+            Some("openai".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn test_create_with_all_options() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        handle_create(
+            &mut store,
+            &mut output,
+            "azure",
+            Some("azure".to_string()),
+            Some("gpt-4".to_string()),
+            Some("keyring:azure-key".to_string()),
+            Some("https://test.openai.azure.com".to_string()),
+            Some(100000),
+            Some(4000),
+            Some("2024-12-01-preview".to_string()),
+            Some("gpt-4-deployment".to_string()),
+        )
+        .unwrap();
+
+        let profile = store.config.profiles.get("azure").unwrap();
+        assert_eq!(profile.provider, ProviderKind::Azure);
+        assert_eq!(profile.max_input_tokens.get(), 100000);
+        assert_eq!(profile.azure_api_version, Some("2024-12-01-preview".to_string()));
+    }
+
+    #[test]
+    fn test_edit_existing_profile() {
+        let mut store = MockConfigStore::new().with_profile("test");
+        let mut output = Vec::new();
+
+        handle_edit(
+            &mut store,
+            &mut output,
+            "test",
+            None,
+            Some("gpt-4-turbo".to_string()),
+            None,
+            None,
+            Some(200000),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let profile = store.config.profiles.get("test").unwrap();
+        assert_eq!(profile.model, ModelName::from("gpt-4-turbo"));
+        assert_eq!(profile.max_input_tokens.get(), 200000);
+    }
+
+    #[test]
+    fn test_edit_nonexistent_profile() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        let result = handle_edit(
+            &mut store,
+            &mut output,
+            "nonexistent",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_delete_with_force() {
+        let mut store = MockConfigStore::new().with_profile("test");
+        let mut input = BufReader::new(Cursor::new(b""));
+        let mut output = Vec::new();
+
+        handle_delete(&mut store, &mut input, &mut output, "test", true).unwrap();
+
+        assert!(!store.config.profiles.exists("test"));
+        assert!(store.save_called);
+    }
+
+    #[test]
+    fn test_delete_with_confirmation_yes() {
+        let mut store = MockConfigStore::new().with_profile("test");
+        let mut input = BufReader::new(Cursor::new(b"y\n"));
+        let mut output = Vec::new();
+
+        handle_delete(&mut store, &mut input, &mut output, "test", false).unwrap();
+
+        assert!(!store.config.profiles.exists("test"));
+    }
+
+    #[test]
+    fn test_delete_with_confirmation_no() {
+        let mut store = MockConfigStore::new().with_profile("test");
+        let mut input = BufReader::new(Cursor::new(b"n\n"));
+        let mut output = Vec::new();
+
+        handle_delete(&mut store, &mut input, &mut output, "test", false).unwrap();
+
+        assert!(store.config.profiles.exists("test"));
+        assert!(!store.save_called);
+    }
+
+    #[test]
+    fn test_delete_nonexistent_profile() {
+        let mut store = MockConfigStore::new();
+        let mut input = BufReader::new(Cursor::new(b""));
+        let mut output = Vec::new();
+
+        let result = handle_delete(&mut store, &mut input, &mut output, "nonexistent", true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_switch_profile() {
+        let mut store = MockConfigStore::new()
+            .with_profile("dev")
+            .with_profile("prod");
+        let mut output = Vec::new();
+
+        handle_switch(&mut store, &mut output, "prod").unwrap();
+
+        assert_eq!(store.config.profiles.active, Some("prod".to_string()));
+        assert!(store.save_called);
+    }
+
+    #[test]
+    fn test_switch_nonexistent_profile() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        let result = handle_switch(&mut store, &mut output, "nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_duplicate_profile() {
+        let mut store = MockConfigStore::new().with_profile("original");
+        let mut output = Vec::new();
+
+        handle_duplicate(&mut store, &mut output, "original", "copy").unwrap();
+
+        assert!(store.config.profiles.exists("original"));
+        assert!(store.config.profiles.exists("copy"));
+        let copy = store.config.profiles.get("copy").unwrap();
+        assert_eq!(copy.name, "copy");
+    }
+
+    #[test]
+    fn test_duplicate_nonexistent_source() {
+        let mut store = MockConfigStore::new();
+        let mut output = Vec::new();
+
+        let result = handle_duplicate(&mut store, &mut output, "nonexistent", "copy");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_duplicate_to_existing_name() {
+        let mut store = MockConfigStore::new()
+            .with_profile("source")
+            .with_profile("target");
+        let mut output = Vec::new();
+
+        let result = handle_duplicate(&mut store, &mut output, "source", "target");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn test_parse_secret_input_env() {
+        let secret = parse_secret_input("env:MY_KEY");
+        assert!(matches!(secret, Secret::EnvVar(_)));
+    }
+
+    #[test]
+    fn test_parse_secret_input_keyring() {
+        let secret = parse_secret_input("keyring:my-key");
+        assert!(matches!(secret, Secret::Keyring(_)));
+    }
+
+    #[test]
+    fn test_parse_secret_input_literal() {
+        let secret = parse_secret_input("sk-1234567890");
+        assert!(matches!(secret, Secret::Value(_)));
+    }
+}

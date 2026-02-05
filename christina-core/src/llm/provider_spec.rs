@@ -136,4 +136,225 @@ mod tests {
             _ => panic!("Expected Groq variant"),
         }
     }
+
+    #[test]
+    fn validate_valid_spec() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_temperature_nan() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: f32::NAN,
+        };
+
+        assert!(spec.validate().is_err());
+        assert!(spec
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("valid number"));
+    }
+
+    #[test]
+    fn validate_temperature_out_of_range_low() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: -0.5,
+        };
+
+        let result = spec.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+    }
+
+    #[test]
+    fn validate_temperature_out_of_range_high() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 3.0,
+        };
+
+        let result = spec.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+    }
+
+    #[test]
+    fn validate_temperature_boundary_values() {
+        let spec_min = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.0,
+        };
+        assert!(spec_min.validate().is_ok());
+
+        let spec_max = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 2.0,
+        };
+        assert!(spec_max.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_endpoint_consistency_openai_ok() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_endpoint_consistency_azure_ok() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::Azure,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::AzureOpenAi {
+                endpoint: AzureEndpoint {
+                    endpoint: "https://test.openai.azure.com".to_string(),
+                    api_version: "2024-02-15".to_string(),
+                    deployment_id: "gpt-4".to_string(),
+                },
+                api_version: "2024-02-15".to_string(),
+                deployment_id: "gpt-4".to_string(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_endpoint_consistency_groq_ok() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::Groq,
+            model: ModelName::from("llama-3"),
+            endpoint: ProviderEndpoint::Groq {
+                base_url: Url::parse("https://api.groq.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_endpoint_consistency_mismatch() {
+        // Azure kind with OpenAI endpoint
+        let spec = ProviderSpec {
+            kind: ProviderKind::Azure,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        let result = spec.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("incompatible"));
+    }
+
+    #[test]
+    fn validate_url_scheme_https_ok() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_url_scheme_http_rejected() {
+        let spec = ProviderSpec {
+            kind: ProviderKind::OpenAI,
+            model: ModelName::from("gpt-4"),
+            endpoint: ProviderEndpoint::OpenAi {
+                base_url: Url::parse("http://api.openai.com/v1").unwrap(),
+            },
+            max_tokens: TokenCount::new(2048).unwrap(),
+            temperature: 0.7,
+        };
+
+        let result = spec.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("HTTPS"));
+    }
+
+    #[test]
+    fn provider_endpoint_azure() {
+        let endpoint = ProviderEndpoint::AzureOpenAi {
+            endpoint: AzureEndpoint {
+                endpoint: "https://test.openai.azure.com".to_string(),
+                api_version: "2024-02-15".to_string(),
+                deployment_id: "gpt-4".to_string(),
+            },
+            api_version: "2024-02-15".to_string(),
+            deployment_id: "gpt-4".to_string(),
+        };
+
+        match endpoint {
+            ProviderEndpoint::AzureOpenAi {
+                endpoint,
+                api_version,
+                deployment_id,
+            } => {
+                assert!(endpoint.endpoint.contains("azure.com"));
+                assert_eq!(api_version, "2024-02-15");
+                assert_eq!(deployment_id, "gpt-4");
+            }
+            _ => panic!("Expected AzureOpenAi variant"),
+        }
+    }
 }
