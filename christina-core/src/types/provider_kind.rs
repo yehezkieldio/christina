@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 /// This enum drives client instantiation and request formatting.
 /// Each variant corresponds to a distinct API contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     OpenAI,

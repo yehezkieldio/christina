@@ -2,11 +2,15 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{config::SecretRef, profile::ProviderProfile};
+use crate::{
+    config::SecretRef,
+    profile::ProviderProfile,
+    types::{FreeTierLimits, TokenCount, UsageTier},
+};
 
 /// On-disk configuration representation (serde-friendly)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct ConfigFile {
     /// Active profile name
@@ -21,8 +25,20 @@ pub struct ConfigFile {
     /// Files to exclude from AI processing
     pub ignore_files: Vec<String>,
 
+    /// Maximum tokens to include from lockfiles when truncating
+    pub lockfile_token_limit: TokenCount,
+
     /// Whether to enable file diffs in output
     pub include_file_diffs: bool,
+
+    /// Usage tier for rate-limit-aware defaults
+    pub usage_tier: UsageTier,
+
+    /// Free-tier limits applied when usage_tier is set to free
+    pub free_tier: FreeTierLimits,
+
+    /// Maximum allowed fraction of chunk failures before aborting map phase
+    pub max_partial_failure_rate: f64,
 }
 
 impl Default for ConfigFile {
@@ -38,7 +54,11 @@ impl Default for ConfigFile {
                 "pnpm-lock.yaml".to_string(),
                 "*.lock".to_string(),
             ],
+            lockfile_token_limit: TokenCount::new_at_least_one(100),
             include_file_diffs: false,
+            usage_tier: UsageTier::Standard,
+            free_tier: FreeTierLimits::default(),
+            max_partial_failure_rate: 0.1,
         }
     }
 }
@@ -88,6 +108,7 @@ mod tests {
             commit_message_max_length: None,
             ignore_files: vec![],
             include_file_diffs: false,
+            ..ConfigFile::default()
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -113,6 +134,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "jsonschema")]
     fn test_generate_json_schema() {
         use schemars::schema_for;
 

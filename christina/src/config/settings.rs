@@ -9,7 +9,7 @@ use super::diff_tool::DiffConfig;
 use christina_core::{
     profile::{Profiles, ProviderProfile},
     types::{
-        ModelName, ProviderKind, TokenCount,
+        FreeTierLimits, ModelName, ProviderKind, TokenCount, UsageTier,
         commit_message::ValidationMode,
         token_count::{MAX_INPUT, MAX_OUTPUT},
     },
@@ -26,39 +26,6 @@ fn default_schema_version() -> u32 {
 
 fn default_lockfile_token_limit() -> TokenCount {
     TokenCount::new_at_least_one(100)
-}
-
-const FREE_TIER_MAX_INPUT_TOKENS: u32 = 16_000;
-const FREE_TIER_MAX_OUTPUT_TOKENS: u32 = 512;
-const FREE_TIER_MAX_CONCURRENT_REQUESTS: usize = 1;
-const FREE_TIER_COMMIT_HISTORY_DEPTH: usize = 3;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum UsageTier {
-    #[default]
-    Standard,
-    Free,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct FreeTierLimits {
-    pub max_input_tokens: TokenCount,
-    pub max_output_tokens: TokenCount,
-    pub max_concurrent_requests: usize,
-    pub commit_history_depth: usize,
-}
-
-impl Default for FreeTierLimits {
-    fn default() -> Self {
-        Self {
-            max_input_tokens: TokenCount::new_at_least_one(FREE_TIER_MAX_INPUT_TOKENS),
-            max_output_tokens: TokenCount::new_at_least_one(FREE_TIER_MAX_OUTPUT_TOKENS),
-            max_concurrent_requests: FREE_TIER_MAX_CONCURRENT_REQUESTS,
-            commit_history_depth: FREE_TIER_COMMIT_HISTORY_DEPTH,
-        }
-    }
 }
 
 fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {

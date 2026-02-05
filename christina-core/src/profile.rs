@@ -70,12 +70,12 @@ use crate::{
 ///
 /// See module-level documentation for detailed usage patterns.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 pub struct ProviderProfile<S = String> {
     pub name: String,
     pub provider: ProviderKind,
     pub model: ModelName,
-    #[cfg_attr(test, schemars(with = "Option<String>"))]
+    #[cfg_attr(feature = "jsonschema", schemars(with = "Option<String>"))]
     pub api_url: Option<url::Url>,
     pub api_key: Secret<S>,
     pub max_input_tokens: TokenCount,

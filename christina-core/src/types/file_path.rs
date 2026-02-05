@@ -18,6 +18,25 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct FilePath(CompactString);
 
+#[cfg(feature = "jsonschema")]
+impl schemars::JsonSchema for FilePath {
+    fn schema_name() -> String {
+        "FilePath".to_string()
+    }
+
+    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::String.into()),
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                description: Some("Relative file path within a Git repository".to_string()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
+    }
+}
+
 impl FilePath {
     pub fn new(path: impl Into<CompactString>) -> Self {
         let compact = path.into();

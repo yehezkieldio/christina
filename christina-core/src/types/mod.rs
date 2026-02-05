@@ -12,14 +12,18 @@
 
 pub mod commit_message;
 pub mod file_path;
+pub mod free_tier;
 pub mod model_name;
 pub mod provider_kind;
 pub mod temperature;
 pub mod token_count;
+pub mod usage_tier;
 
 pub use commit_message::CommitMessage;
 pub use file_path::FilePath;
+pub use free_tier::FreeTierLimits;
 pub use model_name::ModelName;
 pub use provider_kind::ProviderKind;
 pub use temperature::Temperature;
 pub use token_count::TokenCount;
+pub use usage_tier::UsageTier;

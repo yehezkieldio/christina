@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct ModelName(CompactString);
 
-#[cfg(test)]
+#[cfg(feature = "jsonschema")]
 impl schemars::JsonSchema for ModelName {
     fn schema_name() -> String {
         "ModelName".to_string()
