@@ -527,7 +527,7 @@ impl AIOrchestrator {
         let failure_rate = failed_count as f64 / total_chunks as f64;
         let max_failure_rate = self.max_failure_rate();
 
-        if failed_count > 1 && failure_rate > max_failure_rate {
+        if failure_rate > max_failure_rate {
             anyhow::bail!(
                 "Partial failure rate too high: {}/{} chunks failed ({:.0}%). \
                  This exceeds the {:.0}% threshold for acceptable degradation. \
@@ -1457,6 +1457,31 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Partial failure rate too high"));
         assert!(err_msg.contains("20%"));
+        assert!(err_msg.contains("10%"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn map_phase_single_failure_exceeds_threshold() {
+        let responses = vec![
+            Err(CompletionError::Timeout),
+            Err(CompletionError::Timeout),
+            Err(CompletionError::Timeout),
+            Err(CompletionError::Timeout),
+            Ok("summary 2".to_string()),
+        ];
+
+        let provider = Arc::new(Provider::mock_sequence(responses));
+        let orchestrator = AIOrchestrator::with_config(provider, 1, 0.10);
+
+        let chunks: Vec<_> = (0..2).map(|_| sample_chunk()).collect();
+        let result = orchestrator
+            .generate_commit_message(chunks, None, ValidationMode::default(), None, None)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Partial failure rate too high"));
+        assert!(err_msg.contains("50%"));
         assert!(err_msg.contains("10%"));
     }
 

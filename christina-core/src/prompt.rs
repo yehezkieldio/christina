@@ -19,10 +19,11 @@ FORMAT: type(scope): description
 
 RULES:
 - Length: ≤ 72 characters (hard limit, matches git convention)
-- Case: lowercase except proper nouns
+- Case: prefer lowercase except proper nouns (uppercase acceptable if matching repo style)
 - Voice: imperative mood ("add", not "adds" or "added")
 - Punctuation: no period at the end
 - Style: concise, direct, actionable
+ - Breaking change: add `!` after type or scope when applicable
 
 TYPE CLASSIFICATION (Priority Order):
 Primary: feat, fix, refactor, perf, chore

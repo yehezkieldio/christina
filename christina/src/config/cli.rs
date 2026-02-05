@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::cli::ConfigCommands;
 use crate::config::Config;
+use christina_core::types::UsageTier;
 
 /// Handle config commands - routes between CLI and TUI based on subcommand.
 pub fn handle_config_command(command: ConfigCommands) -> Result<()> {
@@ -124,8 +125,8 @@ fn handle_list_with_config(config: &Config) {
     println!(
         "  usage_tier: {}",
         match config.usage_tier {
-            crate::config::settings::UsageTier::Standard => "standard",
-            crate::config::settings::UsageTier::Free => "free",
+            UsageTier::Standard => "standard",
+            UsageTier::Free => "free",
         }
     );
     println!(

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use git2::{DiffOptions, Repository};
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 use christina_core::git::GitFile;
 
@@ -448,14 +448,36 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
             })
             .unwrap_or_else(|_| "gpg".to_string());
 
+        let gpg_tty = std::env::var("GPG_TTY").ok().or_else(|| {
+            #[cfg(unix)]
+            {
+                if std::io::stdin().is_terminal() {
+                    Some("/dev/tty".to_string())
+                } else {
+                    None
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                None
+            }
+        });
+
         let mut cmd = std::process::Command::new(&program);
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .arg("--batch")
+            .arg("--pinentry-mode")
+            .arg("loopback")
             .arg("-bsa");
 
         if let Some(ref key) = signing_key {
             cmd.arg("-u").arg(key);
+        }
+
+        if let Some(tty) = gpg_tty {
+            cmd.env("GPG_TTY", tty);
         }
 
         let mut child = cmd
@@ -474,7 +496,16 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("GPG signing failed: {}", stderr);
+            let stderr_trimmed = stderr.trim();
+            let mut message = format!("GPG signing failed: {}", stderr_trimmed);
+            if is_noninteractive_gpg_error(stderr_trimmed) {
+                message.push_str(
+                    " (non-interactive signing failed). Configure gpg-agent/pinentry for \
+                     loopback mode, set GPG_TTY if running in a terminal, or disable signing \
+                     with: git config commit.gpgsign false",
+                );
+            }
+            anyhow::bail!(message);
         }
 
         let gpg_sig = String::from_utf8(output.stdout)
@@ -514,6 +545,16 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
 
         Ok(oid)
     }
+}
+
+fn is_noninteractive_gpg_error(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("pinentry")
+        || lower.contains("no pinentry")
+        || lower.contains("inappropriate ioctl")
+        || lower.contains("no tty")
+        || lower.contains("cannot open")
+        || lower.contains("tty")
 }
 
 /// Check if there are staged changes

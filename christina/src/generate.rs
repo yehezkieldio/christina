@@ -14,7 +14,7 @@ use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
 use christina_core::ProviderProfile;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::{ProviderKind, TokenCount};
-use crate::config::settings::UsageTier;
+use christina_core::types::UsageTier;
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -31,24 +31,24 @@ impl CommitHistoryProvider for GitCommitHistoryProvider {
     }
 }
 
-fn config_to_profile(config: &Config) -> ProviderProfile {
-    // This function should only be called after API key validation.
-    // Empty API keys will cause authorization failures downstream.
-    // Use regular assert (not debug_assert) to catch this in release builds.
-    assert!(
-        config.api_key.as_ref().is_some_and(|k| !k.is_empty()),
-        "config_to_profile called with missing or empty API key - this is a programming error"
-    );
+fn require_api_key(config: &Config) -> Result<&str> {
+    match config.api_key.as_deref().filter(|key| !key.is_empty()) {
+        Some(key) => Ok(key),
+        None => anyhow::bail!(
+            "API key not found in configuration. Add one with \
+             `christina profile add <name> --provider <provider> --model <model> --api-key <key>` \
+             or set `api_key` in your config file."
+        ),
+    }
+}
 
+fn config_to_profile(config: &Config, api_key: &str) -> ProviderProfile {
     ProviderProfile {
         name: "active".to_string(),
         provider: config.model_provider,
         model: config.model.clone(),
         api_url: config.model_api_url.clone(),
-        api_key: match &config.api_key {
-            Some(key) => christina_core::config::Secret::Value(key.clone()),
-            None => christina_core::config::Secret::Value(String::new()),
-        },
+        api_key: christina_core::config::Secret::Value(api_key.to_string()),
         max_input_tokens: config.max_input_tokens,
         max_output_tokens: config.max_output_tokens,
         azure_api_version: config.azure_api_version.clone(),
@@ -96,10 +96,7 @@ async fn generate_commit_message_with_progress_impl(
         );
     }
     // Validate configuration before starting progress events
-    let api_key = match &config.api_key {
-        Some(key) if !key.is_empty() => key.clone(),
-        _ => anyhow::bail!("API key not found in configuration"),
-    };
+    let api_key = require_api_key(&config)?;
 
     if progress_tx
         .send(Event::GenerationProgress {
@@ -111,7 +108,7 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
-    let provider = Provider::from_profile(&config_to_profile(&config), &api_key)?;
+    let provider = Provider::from_profile(&config_to_profile(&config, api_key), api_key)?;
     let provider = Arc::new(provider);
 
     if progress_tx
@@ -445,7 +442,8 @@ mod tests {
             ..Default::default()
         };
 
-        let profile = config_to_profile(&config);
+        let api_key = require_api_key(&config).unwrap();
+        let profile = config_to_profile(&config, api_key);
 
         assert_eq!(profile.name, "active");
         assert_eq!(profile.provider, ProviderKind::OpenAI);
@@ -470,7 +468,8 @@ mod tests {
             ..Default::default()
         };
 
-        let profile = config_to_profile(&config);
+        let api_key = require_api_key(&config).unwrap();
+        let profile = config_to_profile(&config, api_key);
 
         assert_eq!(profile.provider, ProviderKind::Azure);
         assert_eq!(profile.azure_api_version, Some("2023-05-15".to_string()));
@@ -492,16 +491,14 @@ mod tests {
             ..Default::default()
         };
 
-        let profile = config_to_profile(&config);
+        let api_key = require_api_key(&config).unwrap();
+        let profile = config_to_profile(&config, api_key);
 
         assert_eq!(profile.provider, ProviderKind::Groq);
         assert_eq!(profile.model.as_str(), "mixtral-8x7b");
     }
 
     #[test]
-    #[should_panic(
-        expected = "config_to_profile called with missing or empty API key - this is a programming error"
-    )]
     fn test_config_to_profile_no_api_key() {
         let config = Config {
             model: "gpt-4".into(),
@@ -510,8 +507,10 @@ mod tests {
             ..Default::default()
         };
 
-        // This should panic because config_to_profile requires a valid API key
-        let _profile = config_to_profile(&config);
+        let result = require_api_key(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("API key not found"));
     }
 
     #[test]

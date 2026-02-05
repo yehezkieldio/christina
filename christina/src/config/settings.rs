@@ -434,7 +434,7 @@ impl Config {
     pub fn save_to_global(&self) -> Result<()> {
         use anyhow::Context;
         use fs2::FileExt;
-        use std::fs::File;
+        use std::fs::{File, OpenOptions};
         use std::io::Write;
 
         let config_dir = Self::global_config_dir()
@@ -459,14 +459,25 @@ impl Config {
                 .context("Failed to sync temporary config file")?;
         }
 
-        let target_file =
-            File::create(&config_path).context("Failed to open target config file for locking")?;
+        let target_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&config_path)
+            .context("Failed to open target config file for locking")?;
         target_file
             .lock_exclusive()
             .context("Failed to acquire exclusive lock on config file")?;
 
         std::fs::rename(&temp_path, &config_path)
             .context("Failed to atomically replace config file")?;
+
+        let dir_file =
+            File::open(&config_dir).context("Failed to open config directory for sync")?;
+        dir_file
+            .sync_all()
+            .context("Failed to sync config directory")?;
 
         Ok(())
     }

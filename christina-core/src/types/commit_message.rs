@@ -19,10 +19,10 @@ use serde::{Deserialize, Serialize};
 
 /// Regex pattern for validating Conventional Commits format.
 /// Compiled once and reused across all validations.
-/// Pattern: type(scope)?: description
+/// Pattern: type(scope)?(!)?: description
 #[allow(clippy::expect_used)]
 static CONVENTIONAL_COMMIT_PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^[a-z]+(\([a-z0-9_-]+\))?:\s*\S.*$")
+    regex::Regex::new(r"^[A-Za-z]+(\([A-Za-z0-9._/@-]+\))?!?:\s*\S.*$")
         .expect("Conventional commit regex pattern must be valid")
 });
 
@@ -48,7 +48,7 @@ pub enum ValidationMode {
 /// Invariants enforced at construction:
 /// - Non-empty after trimming
 /// - Single line (no '\n')
-/// - Matches `^[a-z]+(\([a-z0-9_-]+\))?:.+$` (lowercase conventional format)
+/// - Matches `^[A-Za-z]+(\([A-Za-z0-9._/@-]+\))?!?:.+$` (case-insensitive conventional format)
 /// - Optional length limit based on ValidationMode
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -100,10 +100,11 @@ impl CommitMessage {
         }
 
         // WHY this regex pattern:
-        // - `^[a-z]+`: type in lowercase (feat, fix, docs, etc.)
-        // - `(\([a-z0-9_-]+\))?`: optional scope in parens (api, ui, core)
+        // - `^[A-Za-z]+`: type in upper/lowercase (feat, Fix, FEAT, etc.)
+        // - `(\([A-Za-z0-9._/@-]+\))?`: optional scope in parens (api, ui, core, deps/v1)
+        // - `!?`: optional breaking-change marker
         // - `:\s*\S.*$`: colon + optional whitespace + non-whitespace description
-        // Enforces Conventional Commits with lowercase consistency for generated messages.
+        // Enforces Conventional Commits while allowing common variants and breaking-change markers.
         if !CONVENTIONAL_COMMIT_PATTERN.is_match(trimmed) {
             return Err(
                 "Commit message must follow conventional commits format: type(scope): description"
@@ -157,12 +158,14 @@ mod tests {
         assert!(CommitMessage::try_from("docs: improve readme".to_string()).is_ok());
         assert!(CommitMessage::try_from("refactor: simplify code".to_string()).is_ok());
         assert!(CommitMessage::try_from("test: add tests".to_string()).is_ok());
+        assert!(CommitMessage::try_from("FEAT: allow uppercase type".to_string()).is_ok());
+        assert!(CommitMessage::try_from("feat!: drop legacy path".to_string()).is_ok());
+        assert!(CommitMessage::try_from("feat(api)!: drop legacy path".to_string()).is_ok());
     }
 
     #[test]
     fn invalid_commit_messages() {
         assert!(CommitMessage::try_from("no prefix".to_string()).is_err());
-        assert!(CommitMessage::try_from("FEAT: wrong case".to_string()).is_err());
         assert!(CommitMessage::try_from("feat: ".to_string()).is_err());
         assert!(CommitMessage::try_from("feat:   ".to_string()).is_err());
         assert!(CommitMessage::try_from("".to_string()).is_err());
@@ -172,6 +175,9 @@ mod tests {
     fn commit_message_with_scope() {
         assert!(CommitMessage::try_from("feat(api): add endpoint".to_string()).is_ok());
         assert!(CommitMessage::try_from("fix(ui): button alignment".to_string()).is_ok());
+        assert!(CommitMessage::try_from("build(deps/v1): bump core".to_string()).is_ok());
+        assert!(CommitMessage::try_from("chore(pkg.ui): update tokens".to_string()).is_ok());
+        assert!(CommitMessage::try_from("fix(@api): handle timeout".to_string()).is_ok());
     }
 
     #[test]
