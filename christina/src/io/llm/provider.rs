@@ -81,16 +81,19 @@ impl Provider {
             ProviderKind::Azure => {
                 let endpoint = profile
                     .api_url
-                    .clone()
+                    .as_ref()
                     .ok_or_else(|| ProviderError::MissingConfig("model_api_url".to_string()))?
                     .to_string();
                 let api_version = profile
                     .azure_api_version
-                    .clone()
-                    .ok_or_else(|| ProviderError::MissingConfig("azure_api_version".to_string()))?;
-                let deployment_id = profile.azure_deployment_id.clone().ok_or_else(|| {
-                    ProviderError::MissingConfig("azure_deployment_id".to_string())
-                })?;
+                    .as_ref()
+                    .ok_or_else(|| ProviderError::MissingConfig("azure_api_version".to_string()))?
+                    .clone();
+                let deployment_id = profile
+                    .azure_deployment_id
+                    .as_ref()
+                    .ok_or_else(|| ProviderError::MissingConfig("azure_deployment_id".to_string()))?
+                    .clone();
 
                 Ok(Provider::Azure {
                     model: profile.model.clone(),

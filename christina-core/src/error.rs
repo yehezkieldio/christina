@@ -223,7 +223,7 @@ impl IsTransient for ProviderError {
 }
 
 /// Error type for tokenizer operations
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum TokenizerError {
     /// General tokenizer operation failure
     #[error("Tokenizer error: {0}")]

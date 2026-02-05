@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document provides a comprehensive outline for re-integrating TUI (Terminal User Interface) functionality into Christina. The TUI was removed to simplify the codebase and focus on CLI functionality, but this document preserves the design and implementation details for future reference.
+This document provides a comprehensive outline for re-integrating TUI (Terminal User Interface) functionality into Christina. The TUI was **temporarily removed** to simplify the codebase and focus on core CLI functionality. This document preserves the design and implementation details for future reference.
+
+> **Status**: TUI is temporarily removed from the codebase and will be integrated later. Current focus is on CLI functionality and core features.
 
 ## Removed Components
 

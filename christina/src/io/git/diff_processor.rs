@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use christina_core::{
-    Tokenizer,
     error::DiffError,
     git::{DiffChunk, MAX_DIFF_SIZE},
     types::TokenCount,
+    Tokenizer,
 };
 
 use crate::io::git::{
@@ -43,6 +43,17 @@ impl DiffProcessor {
     /// Checks every Nth byte to reduce CPU usage while maintaining accuracy.
     const NUL_BYTE_SAMPLING_INTERVAL: usize = 16;
 
+    /// Detects binary content in diff output.
+    ///
+    /// Detection strategy:
+    /// 1. Check for "Binary files" or "GIT binary patch" markers (git's binary indicators)
+    /// 2. For files > 1MB: use statistical sampling for NUL bytes
+    /// 3. For files <= 1MB: scan first 8KB for NUL bytes
+    /// 4. Check file extension against known binary types
+    ///
+    /// Note: NUL byte detection only scans the first 8KB of files under 1MB.
+    /// This is intentional for performance. Files with NUL bytes beyond 8KB
+    /// will be treated as text unless caught by extension or git markers.
     fn is_binary_content(&self, content: &str) -> bool {
         if content.is_empty() {
             return false;

@@ -1,34 +1,45 @@
 use std::num::NonZeroUsize;
 use std::sync::{Arc, OnceLock};
 
+use ahash::RandomState;
 use christina_core::{
     error::{TokenizerError, TokenizerResult},
     types::TokenCount,
     Tokenizer,
 };
-use parking_lot::Mutex;
+use moka::sync::Cache;
 use tiktoken_rs::CoreBPE;
 
 pub type Result<T> = TokenizerResult<T>;
 
-static TOKENIZER: OnceLock<Arc<TokenizerService>> = OnceLock::new();
+static TOKENIZER: OnceLock<Result<Arc<TokenizerService>>> = OnceLock::new();
 
 /// Get the global tokenizer service instance.
 ///
-/// This initializes the tokenizer on first call and returns a reference
-/// to the same instance on subsequent calls.
+/// This initializes the tokenizer on first call and caches the result (success or error).
+/// Subsequent calls return the cached result, avoiding repeated initialization attempts.
+/// If initialization failed on first call, all subsequent calls will return the same error.
 pub fn get_tokenizer() -> Result<Arc<TokenizerService>> {
     match TOKENIZER.get() {
-        Some(t) => Ok(Arc::clone(t)),
+        Some(cached) => match cached {
+            Ok(t) => Ok(Arc::clone(t)),
+            Err(e) => Err(e.clone()),
+        },
         None => {
-            let tokenizer = Arc::new(TokenizerService::new()?);
-            match TOKENIZER.set(Arc::clone(&tokenizer)) {
-                Ok(_) => Ok(tokenizer),
+            let init_result = TokenizerService::new().map(Arc::new);
+            match TOKENIZER.set(init_result.clone()) {
+                Ok(_) => init_result,
                 #[expect(
                     clippy::unwrap_used,
                     reason = "Another thread set it, so get() is Some"
                 )]
-                Err(_) => Ok(Arc::clone(TOKENIZER.get().unwrap())),
+                Err(_) => {
+                    let cached = TOKENIZER.get().unwrap();
+                    match cached {
+                        Ok(t) => Ok(Arc::clone(t)),
+                        Err(e) => Err(e.clone()),
+                    }
+                }
             }
         }
     }
@@ -38,9 +49,9 @@ const TOKEN_CACHE_CAPACITY: usize = 10_000;
 
 pub struct TokenizerService {
     bpe: CoreBPE,
-    /// LRU cache for token counts, keyed by content string.
-    /// Stores content directly to eliminate hash collision risk.
-    token_cache: Mutex<lru::LruCache<String, TokenCount>>,
+    /// LRU cache for token counts, keyed by content hash.
+    token_cache: Cache<u64, TokenCount>,
+    hash_builder: RandomState,
 }
 
 impl TokenizerService {
@@ -52,9 +63,11 @@ impl TokenizerService {
             reason = "TOKEN_CACHE_CAPACITY is non-zero constant"
         )]
         let cap = NonZeroUsize::new(TOKEN_CACHE_CAPACITY).unwrap();
+        let token_cache = Cache::builder().max_capacity(cap.get() as u64).build();
         Ok(Self {
             bpe,
-            token_cache: Mutex::new(lru::LruCache::new(cap)),
+            token_cache,
+            hash_builder: RandomState::new(),
         })
     }
 
@@ -66,25 +79,11 @@ impl TokenizerService {
             return TokenCount::new_saturating(count as u32);
         }
 
-        // Single lock scope for cache check and potential insert
-        let mut cache = self.token_cache.lock();
-
-        // Try cache first
-        if let Some(&count) = cache.get(text) {
-            return count;
-        }
-
-        // Cache miss, compute token count
-        // Drop lock temporarily for expensive computation
-        drop(cache);
-        let count = self.bpe.encode_ordinary(text).len();
-        let token_count = TokenCount::new_saturating(count as u32);
-
-        // Re-acquire lock and store in cache
-        let mut cache = self.token_cache.lock();
-        cache.put(text.to_string(), token_count);
-
-        token_count
+        let hash = self.hash_builder.hash_one(text.as_bytes());
+        self.token_cache.get_with(hash, || {
+            let count = self.bpe.encode_ordinary(text).len();
+            TokenCount::new_saturating(count as u32)
+        })
     }
 
     pub fn encode(&self, text: &str) -> Vec<u32> {

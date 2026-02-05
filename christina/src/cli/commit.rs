@@ -120,8 +120,13 @@ async fn generate_commit(diff: String, context: Option<String>) -> Result<String
     let progress_spinner = spinner.clone();
     let progress_handle = tokio::spawn(async move {
         while let Some(event) = progress_rx.recv().await {
-            if let Event::GenerationProgress { stage, .. } = event {
-                progress_spinner.set_message(stage);
+            match event {
+                Event::GenerationProgress { stage, .. } => {
+                    progress_spinner.set_message(stage);
+                }
+                Event::TokenCountUpdate { token_count } => {
+                    let _ = token_count.get();
+                }
             }
         }
     });
@@ -131,7 +136,6 @@ async fn generate_commit(diff: String, context: Option<String>) -> Result<String
         diff,
         repo_path,
         progress_tx,
-        0,
         context,
     )
     .await;

@@ -19,13 +19,26 @@ pub enum SecretError {
 }
 
 /// Generic secret container
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+///
+/// **Important**: This type implements a custom Debug impl that redacts all secrets
+/// for security. To access secret values, use `expose_secret()` or resolver methods.
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Secret<S> {
     Value(S),
     #[serde(rename = "env")]
     EnvVar(String),
     #[serde(rename = "keyring")]
     Keyring(String),
+}
+
+impl<S> fmt::Debug for Secret<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Secret::Value(_) => f.write_str("[REDACTED:secret-value]"),
+            Secret::EnvVar(name) => f.write_fmt(format_args!("[REDACTED:env:{}]", name)),
+            Secret::Keyring(key) => f.write_fmt(format_args!("[REDACTED:keyring:{}]", key)),
+        }
+    }
 }
 
 impl Secret<String> {
@@ -126,7 +139,15 @@ impl SecretRef {
     }
 }
 
-/// Runtime secret (redacted in Debug)
+/// Runtime secret (redacted in Debug).
+///
+/// `PartialEq` is deliberately not implemented for `SecretString`.
+/// This forces explicit comparisons via `expose_secret()`, which:
+/// - Makes secret comparisons intentional and visible in code
+/// - Prevents accidental timing-side-channel leaks from `==` comparisons
+/// - Encourages explicit secret handling rather than treating secrets like normal strings
+///
+/// For comparing secrets, use `s1.expose_secret() == s2.expose_secret()`.
 pub struct SecretString(String);
 
 impl SecretString {
@@ -150,15 +171,6 @@ impl Clone for SecretString {
         Self(self.0.clone())
     }
 }
-
-impl PartialEq for SecretString {
-    fn eq(&self, _other: &Self) -> bool {
-        // Secrets are never equal (security)
-        false
-    }
-}
-
-impl Eq for SecretString {}
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
@@ -213,17 +225,32 @@ mod tests {
     }
 
     #[test]
-    fn secret_string_never_equal() {
-        let s1 = SecretString::new("secret".to_string());
-        let s2 = SecretString::new("secret".to_string());
-        assert_ne!(s1, s2);
-    }
-
-    #[test]
     fn secret_string_debug_redacted() {
         let secret = SecretString::new("my_secret".to_string());
         let debug = format!("{:?}", secret);
         assert_eq!(debug, "[REDACTED]");
+    }
+
+    #[test]
+    fn secret_value_debug_redacted() {
+        let secret: Secret<String> = Secret::Value("sk-test123".to_string());
+        let debug = format!("{:?}", secret);
+        assert_eq!(debug, "[REDACTED:secret-value]");
+        assert!(!debug.contains("sk-test123"));
+    }
+
+    #[test]
+    fn secret_env_var_debug_redacted() {
+        let secret: Secret<String> = Secret::EnvVar("OPENAI_API_KEY".to_string());
+        let debug = format!("{:?}", secret);
+        assert_eq!(debug, "[REDACTED:env:OPENAI_API_KEY]");
+    }
+
+    #[test]
+    fn secret_keyring_debug_redacted() {
+        let secret: Secret<String> = Secret::Keyring("christina.openai".to_string());
+        let debug = format!("{:?}", secret);
+        assert_eq!(debug, "[REDACTED:keyring:christina.openai]");
     }
 
     #[test]

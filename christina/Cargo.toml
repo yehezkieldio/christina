@@ -25,13 +25,13 @@ config = { version = "0.15.19", default-features = false, features = ["toml"] }
 directories = "6.0.0"
 mimalloc = { version = "0.1.48", default-features = false }
 cap = { version = "0.1.2" }
-parking_lot = { workspace = true }
 url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
 futures = "0.3.31"
 fs2 = "0.4.3"
 keyring = { version = "3", optional = true }
-lru = "0.12.5"
+moka = { version = "0.12", features = ["sync"] }
+ahash = "0.8"
 tiktoken-rs = "0.9.1"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

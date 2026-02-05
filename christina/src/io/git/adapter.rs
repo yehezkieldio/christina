@@ -4,21 +4,34 @@ use std::io::Write;
 
 use christina_core::git::GitFile;
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub trait GitRepository {
     fn get_staged_files(&self) -> Result<Vec<GitFile>>;
+    fn create_commit(&self, message: &str) -> Result<Oid>;
+    fn has_staged_changes(&self) -> Result<bool>;
+    fn build_staged_diff(&self) -> Result<String>;
     fn get_unstaged_files(&self) -> Result<Vec<GitFile>>;
     fn stage_files(&self, paths: &[String]) -> Result<()>;
     fn unstage_files(&self, paths: &[String]) -> Result<()>;
-    fn create_commit(&self, message: &str) -> Result<Oid>;
-    fn has_staged_changes(&self) -> Result<bool>;
     fn validate_for_commit(&self) -> Result<()>;
-    fn build_staged_diff(&self) -> Result<String>;
 }
 
+#[cfg(test)]
 impl GitRepository for Repository {
     fn get_staged_files(&self) -> Result<Vec<GitFile>> {
         get_staged_files(self)
+    }
+
+    fn create_commit(&self, message: &str) -> Result<Oid> {
+        create_commit(self, message)
+    }
+
+    fn has_staged_changes(&self) -> Result<bool> {
+        has_staged_changes(self)
+    }
+
+    fn build_staged_diff(&self) -> Result<String> {
+        build_staged_diff(self)
     }
 
     fn get_unstaged_files(&self) -> Result<Vec<GitFile>> {
@@ -33,20 +46,8 @@ impl GitRepository for Repository {
         unstage_files(self, paths)
     }
 
-    fn create_commit(&self, message: &str) -> Result<Oid> {
-        create_commit(self, message)
-    }
-
-    fn has_staged_changes(&self) -> Result<bool> {
-        has_staged_changes(self)
-    }
-
     fn validate_for_commit(&self) -> Result<()> {
         validate_for_commit(self)
-    }
-
-    fn build_staged_diff(&self) -> Result<String> {
-        build_staged_diff(self)
     }
 }
 
@@ -112,20 +113,6 @@ impl GitRepository for MockGitRepository {
         resolve_result(&self.staged_files)
     }
 
-    fn get_unstaged_files(&self) -> Result<Vec<GitFile>> {
-        resolve_result(&self.unstaged_files)
-    }
-
-    fn stage_files(&self, paths: &[String]) -> Result<()> {
-        self.stage_calls.borrow_mut().push(paths.to_vec());
-        resolve_result(&self.stage_files_result)
-    }
-
-    fn unstage_files(&self, paths: &[String]) -> Result<()> {
-        self.unstage_calls.borrow_mut().push(paths.to_vec());
-        resolve_result(&self.unstage_files_result)
-    }
-
     fn create_commit(&self, message: &str) -> Result<Oid> {
         self.commit_messages.borrow_mut().push(message.to_string());
         resolve_result(&self.create_commit_result)
@@ -135,12 +122,30 @@ impl GitRepository for MockGitRepository {
         resolve_result(&self.has_staged_changes_result)
     }
 
-    fn validate_for_commit(&self) -> Result<()> {
-        resolve_result(&self.validate_for_commit_result)
-    }
-
     fn build_staged_diff(&self) -> Result<String> {
         resolve_result(&self.build_staged_diff_result)
+    }
+
+    #[cfg(test)]
+    fn get_unstaged_files(&self) -> Result<Vec<GitFile>> {
+        resolve_result(&self.unstaged_files)
+    }
+
+    #[cfg(test)]
+    fn stage_files(&self, paths: &[String]) -> Result<()> {
+        self.stage_calls.borrow_mut().push(paths.to_vec());
+        resolve_result(&self.stage_files_result)
+    }
+
+    #[cfg(test)]
+    fn unstage_files(&self, paths: &[String]) -> Result<()> {
+        self.unstage_calls.borrow_mut().push(paths.to_vec());
+        resolve_result(&self.unstage_files_result)
+    }
+
+    #[cfg(test)]
+    fn validate_for_commit(&self) -> Result<()> {
+        resolve_result(&self.validate_for_commit_result)
     }
 }
 

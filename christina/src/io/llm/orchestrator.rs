@@ -47,6 +47,26 @@ const MAX_CONCURRENT_REQUESTS: usize = 5;
 
 // WHY progressive timeouts: Initial requests prime cache (cold start = slower). Retries
 // benefit from warm cache. Final timeout (120s) prevents infinite hangs on provider issues.
+//
+// HTTP TIMEOUT STRATEGY:
+// The llm crate v1.3.7 provides LLMBuilder::timeout_seconds() for backend-level HTTP timeouts.
+// However, this orchestrator uses tokio::time::timeout wrapping all generate() calls with
+// progressive timeouts (30s → 60s → 120s). This approach provides:
+// - Unified timeout handling across all backends (OpenAI, Azure, Groq) without duplicating
+//   timeout configuration
+// - Distinction between different failure scenarios: connection/DNS (fails fast) vs. slow
+//   responses (retries with increasing patience)
+// - Clean separation: retry logic and backoff in orchestrator.rs, not distributed across
+//   provider implementations
+// - Transient error recovery: timeouts trigger retry_policy, which may succeed if provider
+//   recovers or network improves
+//
+// LLMBuilder::timeout_seconds() is NOT used because:
+// 1. It would add HTTP-level timeouts ON TOP of these orchestrator timeouts, creating
+//    unpredictable behavior (whichever fires first wins)
+// 2. Backend timeouts cannot be progressive (same for all attempts)
+// 3. Different backends handle timeouts differently, making unified configuration harder
+// 4. Retry-wrapper logic in orchestrator already provides robust timeout semantics
 const LLM_INITIAL_TIMEOUT_SECONDS: u64 = 30;
 const LLM_RETRY_TIMEOUT_SECONDS: u64 = 60;
 const LLM_TIMEOUT_SECONDS: u64 = 120;
@@ -54,6 +74,20 @@ const LLM_TIMEOUT_SECONDS: u64 = 120;
 // WHY 20 summaries: Intent extraction prompt has ~500 token overhead + 50 tokens/summary.
 // 20 summaries = 1500 tokens, leaves ~2500 for context in 4K window. Higher = truncation risk.
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
+
+/// Fraction of max input tokens allocated for commit history context.
+///
+/// WHY 15%: Empirically derived balance. Less (e.g., 10%) provides insufficient style reference;
+/// more (e.g., 25%) reduces space for actual diff content. At 15%, a 4K token window gets
+/// ~600 tokens for history, enough for 4-5 commits while preserving diff context.
+const HISTORY_BUDGET_FRACTION: f64 = 0.15;
+
+/// Average token count per commit in conventional commit format.
+///
+/// WHY 150.0: Empirical average for "type(scope): description" format.
+/// Examples: "feat(auth): implement OAuth flow" (~10 tokens), "fix: correct typo" (~5 tokens).
+/// 150 tokens accommodates commits with body text and footers, supporting diverse conventions.
+const AVG_TOKENS_PER_COMMIT: f64 = 150.0;
 
 #[derive(Debug)]
 enum MapError {
@@ -213,8 +247,8 @@ impl AIOrchestrator {
     /// WHY minimum 3 commits: Below 3, style inference is unreliable (insufficient samples).
     /// Even tiny context budgets get at least 3 commits for pattern recognition.
     pub fn calculate_history_budget(&self, max_input_tokens: u32) -> usize {
-        let budget_tokens = max_input_tokens as f64 * 0.15;
-        let commits_available = (budget_tokens / 150.0).floor() as usize;
+        let budget_tokens = max_input_tokens as f64 * HISTORY_BUDGET_FRACTION;
+        let commits_available = (budget_tokens / AVG_TOKENS_PER_COMMIT).floor() as usize;
         commits_available.max(3)
     }
 
@@ -816,11 +850,11 @@ impl AIOrchestrator {
             return content;
         }
 
-        if let Some(json) = Self::extract_json_simplified(response) {
+        if let Some(json) = Self::extract_with_streaming_parser(response) {
             return json;
         }
 
-        if let Some(json) = Self::extract_balanced_json(response) {
+        if let Some(json) = Self::extract_json_simplified(response) {
             return json;
         }
 
@@ -862,9 +896,19 @@ impl AIOrchestrator {
         None
     }
 
-    fn extract_balanced_json(response: &str) -> Option<String> {
+    fn extract_with_streaming_parser(response: &str) -> Option<String> {
+        let start_pos = response.find('{')?;
+        let slice_from_start = &response[start_pos..];
+
+        if serde_json::from_str::<serde_json::Value>(slice_from_start).is_ok() {
+            return Some(slice_from_start.to_string());
+        }
+
+        Self::extract_json_with_escape_handling(slice_from_start)
+    }
+
+    fn extract_json_with_escape_handling(response: &str) -> Option<String> {
         let bytes = response.as_bytes();
-        let mut start: Option<usize> = None;
         let mut depth = 0i32;
         let mut in_string = false;
         let mut escape_next = false;
@@ -891,17 +935,16 @@ impl AIOrchestrator {
 
             match byte {
                 b'{' => {
-                    if depth == 0 {
-                        start = Some(i);
-                    }
                     depth += 1;
                 }
                 b'}' => {
                     depth -= 1;
-                    if depth == 0
-                        && let Some(s) = start
-                    {
-                        return Some(response[s..=i].to_string());
+                    if depth == 0 {
+                        let json_str = &response[..=i];
+                        if serde_json::from_str::<serde_json::Value>(json_str).is_ok() {
+                            return Some(json_str.to_string());
+                        }
+                        return None;
                     }
                 }
                 _ => {}

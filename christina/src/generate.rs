@@ -53,7 +53,6 @@ pub async fn generate_commit_message_with_progress(
     diff: String,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
-    generation_id: u64,
     user_context: Option<String>,
 ) -> Result<GenerationResult> {
     generate_commit_message_with_progress_impl(
@@ -61,7 +60,6 @@ pub async fn generate_commit_message_with_progress(
         diff,
         repo_path,
         progress_tx,
-        generation_id,
         user_context,
         &GitCommitHistoryProvider,
     )
@@ -73,21 +71,10 @@ async fn generate_commit_message_with_progress_impl(
     diff: String,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
-    generation_id: u64,
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
 ) -> Result<GenerationResult> {
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: "Retrieving API key...".to_string(),
-            generation_id,
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
-
+    // Validate configuration before starting progress events
     let api_key = match &config.api_key {
         Some(key) if !key.is_empty() => key.clone(),
         _ => anyhow::bail!("API key not found in configuration"),
@@ -96,7 +83,6 @@ async fn generate_commit_message_with_progress_impl(
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Connecting to AI provider...".to_string(),
-            generation_id,
         })
         .await
         .is_err()
@@ -110,7 +96,6 @@ async fn generate_commit_message_with_progress_impl(
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Processing diff content...".to_string(),
-            generation_id,
         })
         .await
         .is_err()
@@ -154,7 +139,6 @@ async fn generate_commit_message_with_progress_impl(
     if progress_tx
         .send(Event::TokenCountUpdate {
             token_count: total_tokens,
-            generation_id,
         })
         .await
         .is_err()
@@ -169,7 +153,6 @@ async fn generate_commit_message_with_progress_impl(
                 chunks.len(),
                 if chunks.len() == 1 { "" } else { "s" }
             ),
-            generation_id,
         })
         .await
         .is_err()
@@ -222,7 +205,6 @@ async fn generate_commit_message_with_progress_impl(
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Generating commit message...".to_string(),
-            generation_id,
         })
         .await
         .is_err()
@@ -243,7 +225,6 @@ async fn generate_commit_message_with_progress_impl(
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Finalizing...".to_string(),
-            generation_id,
         })
         .await
         .is_err()
@@ -518,7 +499,6 @@ mod tests {
             diff,
             repo_path,
             tx,
-            1,
             None,
             &MockCommitHistoryProvider::empty(),
         )
@@ -547,7 +527,6 @@ mod tests {
             diff,
             repo_path,
             tx,
-            1,
             None,
             &MockCommitHistoryProvider::empty(),
         )
@@ -578,7 +557,6 @@ mod tests {
             diff,
             repo_path,
             tx,
-            1,
             None,
             &MockCommitHistoryProvider::empty(),
         )
@@ -613,7 +591,6 @@ mod tests {
             diff,
             repo_path,
             tx,
-            1,
             None,
             &MockCommitHistoryProvider::empty(),
         )

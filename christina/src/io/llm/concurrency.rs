@@ -21,6 +21,9 @@ pub type Error = AcquireError;
 /// WHY proactive rate limiting: Prevents thundering herd by spacing out requests
 /// before they hit the API. Reactive retry-after-failure creates bursty traffic
 /// that can cascade (all requests fail, all retry at once, repeat).
+///
+/// Scope: Per-orchestrator instance. If multiple orchestrators exist,
+/// each has independent rate limits, potentially exceeding provider quotas.
 #[derive(Clone)]
 pub struct RequestLimiter {
     semaphore: Arc<Semaphore>,

@@ -67,6 +67,16 @@ pub async fn execute_azure_request_with_retry(
 }
 
 /// Inner implementation without retry logic.
+///
+/// HTTP Timeout Configuration:
+/// The llm crate v1.3.7 supports HTTP-level timeouts via LLMBuilder::timeout_seconds().
+/// However, this codebase relies on orchestrator-level tokio::timeout wrapping all
+/// LLM calls (see orchestrator.rs:generate_with_retry). The orchestrator applies
+/// progressive timeouts (30s initial, 60s retry, 120s final) that wrap the entire
+/// HTTP request, providing more precise control than backend-level timeouts.
+///
+/// If future versions need backend-level timeout configuration (e.g., to distinguish
+/// connection vs. read timeouts), call .timeout_seconds(60) on the builder.
 async fn execute_azure_request_inner(
     request: &LlmRequest,
     api_key: &str,

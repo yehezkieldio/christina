@@ -19,9 +19,9 @@
 use std::sync::Arc;
 
 use christina_core::{
-    Tokenizer,
     git::{DiffChunk, FileDiff},
     types::{FilePath, TokenCount},
+    Tokenizer,
 };
 
 use crate::io::git::buffer_pool;
@@ -248,6 +248,14 @@ fn truncate_to_token_limit_fallback(
 
 /// Split a single file's diff by hunks (`@@`).
 ///
+/// WHY header deduplication: Each chunk includes the file header (e.g., `diff --git a/file.txt`)
+/// in the first chunk only. Subsequent chunks from the same file omit the header, saving tokens.
+/// The LLM can infer the file context from:
+/// 1. The `files` field in DiffChunk (contains file_path)
+/// 2. The first hunk header `@@ -line,count +line,count @@` (provides line range context)
+/// Duplicating the header in every chunk wastes ~20-50 tokens per chunk across large diffs.
+/// LLMs process sequential hunk changes well without redundant file metadata.
+///
 /// - content must be valid UTF-8
 pub fn split_by_hunks(
     file_path: &FilePath,
@@ -330,11 +338,11 @@ pub fn split_by_hunks(
                 ));
                 buffer.clear();
             }
-            // Start new chunk with header + hunk
-            buffer.content_mut().push_str(header);
+            // Start new chunk with hunk only (no header deduplication)
             buffer.content_mut().push('\n');
             buffer.content_mut().push_str(hunk);
-            current_tokens = header_tokens_count + hunk_tokens_count + 1;
+            current_tokens = hunk_tokens_count + 1;
+            header_included = false;
         } else {
             buffer.content_mut().push('\n');
             buffer.content_mut().push_str(hunk);
