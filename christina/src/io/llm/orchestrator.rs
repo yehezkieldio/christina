@@ -196,7 +196,7 @@ struct ThemeItem {
     description: String,
     #[serde(rename = "fileCount")]
     file_count: usize,
-    scope: String,
+    scope: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -204,7 +204,7 @@ struct SubTheme {
     title: String,
     description: String,
     file_count: usize,
-    scope: String,
+    scope: Option<String>,
 }
 
 pub struct AIOrchestrator {
@@ -685,7 +685,7 @@ impl AIOrchestrator {
     }
 
     async fn aggregate_sub_themes(&self, sub_themes: &[SubTheme]) -> Result<Vec<Theme>> {
-        let mut scope_groups: std::collections::HashMap<String, Vec<SubTheme>> =
+        let mut scope_groups: std::collections::HashMap<Option<String>, Vec<SubTheme>> =
             std::collections::HashMap::new();
 
         for theme in sub_themes {
@@ -785,7 +785,7 @@ impl AIOrchestrator {
             title: "Code changes".to_string(),
             description: combined_description,
             file_count: total_files,
-            scope: "chore".to_string(),
+            scope: None, // No specific scope for fallback sub-themes
         }]
     }
 
@@ -829,7 +829,7 @@ impl AIOrchestrator {
             "Code changes".to_string(),
             combined_description,
             total_files,
-            "chore".to_string(),
+            None, // No specific scope for fallback themes
         )]
     }
 
@@ -1739,7 +1739,7 @@ This is not JSON at all, just plain text
         assert_eq!(sub_themes.len(), 1);
         assert_eq!(sub_themes[0].title, "Code changes");
         assert_eq!(sub_themes[0].file_count, 3);
-        assert_eq!(sub_themes[0].scope, "chore");
+        assert_eq!(sub_themes[0].scope, None);
         assert!(sub_themes[0].description.contains("Added feature A"));
         assert!(sub_themes[0].description.contains("Added feature B"));
     }
@@ -1754,19 +1754,19 @@ This is not JSON at all, just plain text
                 title: "Auth feature 1".to_string(),
                 description: "Added login".to_string(),
                 file_count: 2,
-                scope: "auth".to_string(),
+                scope: Some("auth".to_string()),
             },
             SubTheme {
                 title: "Auth feature 2".to_string(),
                 description: "Added logout".to_string(),
                 file_count: 3,
-                scope: "auth".to_string(),
+                scope: Some("auth".to_string()),
             },
             SubTheme {
                 title: "API feature".to_string(),
                 description: "Added endpoints".to_string(),
                 file_count: 1,
-                scope: "api".to_string(),
+                scope: Some("api".to_string()),
             },
         ];
 
@@ -1779,13 +1779,13 @@ This is not JSON at all, just plain text
 
         let auth_theme = themes
             .iter()
-            .find(|t| t.scope == "auth")
+            .find(|t| t.scope == Some("auth".to_string()))
             .expect("auth theme present");
         assert_eq!(auth_theme.file_count, 5);
 
         let api_theme = themes
             .iter()
-            .find(|t| t.scope == "api")
+            .find(|t| t.scope == Some("api".to_string()))
             .expect("api theme present");
         assert_eq!(api_theme.file_count, 1);
     }
@@ -1800,31 +1800,31 @@ This is not JSON at all, just plain text
                 title: "Feature 1".to_string(),
                 description: "Desc 1".to_string(),
                 file_count: 10,
-                scope: "scope1".to_string(),
+                scope: Some("scope1".to_string()),
             },
             SubTheme {
                 title: "Feature 2".to_string(),
                 description: "Desc 2".to_string(),
                 file_count: 8,
-                scope: "scope2".to_string(),
+                scope: Some("scope2".to_string()),
             },
             SubTheme {
                 title: "Feature 3".to_string(),
                 description: "Desc 3".to_string(),
                 file_count: 6,
-                scope: "scope3".to_string(),
+                scope: Some("scope3".to_string()),
             },
             SubTheme {
                 title: "Feature 4".to_string(),
                 description: "Desc 4".to_string(),
                 file_count: 4,
-                scope: "scope4".to_string(),
+                scope: Some("scope4".to_string()),
             },
             SubTheme {
                 title: "Feature 5".to_string(),
                 description: "Desc 5".to_string(),
                 file_count: 2,
-                scope: "scope5".to_string(),
+                scope: Some("scope5".to_string()),
             },
         ];
 

@@ -101,14 +101,10 @@
 ### E-003: Theme::scope is String, Can Be Empty or Invalid
 
 **Finding**: In prompt.rs, Theme has pub scope: String with no validation. Empty scope is semantically "no scope" but stored as "".
-**Status**: Open
-**Rationale**: Scope rules in INTENT_EXTRACTION_PROMPT indicate scope can be null, but Theme stores empty string instead of Option<String>.
+**Status**: Resolved
+**Resolution**: Changed `Theme.scope` from `String` to `Option<String>` to properly represent when no scope is applicable. Updated `ThemeItem` and `SubTheme` deserialization structs, aggregation logic, and the synthesis prompt builder to handle None scope correctly (omitting empty parentheses in output). Updated all test cases and fallback theme creation. The type now correctly models the domain: Some("auth") for module scope, None for cross-cutting changes.
 
-**Assumptions**: LLM may return null scope which becomes empty string.
-
-**Approach**:
-1. Change Theme.scope to Option<String> or a Scope newtype
-2. Update PromptBuilder::build_synthesis_prompt to handle None scope correctly
+**Assumptions**: LLM may return null scope which is now properly handled as None.
 
 ---
 

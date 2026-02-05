@@ -300,7 +300,7 @@ pub struct Theme {
     pub title: String,
     pub description: String,
     pub file_count: usize,
-    pub scope: String,
+    pub scope: Option<String>,
 }
 
 impl Theme {
@@ -308,13 +308,13 @@ impl Theme {
         title: impl Into<String>,
         description: impl Into<String>,
         file_count: usize,
-        scope: impl Into<String>,
+        scope: Option<String>,
     ) -> Self {
         Self {
             title: title.into(),
             description: description.into(),
             file_count,
-            scope: scope.into(),
+            scope,
         }
     }
 }
@@ -385,10 +385,16 @@ impl<'a> PromptBuilder<'a> {
             .themes
             .iter()
             .map(|t| {
-                format!(
-                    "- {} ({}): {} [{} files]",
-                    t.title, t.scope, t.description, t.file_count
-                )
+                match &t.scope {
+                    Some(scope) => format!(
+                        "- {} ({}): {} [{} files]",
+                        t.title, scope, t.description, t.file_count
+                    ),
+                    None => format!(
+                        "- {}: {} [{} files]",
+                        t.title, t.description, t.file_count
+                    ),
+                }
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -463,13 +469,29 @@ mod tests {
             "Authentication",
             "Add user login flow",
             5,
-            "feature",
+            Some("auth".to_string()),
         )];
         let builder = PromptBuilder::new().with_themes(&themes);
         let prompt = builder.build_synthesis_prompt();
 
-        assert!(prompt.contains("Authentication (feature)"));
+        assert!(prompt.contains("Authentication (auth)"));
         assert!(prompt.contains("[5 files]"));
+    }
+
+    #[test]
+    fn synthesis_prompt_without_scope() {
+        let themes = vec![Theme::new(
+            "Cross-cutting refactor",
+            "Refactor logging across multiple modules",
+            8,
+            None, // No specific scope
+        )];
+        let builder = PromptBuilder::new().with_themes(&themes);
+        let prompt = builder.build_synthesis_prompt();
+
+        assert!(prompt.contains("Cross-cutting refactor:"));
+        assert!(!prompt.contains("()"));
+        assert!(prompt.contains("[8 files]"));
     }
 
     #[test]
