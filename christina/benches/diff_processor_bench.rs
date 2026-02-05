@@ -1,3 +1,5 @@
+extern crate christina;
+
 use christina::io::git::diff_processor::DiffProcessor;
 use christina_core::{test_helpers::DeterministicTokenizer, types::TokenCount, Tokenizer};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};

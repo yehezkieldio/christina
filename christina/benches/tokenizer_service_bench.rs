@@ -1,5 +1,7 @@
+extern crate christina;
+
 use christina::io::llm::tokenizer::{get_tokenizer, TokenBudget};
-use christina_core::{types::TokenCount, Tokenizer};
+use christina_core::types::TokenCount;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 /// Generate text with specified word count.
@@ -304,18 +306,18 @@ fn bench_slice_long_line(c: &mut Criterion) {
 fn bench_token_budget_remaining(c: &mut Criterion) {
     let mut group = c.benchmark_group("token_budget/remaining");
 
-    group.bench_function("small", |b| {
-        let budget = TokenBudget::small();
-        b.iter(|| black_box(budget.remaining_for_diff()));
-    });
-
     group.bench_function("medium", |b| {
         let budget = TokenBudget::medium();
         b.iter(|| black_box(budget.remaining_for_diff()));
     });
 
-    group.bench_function("large", |b| {
-        let budget = TokenBudget::large();
+    group.bench_function("custom_large", |b| {
+        let budget = TokenBudget::new(
+            TokenCount::new_saturating(256_000),
+            TokenCount::new_saturating(4_096),
+            TokenCount::new_saturating(1_000),
+            TokenCount::new_saturating(500),
+        );
         b.iter(|| black_box(budget.remaining_for_diff()));
     });
 

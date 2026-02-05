@@ -1,6 +1,8 @@
 use christina::io::git::chunking::{
     split_by_hunks, split_by_lines, split_recursive, truncate_to_token_limit,
 };
+
+extern crate christina;
 use christina_core::{
     git::FileDiff, test_helpers::DeterministicTokenizer, types::TokenCount, types::FilePath,
     Tokenizer,

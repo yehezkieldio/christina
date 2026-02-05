@@ -43,7 +43,7 @@ pub const LOCKFILE_TOKEN_LIMIT: u32 = 100;
 ///
 /// - All file_diffs must contain valid UTF-8 content
 /// - tokenizer must be initialized and functional
-pub(crate) fn split_recursive(
+pub fn split_recursive(
     file_diffs: Vec<FileDiff>,
     token_limit: TokenCount,
     ignore_patterns: &[String],
