@@ -35,12 +35,11 @@ fn parse_azure_endpoint(url: &url::Url) -> (Option<String>, Option<String>) {
     // Extract deployment_id from path segments
     // Pattern: /openai/deployments/{deployment_id}/...
     let segments: Vec<&str> = url.path_segments().map_or(Vec::new(), |s| s.collect());
-    if let Some(idx) = segments.iter().position(|&s| s == "deployments") {
-        if let Some(&id) = segments.get(idx + 1) {
-            if !id.is_empty() {
-                deployment_id = Some(id.to_string());
-            }
-        }
+    if let Some(idx) = segments.iter().position(|&s| s == "deployments")
+        && let Some(&id) = segments.get(idx + 1)
+        && !id.is_empty()
+    {
+        deployment_id = Some(id.to_string());
     }
 
     (api_version, deployment_id)
@@ -324,10 +323,11 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_full_url() {
         let url = url::Url::parse(
             "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15"
-        ).unwrap();
+        ).expect("valid URL");
 
         let (api_version, deployment_id) = parse_azure_endpoint(&url);
 
@@ -336,11 +336,12 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_missing_version() {
         let url = url::Url::parse(
             "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions"
         )
-        .unwrap();
+        .expect("valid URL");
 
         let (api_version, deployment_id) = parse_azure_endpoint(&url);
 
@@ -349,11 +350,12 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_missing_deployment() {
         let url = url::Url::parse(
             "https://my-resource.openai.azure.com/?api-version=2024-02-15"
         )
-        .unwrap();
+        .expect("valid URL");
 
         let (api_version, deployment_id) = parse_azure_endpoint(&url);
 
@@ -362,8 +364,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_base_url_only() {
-        let url = url::Url::parse("https://my-resource.openai.azure.com").unwrap();
+        let url = url::Url::parse("https://my-resource.openai.azure.com")
+            .expect("valid URL");
 
         let (api_version, deployment_id) = parse_azure_endpoint(&url);
 

@@ -167,8 +167,9 @@ impl CompletionError {
         {
             CompletionError::RateLimited
         }
-        // Request validation errors (permanent)
+        // Request validation and resource not found errors (permanent)
         else if msg_lower.contains("400")
+            || msg_lower.contains("404")
             || msg_lower.contains("bad request")
             || msg_lower.contains("invalid request")
             || msg_lower.contains("malformed")
@@ -177,11 +178,6 @@ impl CompletionError {
             || msg_lower.contains("token limit")
             || msg_lower.contains("too many tokens")
             || msg_lower.contains("maximum context")
-        {
-            CompletionError::InvalidResponse(msg.to_string())
-        }
-        // Resource not found errors (permanent)
-        else if msg_lower.contains("404")
             || msg_lower.contains("not found")
             || msg_lower.contains("does not exist")
             || msg_lower.contains("model not found")
