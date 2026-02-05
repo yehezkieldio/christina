@@ -150,14 +150,10 @@
 ### B-004: RequestLimiter Token Bucket Uses f64 for Capacity
 
 **Finding**: TokenBucket in concurrency.rs uses f64 for tokens and capacity.
-**Status**: Open
-**Rationale**: Floating point accumulation over long periods can lead to precision issues, though unlikely to matter in practice.
+**Status**: Resolved
+**Resolution**: Converted TokenBucket from f64 to u64 with milli-token precision (1 token = 1000 milli-tokens) to eliminate floating-point accumulation errors. The integer arithmetic ensures deterministic behavior regardless of session duration, prevents gradual drift in token accounting, and provides precise rate limit enforcement. Updated all token operations including refill and consumption logic. All tests pass with the new implementation.
 
 **Assumptions**: Session duration is short (minutes, not days).
-
-**Approach**:
-1. Document that the limiter is designed for short sessions
-2. Alternatively, use integer arithmetic with milli-token precision
 
 ---
 
@@ -180,14 +176,10 @@
 ### I-001: Event Enum Has Only Two Variants
 
 **Finding**: events.rs defines Event with GenerationProgress and TokenCountUpdate only.
-**Status**: Open
-**Rationale**: The event system appears designed for extensibility but currently underutilized.
+**Status**: Resolved
+**Resolution**: Expanded Event enum with comprehensive variants for better progress tracking: (1) ChunkProcessed - tracks multi-file diff processing progress, (2) RetryAttempt - shows retry attempts with backoff information, (3) CommitCreated - signals successful commit with hash, (4) DiffProcessed - provides diff statistics, and (5) ProviderConnecting - indicates LLM provider connection. Added detailed documentation for each variant explaining their purpose and fields. The event system is now more extensible for future TUI integration and real-time status updates.
 
 **Assumptions**: Future features (TUI, real-time status) will need more events.
-
-**Approach**:
-1. Add events for: ChunkProcessed, RetryAttempt, CommitCreated
-2. Or remove the event system if progress channel is sufficient
 
 ---
 
@@ -217,15 +209,10 @@
 ### I-004: test_helpers.rs Exists But Has Minimal Content
 
 **Finding**: christina-core/src/test_helpers.rs is conditionally compiled but its contents are not visible in the analysis.
-**Status**: Open
-**Rationale**: Test helpers should provide utilities for creating test fixtures.
+**Status**: Resolved
+**Resolution**: Significantly enhanced test_helpers.rs with comprehensive testing utilities: (1) ProfileBuilder with fluent API for creating test profiles with sensible defaults, (2) DiffBuilder and FileDiffBuilder for constructing realistic git diffs without actual repositories, (3) MockTokenizer with configurable behavior (fixed count or character length), (4) TestProfile struct for simplified testing. All builders support method chaining and have extensive tests. The module now provides robust utilities for creating test fixtures across the test suite.
 
 **Assumptions**: The module may be empty or minimal.
-
-**Approach**:
-1. Review test_helpers.rs content
-2. Add builders for common test types: TestProfile, TestDiff, MockTokenizer
-3. Ensure feature flag works correctly
 
 ---
 
@@ -263,14 +250,10 @@
 ### P-003: PromptBuilder Clones Strings Multiple Times
 
 **Finding**: PromptBuilder methods like build_synthesis_prompt do string replacement and concatenation.
-**Status**: Open
-**Rationale**: Small prompts make this negligible, but could be optimized.
+**Status**: Resolved
+**Resolution**: Optimized all PromptBuilder methods with capacity pre-allocation and efficient string building: (1) Pre-allocate String capacity based on estimated sizes to avoid reallocation, (2) Replace .replace() calls with manual slicing to avoid intermediate allocations, (3) Use std::fmt::Write for efficient formatting instead of format! macros, (4) Eliminate intermediate Vec allocations in iteration loops. Build methods now avoid unnecessary cloning and allocations. All tests pass and clippy confirms no performance anti-patterns remain.
 
 **Assumptions**: Prompt building is not on the hot path.
-
-**Approach**:
-1. Measure if prompt building is a bottleneck
-2. If so, use pre-allocated String with capacity hints
 
 ---
 
@@ -311,14 +294,10 @@
 ### T-002: Concurrent Tokenizer Access Not Tested
 
 **Finding**: TokenizerService is used via Arc across threads, but no concurrent tests verify thread safety.
-**Status**: Open
-**Rationale**: Moka cache and tiktoken are thread-safe, but worth verifying.
+**Status**: Resolved
+**Resolution**: Added comprehensive concurrent tests verifying thread safety of TokenizerService. Tests include: (1) concurrent token counting across multiple tasks verifying consistent results, (2) cache behavior under concurrent load ensuring no race conditions, (3) slice_to_token_limit thread safety with identical results across threads, and (4) get_tokenizer() concurrent initialization verifying singleton pattern integrity. All 4 new async tests pass and confirm Moka cache and tiktoken are correctly thread-safe.
 
 **Assumptions**: Dependencies are correctly thread-safe.
-
-**Approach**:
-1. Add a concurrent test spawning multiple tokio tasks counting tokens
-2. Verify consistent results and no panics
 
 ---
 

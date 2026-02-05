@@ -383,3 +383,371 @@ mod tests {
         assert_eq!(config.commit_message_max_length, 72);
     }
 }
+
+/// Builder for creating test profiles with fluent API.
+///
+/// Simplifies creation of `ProviderProfile` instances in tests
+/// with sensible defaults and easy customization.
+///
+/// # Examples
+///
+/// ```
+/// use christina_core::test_helpers::ProfileBuilder;
+/// use christina_core::types::TokenCount;
+///
+/// let profile = ProfileBuilder::new()
+///     .model("gpt-4o")
+///     .temperature(0.7)
+///     .max_input_tokens(100_000)
+///     .build();
+///
+/// assert_eq!(profile.model, "gpt-4o");
+/// assert_eq!(profile.temperature, 0.7);
+/// ```
+pub struct ProfileBuilder {
+    model: String,
+    temperature: f32,
+    max_input_tokens: u32,
+    max_output_tokens: u32,
+}
+
+impl ProfileBuilder {
+    /// Create a new profile builder with default values.
+    pub fn new() -> Self {
+        Self {
+            model: "gpt-4o-mini".to_string(),
+            temperature: 0.5,
+            max_input_tokens: 128_000,
+            max_output_tokens: 4_096,
+        }
+    }
+
+    /// Set the model name.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    /// Set the temperature.
+    pub fn temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    /// Set the maximum input tokens.
+    pub fn max_input_tokens(mut self, tokens: u32) -> Self {
+        self.max_input_tokens = tokens;
+        self
+    }
+
+    /// Set the maximum output tokens.
+    pub fn max_output_tokens(mut self, tokens: u32) -> Self {
+        self.max_output_tokens = tokens;
+        self
+    }
+
+    /// Build the profile.
+    ///
+    /// Returns a minimal profile representation suitable for testing.
+    /// This is a simple struct, not the full `ProviderProfile` to avoid
+    /// circular dependencies.
+    pub fn build(self) -> TestProfile {
+        TestProfile {
+            model: self.model,
+            temperature: self.temperature,
+            max_input_tokens: TokenCount::new_at_least_one(self.max_input_tokens),
+            max_output_tokens: TokenCount::new_at_least_one(self.max_output_tokens),
+        }
+    }
+}
+
+impl Default for ProfileBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Simplified profile for testing.
+///
+/// Contains only the fields commonly needed in tests,
+/// avoiding the full complexity of `ProviderProfile`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TestProfile {
+    pub model: String,
+    pub temperature: f32,
+    pub max_input_tokens: TokenCount,
+    pub max_output_tokens: TokenCount,
+}
+
+/// Builder for creating test git diffs with fluent API.
+///
+/// Simplifies creation of realistic git diff strings for testing
+/// without needing actual git repositories.
+///
+/// # Examples
+///
+/// ```
+/// use christina_core::test_helpers::DiffBuilder;
+///
+/// let diff = DiffBuilder::new()
+///     .file("src/main.rs")
+///     .add_line("fn main() {")
+///     .add_line("    println!(\"Hello\");")
+///     .add_line("}")
+///     .build();
+///
+/// assert!(diff.contains("diff --git"));
+/// assert!(diff.contains("src/main.rs"));
+/// ```
+pub struct DiffBuilder {
+    files: Vec<FileDiffBuilder>,
+}
+
+impl DiffBuilder {
+    /// Create a new diff builder.
+    pub fn new() -> Self {
+        Self { files: Vec::new() }
+    }
+
+    /// Start building a new file diff.
+    pub fn file(self, path: impl Into<String>) -> FileDiffBuilder {
+        let builder = FileDiffBuilder::new(path.into());
+        builder
+    }
+
+    /// Build the complete diff string.
+    pub fn build(self) -> String {
+        self.files
+            .into_iter()
+            .map(|f| f.build_inner())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+impl Default for DiffBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builder for a single file's diff.
+pub struct FileDiffBuilder {
+    path: String,
+    added_lines: Vec<String>,
+    removed_lines: Vec<String>,
+}
+
+impl FileDiffBuilder {
+    fn new(path: String) -> Self {
+        Self {
+            path,
+            added_lines: Vec::new(),
+            removed_lines: Vec::new(),
+        }
+    }
+
+    /// Add a line to the diff.
+    pub fn add_line(mut self, line: impl Into<String>) -> Self {
+        self.added_lines.push(line.into());
+        self
+    }
+
+    /// Remove a line from the diff.
+    pub fn remove_line(mut self, line: impl Into<String>) -> Self {
+        self.removed_lines.push(line.into());
+        self
+    }
+
+    /// Build the file diff and continue with the parent DiffBuilder.
+    pub fn and_file(self, path: impl Into<String>) -> FileDiffBuilder {
+        FileDiffBuilder::new(path.into())
+    }
+
+    /// Build the complete diff string for this file.
+    pub fn build(self) -> String {
+        format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}",
+            path = self.path,
+            hunks = self.build_hunks()
+        )
+    }
+
+    fn build_inner(self) -> String {
+        self.build()
+    }
+
+    fn build_hunks(&self) -> String {
+        let mut hunks = String::new();
+        let total_lines = self.added_lines.len() + self.removed_lines.len();
+
+        if total_lines > 0 {
+            hunks.push_str(&format!(
+                "@@ -1,{} +1,{} @@\n",
+                self.removed_lines.len(),
+                self.added_lines.len()
+            ));
+
+            for line in &self.removed_lines {
+                hunks.push_str(&format!("-{}\n", line));
+            }
+            for line in &self.added_lines {
+                hunks.push_str(&format!("+{}\n", line));
+            }
+        }
+
+        hunks
+    }
+}
+
+/// Configurable mock tokenizer for testing.
+///
+/// Unlike `DeterministicTokenizer`, this allows customizing token counts
+/// and encode/decode behavior for edge case testing.
+///
+/// # Examples
+///
+/// ```
+/// use christina_core::test_helpers::MockTokenizer;
+/// use christina_core::tokenizer::Tokenizer;
+/// use christina_core::types::TokenCount;
+///
+/// let tokenizer = MockTokenizer::with_token_count(42);
+/// let count = tokenizer.count_tokens("any text");
+/// assert_eq!(count, TokenCount::new(42).unwrap());
+/// ```
+#[derive(Debug, Clone)]
+pub struct MockTokenizer {
+    fixed_count: Option<u32>,
+}
+
+impl MockTokenizer {
+    /// Create a mock tokenizer that returns a fixed token count.
+    pub fn with_token_count(count: u32) -> Self {
+        Self {
+            fixed_count: Some(count),
+        }
+    }
+
+    /// Create a mock tokenizer that counts by character length.
+    pub fn by_character_length() -> Self {
+        Self { fixed_count: None }
+    }
+}
+
+impl Default for MockTokenizer {
+    fn default() -> Self {
+        Self::by_character_length()
+    }
+}
+
+impl Tokenizer for MockTokenizer {
+    fn count_tokens(&self, text: &str) -> TokenCount {
+        let count = match self.fixed_count {
+            Some(fixed) => fixed,
+            None => text.len() as u32,
+        };
+        TokenCount::new_at_least_one(count)
+    }
+
+    fn encoding_name(&self) -> &str {
+        "mock-tokenizer"
+    }
+
+    fn encode(&self, text: &str) -> Vec<u32> {
+        text.chars().map(|c| c as u32).collect()
+    }
+
+    fn decode(&self, tokens: &[u32]) -> Option<String> {
+        tokens
+            .iter()
+            .filter_map(|&token| char::from_u32(token))
+            .collect::<String>()
+            .into()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod builder_tests {
+    use super::*;
+
+    #[test]
+    fn profile_builder_defaults() {
+        let profile = ProfileBuilder::new().build();
+        assert_eq!(profile.model, "gpt-4o-mini");
+        assert_eq!(profile.temperature, 0.5);
+        assert_eq!(profile.max_input_tokens.get(), 128_000);
+        assert_eq!(profile.max_output_tokens.get(), 4_096);
+    }
+
+    #[test]
+    fn profile_builder_custom() {
+        let profile = ProfileBuilder::new()
+            .model("gpt-4")
+            .temperature(0.7)
+            .max_input_tokens(100_000)
+            .max_output_tokens(8_000)
+            .build();
+
+        assert_eq!(profile.model, "gpt-4");
+        assert_eq!(profile.temperature, 0.7);
+        assert_eq!(profile.max_input_tokens.get(), 100_000);
+        assert_eq!(profile.max_output_tokens.get(), 8_000);
+    }
+
+    #[test]
+    fn diff_builder_simple() {
+        let diff = DiffBuilder::new()
+            .file("test.rs")
+            .add_line("fn test() {}")
+            .build();
+
+        assert!(diff.contains("diff --git a/test.rs b/test.rs"));
+        assert!(diff.contains("+fn test() {}"));
+    }
+
+    #[test]
+    fn diff_builder_with_removals() {
+        let diff = DiffBuilder::new()
+            .file("main.rs")
+            .remove_line("old code")
+            .add_line("new code")
+            .build();
+
+        assert!(diff.contains("-old code"));
+        assert!(diff.contains("+new code"));
+    }
+
+    #[test]
+    fn mock_tokenizer_fixed_count() {
+        let tokenizer = MockTokenizer::with_token_count(100);
+        assert_eq!(
+            tokenizer.count_tokens("short"),
+            TokenCount::new(100).unwrap()
+        );
+        assert_eq!(
+            tokenizer.count_tokens("much longer text"),
+            TokenCount::new(100).unwrap()
+        );
+    }
+
+    #[test]
+    fn mock_tokenizer_by_length() {
+        let tokenizer = MockTokenizer::by_character_length();
+        assert_eq!(
+            tokenizer.count_tokens("hello"),
+            TokenCount::new(5).unwrap()
+        );
+        assert_eq!(
+            tokenizer.count_tokens("hi"),
+            TokenCount::new(2).unwrap()
+        );
+    }
+
+    #[test]
+    fn mock_tokenizer_encoding_name() {
+        let tokenizer = MockTokenizer::default();
+        assert_eq!(tokenizer.encoding_name(), "mock-tokenizer");
+    }
+}

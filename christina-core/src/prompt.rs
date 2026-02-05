@@ -365,39 +365,101 @@ impl<'a> PromptBuilder<'a> {
 
     pub fn build_summary_prompt(&self) -> String {
         let diff = self.diff.unwrap_or("");
-        SUMMARY_PROMPT.replace("{diff}", &format!("```diff\n{}\n```", diff))
+
+        // Pre-allocate capacity: base prompt + diff + markdown markers + safety margin
+        let estimated_capacity = SUMMARY_PROMPT.len() + diff.len() + 20;
+        let mut prompt = String::with_capacity(estimated_capacity);
+
+        // Find the {diff} placeholder position and build efficiently
+        if let Some(placeholder_pos) = SUMMARY_PROMPT.find("{diff}") {
+            prompt.push_str(&SUMMARY_PROMPT[..placeholder_pos]);
+            prompt.push_str("```diff\n");
+            prompt.push_str(diff);
+            prompt.push_str("\n```");
+            prompt.push_str(&SUMMARY_PROMPT[placeholder_pos + 6..]); // 6 = len("{diff}")
+        } else {
+            // Fallback if placeholder not found (shouldn't happen)
+            prompt.push_str(SUMMARY_PROMPT);
+        }
+
+        prompt
     }
 
     pub fn build_intent_prompt(&self) -> String {
-        let summaries_text = self
-            .summaries
-            .iter()
-            .enumerate()
-            .map(|(i, s)| format!("{}. {}", i + 1, s))
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Estimate capacity: base prompt + (avg 80 chars per summary * count)
+        let estimated_summaries_size = self.summaries.len() * 80;
+        let estimated_capacity = INTENT_EXTRACTION_PROMPT.len() + estimated_summaries_size;
+        let mut summaries_text = String::with_capacity(estimated_summaries_size);
 
-        INTENT_EXTRACTION_PROMPT.replace("{summaries}", &summaries_text)
+        for (i, summary) in self.summaries.iter().enumerate() {
+            if i > 0 {
+                summaries_text.push('\n');
+            }
+            // Use write! for more efficient formatting
+            use std::fmt::Write;
+            let _ = write!(summaries_text, "{}. {}", i + 1, summary);
+        }
+
+        // Build final prompt efficiently
+        let mut prompt = String::with_capacity(estimated_capacity);
+        if let Some(placeholder_pos) = INTENT_EXTRACTION_PROMPT.find("{summaries}") {
+            prompt.push_str(&INTENT_EXTRACTION_PROMPT[..placeholder_pos]);
+            prompt.push_str(&summaries_text);
+            prompt.push_str(&INTENT_EXTRACTION_PROMPT[placeholder_pos + 11..]); // 11 = len("{summaries}")
+        } else {
+            prompt.push_str(INTENT_EXTRACTION_PROMPT);
+        }
+
+        prompt
     }
 
     pub fn build_synthesis_prompt(&self) -> String {
-        let themes_text = self
-            .themes
-            .iter()
-            .map(|t| match &t.scope {
-                Some(scope) => format!(
-                    "- {} ({}): {} [{} files]",
-                    t.title, scope, t.description, t.file_count
-                ),
-                None => format!("- {}: {} [{} files]", t.title, t.description, t.file_count),
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Estimate capacity: base prompt + (avg 100 chars per theme * count) + context
+        let estimated_themes_size = self.themes.len() * 100;
+        let estimated_context_size = self.user_context.map_or(0, |ctx| ctx.len() + USER_CONTEXT_TEMPLATE.len());
+        let estimated_capacity = THEME_SYNTHESIS_PROMPT.len() + estimated_themes_size + estimated_context_size;
 
-        let mut prompt = THEME_SYNTHESIS_PROMPT.replace("{themes}", &themes_text);
+        let mut themes_text = String::with_capacity(estimated_themes_size);
 
-        if let Some(ctx) = &self.user_context {
-            prompt.push_str(&USER_CONTEXT_TEMPLATE.replace("{context}", ctx));
+        for (i, theme) in self.themes.iter().enumerate() {
+            if i > 0 {
+                themes_text.push('\n');
+            }
+
+            use std::fmt::Write;
+            match &theme.scope {
+                Some(scope) => {
+                    let _ = write!(
+                        themes_text,
+                        "- {} ({}): {} [{} files]",
+                        theme.title, scope, theme.description, theme.file_count
+                    );
+                }
+                None => {
+                    let _ = write!(
+                        themes_text,
+                        "- {}: {} [{} files]",
+                        theme.title, theme.description, theme.file_count
+                    );
+                }
+            }
+        }
+
+        // Build final prompt
+        let mut prompt = String::with_capacity(estimated_capacity);
+        if let Some(placeholder_pos) = THEME_SYNTHESIS_PROMPT.find("{themes}") {
+            prompt.push_str(&THEME_SYNTHESIS_PROMPT[..placeholder_pos]);
+            prompt.push_str(&themes_text);
+            prompt.push_str(&THEME_SYNTHESIS_PROMPT[placeholder_pos + 8..]); // 8 = len("{themes}")
+        } else {
+            prompt.push_str(THEME_SYNTHESIS_PROMPT);
+        }
+
+        if let Some(ctx) = self.user_context
+            && let Some(context_pos) = USER_CONTEXT_TEMPLATE.find("{context}") {
+            prompt.push_str(&USER_CONTEXT_TEMPLATE[..context_pos]);
+            prompt.push_str(ctx);
+            prompt.push_str(&USER_CONTEXT_TEMPLATE[context_pos + 9..]); // 9 = len("{context}")
         }
 
         prompt
@@ -405,10 +467,28 @@ impl<'a> PromptBuilder<'a> {
 
     pub fn build_direct_prompt(&self) -> String {
         let diff = self.diff.unwrap_or("");
-        let mut prompt = DIRECT_COMMIT_PROMPT.replace("{diff}", &format!("```diff\n{}\n```", diff));
 
-        if let Some(ctx) = &self.user_context {
-            prompt.push_str(&USER_CONTEXT_TEMPLATE.replace("{context}", ctx));
+        // Estimate capacity: base prompt + diff + markdown + context
+        let estimated_context_size = self.user_context.map_or(0, |ctx| ctx.len() + USER_CONTEXT_TEMPLATE.len());
+        let estimated_capacity = DIRECT_COMMIT_PROMPT.len() + diff.len() + 20 + estimated_context_size;
+        let mut prompt = String::with_capacity(estimated_capacity);
+
+        // Build diff section efficiently
+        if let Some(placeholder_pos) = DIRECT_COMMIT_PROMPT.find("{diff}") {
+            prompt.push_str(&DIRECT_COMMIT_PROMPT[..placeholder_pos]);
+            prompt.push_str("```diff\n");
+            prompt.push_str(diff);
+            prompt.push_str("\n```");
+            prompt.push_str(&DIRECT_COMMIT_PROMPT[placeholder_pos + 6..]); // 6 = len("{diff}")
+        } else {
+            prompt.push_str(DIRECT_COMMIT_PROMPT);
+        }
+
+        if let Some(ctx) = self.user_context
+            && let Some(context_pos) = USER_CONTEXT_TEMPLATE.find("{context}") {
+            prompt.push_str(&USER_CONTEXT_TEMPLATE[..context_pos]);
+            prompt.push_str(ctx);
+            prompt.push_str(&USER_CONTEXT_TEMPLATE[context_pos + 9..]); // 9 = len("{context}")
         }
 
         prompt

@@ -403,4 +403,153 @@ mod tests {
         let massive = TokenBudget::massive();
         assert_eq!(massive.max_input.get(), 1_000_000);
     }
+
+    #[tokio::test]
+    async fn tokenizer_concurrent_access() {
+        // Verify TokenizerService can be safely accessed from multiple tokio tasks
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let test_texts = vec![
+            "Hello, world!",
+            "This is a longer text with multiple sentences. It should have more tokens.",
+            "Concurrent access test",
+            "The quick brown fox jumps over the lazy dog",
+            "Rust is a systems programming language",
+        ];
+
+        let mut handles = Vec::new();
+
+        // Spawn multiple tasks that count tokens concurrently
+        for _ in 0..10 {
+            for text in &test_texts {
+                let tokenizer = Arc::clone(&tokenizer);
+                let text = String::from(*text);
+
+                let handle = tokio::spawn(async move {
+                    // Count tokens multiple times
+                    let counts: Vec<TokenCount> = (0..5)
+                        .map(|_| tokenizer.count_tokens(&text))
+                        .collect();
+
+                    // All counts for the same text should be consistent
+                    let first = counts[0];
+                    for count in &counts[1..] {
+                        assert_eq!(first.get(), count.get(), "Inconsistent token counts");
+                    }
+
+                    first
+                });
+
+                handles.push(handle);
+            }
+        }
+
+        // Collect all results and verify no panics
+        for handle in handles {
+            handle.await.expect("task should not panic");
+        }
+    }
+
+    #[tokio::test]
+    async fn tokenizer_concurrent_cache_behavior() {
+        // Verify cache behaves correctly under concurrent load
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let test_text = "This text will be cached and accessed concurrently".repeat(10);
+
+        let mut handles = Vec::new();
+
+        // Spawn many tasks all counting the same text
+        for _ in 0..50 {
+            let tokenizer = Arc::clone(&tokenizer);
+            let text = test_text.clone();
+
+            let handle = tokio::spawn(async move {
+                tokenizer.count_tokens(&text)
+            });
+
+            handles.push(handle);
+        }
+
+        // Collect all counts
+        let mut counts = Vec::new();
+        for handle in handles {
+            let count = handle.await.expect("task should not panic");
+            counts.push(count.get());
+        }
+
+        // All counts should be identical (cache should work correctly)
+        let first = counts[0];
+        for count in &counts[1..] {
+            assert_eq!(first, *count, "Cache produced inconsistent results");
+        }
+    }
+
+    #[tokio::test]
+    async fn tokenizer_slice_concurrent() {
+        // Verify slice_to_token_limit is thread-safe
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let long_text = "This is a long text that will be sliced. ".repeat(100);
+        let limit = TokenCount::new_at_least_one(50);
+
+        let mut handles = Vec::new();
+
+        // Spawn concurrent slicing operations
+        for _ in 0..20 {
+            let tokenizer = Arc::clone(&tokenizer);
+            let text = long_text.clone();
+
+            let handle = tokio::spawn(async move {
+                let sliced = tokenizer.slice_to_token_limit(&text, limit);
+                let count = tokenizer.count_tokens(sliced);
+                (sliced.to_string(), count)
+            });
+
+            handles.push(handle);
+        }
+
+        // Collect all results
+        let mut results = Vec::new();
+        for handle in handles {
+            let (sliced, count) = handle.await.expect("task should not panic");
+            results.push((sliced, count));
+
+            // Verify the token count doesn't exceed limit
+            assert!(count.get() <= limit.get(), "Sliced text exceeds token limit");
+        }
+
+        // All slices should be identical for the same input
+        let first_slice = &results[0].0;
+        for (sliced, _) in &results[1..] {
+            assert_eq!(first_slice, sliced, "Slice results differ across threads");
+        }
+    }
+
+    #[tokio::test]
+    async fn get_tokenizer_concurrent_initialization() {
+        // Verify get_tokenizer() is safe to call from multiple threads simultaneously
+        let mut handles = Vec::new();
+
+        // Spawn many tasks that all call get_tokenizer()
+        for _ in 0..20 {
+            let handle = tokio::spawn(async {
+                get_tokenizer().expect("tokenizer initialization failed")
+            });
+
+            handles.push(handle);
+        }
+
+        // Collect all tokenizers
+        let mut tokenizers = Vec::new();
+        for handle in handles {
+            let tokenizer = handle.await.expect("task should not panic");
+            tokenizers.push(tokenizer);
+        }
+
+        // All returned tokenizers should be Arc to the same underlying service
+        // (verify by comparing Arc pointer addresses)
+        let first_ptr = Arc::as_ptr(&tokenizers[0]);
+        for tokenizer in &tokenizers[1..] {
+            let ptr = Arc::as_ptr(tokenizer);
+            assert_eq!(first_ptr, ptr, "get_tokenizer() returned different instances");
+        }
+    }
 }

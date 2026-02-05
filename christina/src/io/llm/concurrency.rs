@@ -34,13 +34,24 @@ pub struct RequestLimiter {
 ///
 /// Tracks tokens that replenish over time. Each request consumes
 /// a token; if no tokens available, requests wait.
+///
+/// # Integer Arithmetic Design
+///
+/// Uses milli-token precision (u64) instead of f64 to avoid floating-point
+/// accumulation errors over long-running sessions. This ensures:
+/// - Deterministic behavior regardless of session duration
+/// - No gradual drift in available tokens
+/// - Precise token accounting for strict rate limit enforcement
+///
+/// Example: 1.5 requests/second = 1500 milli-tokens/second
 struct TokenBucket {
-    /// Maximum tokens in the bucket.
-    capacity: f64,
-    /// Current available tokens.
-    tokens: f64,
-    /// Tokens added per second.
-    refill_rate: f64,
+    /// Maximum tokens in the bucket (milli-token precision).
+    capacity_milli: u64,
+    /// Current available tokens (milli-token precision).
+    tokens_milli: u64,
+    /// Tokens added per millisecond (scaled by 1000 for precision).
+    /// For N req/sec: refill_rate_milli = N * 1_000_000 / 1000 = N * 1000
+    refill_rate_milli: u64,
     /// Last time tokens were refilled.
     last_refill: Instant,
     /// Minimum delay between requests (even with tokens available).
@@ -119,9 +130,24 @@ impl TokenBucket {
         // WHY capacity = requests_per_second * 2.0: Allows short bursts (2 seconds worth)
         // while maintaining long-term rate limits. Pure 1:1 ratio would prevent any bursts,
         // making the limiter overly strict for bursty workloads (typical in user-driven tools).
-        let capacity = requests_per_second * 2.0;
 
-        // WHY separate min_delay: Token bucket refill is continuous (floating point),
+        // Convert to milli-token precision: 1 token = 1000 milli-tokens
+        // For 10 req/sec: capacity = 10 * 2.0 * 1000 = 20_000 milli-tokens
+        let capacity_milli = if requests_per_second.is_finite() && requests_per_second > 0.0 {
+            (requests_per_second * 2.0 * 1000.0) as u64
+        } else {
+            u64::MAX
+        };
+
+        // Refill rate in milli-tokens per millisecond
+        // For 10 req/sec: (10 * 1000) milli-tokens / 1000 ms = 10 milli-tokens/ms
+        let refill_rate_milli = if requests_per_second.is_finite() && requests_per_second > 0.0 {
+            (requests_per_second * 1000.0) as u64
+        } else {
+            u64::MAX
+        };
+
+        // WHY separate min_delay: Token bucket refill is continuous (now integer-based),
         // but API rate limits are often discrete (per-second). min_delay enforces a
         // hard floor to prevent sub-millisecond bursts that could violate API contracts.
         let min_delay = if requests_per_second.is_finite() && requests_per_second > 0.0 {
@@ -131,9 +157,9 @@ impl TokenBucket {
         };
 
         Self {
-            capacity,
-            tokens: capacity,
-            refill_rate: requests_per_second,
+            capacity_milli,
+            tokens_milli: capacity_milli,
+            refill_rate_milli,
             last_refill: Instant::now(),
             min_delay,
             last_request: None,
@@ -147,16 +173,18 @@ impl TokenBucket {
     fn acquire_token(&mut self) -> Option<Duration> {
         let now = Instant::now();
 
-        if self.refill_rate.is_finite() && self.refill_rate > 0.0 {
-            let elapsed = now.duration_since(self.last_refill);
-            let tokens_to_add = elapsed.as_secs_f64() * self.refill_rate;
-            self.tokens = (self.tokens + tokens_to_add).min(self.capacity);
-        } else if self.refill_rate.is_infinite() {
-            self.tokens = self.capacity;
+        // Refill tokens based on elapsed time (integer arithmetic)
+        if self.refill_rate_milli > 0 && self.refill_rate_milli != u64::MAX {
+            let elapsed_ms = now.duration_since(self.last_refill).as_millis() as u64;
+            let tokens_to_add = elapsed_ms.saturating_mul(self.refill_rate_milli);
+            self.tokens_milli = self.tokens_milli.saturating_add(tokens_to_add).min(self.capacity_milli);
+        } else if self.refill_rate_milli == u64::MAX {
+            self.tokens_milli = self.capacity_milli;
         }
 
         self.last_refill = now;
 
+        // Enforce minimum delay between requests
         if let Some(last) = self.last_request {
             let time_since_last = now.duration_since(last);
             if time_since_last < self.min_delay {
@@ -164,16 +192,19 @@ impl TokenBucket {
             }
         }
 
-        if self.tokens >= 1.0 {
-            self.tokens -= 1.0;
+        // Check if we have at least 1 token (1000 milli-tokens)
+        const ONE_TOKEN: u64 = 1000;
+        if self.tokens_milli >= ONE_TOKEN {
+            self.tokens_milli = self.tokens_milli.saturating_sub(ONE_TOKEN);
             self.last_request = Some(now);
             return None;
         }
 
-        if self.refill_rate.is_finite() && self.refill_rate > 0.0 {
-            let needed = (1.0 - self.tokens).max(0.0);
-            let wait_secs = needed / self.refill_rate;
-            return Some(Duration::from_secs_f64(wait_secs));
+        // Calculate wait time for next token (in milli-tokens)
+        if self.refill_rate_milli > 0 && self.refill_rate_milli != u64::MAX {
+            let needed_milli = ONE_TOKEN.saturating_sub(self.tokens_milli);
+            let wait_ms = needed_milli.saturating_div(self.refill_rate_milli);
+            return Some(Duration::from_millis(wait_ms));
         }
 
         None
