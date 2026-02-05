@@ -187,15 +187,19 @@ impl GenerationResult {
 
 #[derive(Debug, Deserialize)]
 struct ThemeResponse {
+    #[serde(default)]
     themes: Vec<ThemeItem>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ThemeItem {
-    title: String,
-    description: String,
-    #[serde(rename = "fileCount")]
-    file_count: usize,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(rename = "fileCount", default)]
+    file_count: Option<usize>,
+    #[serde(default)]
     scope: Option<String>,
 }
 
@@ -754,21 +758,44 @@ impl AIOrchestrator {
             .collect()
     }
 
+    fn normalize_theme_item(
+        &self,
+        item: ThemeItem,
+    ) -> Option<(String, String, usize, Option<String>)> {
+        let title = item.title?.trim().to_string();
+        let description = item.description?.trim().to_string();
+        if title.is_empty() || description.is_empty() {
+            return None;
+        }
+
+        let file_count = item.file_count.unwrap_or(0);
+        Some((title, description, file_count, item.scope))
+    }
+
     fn parse_sub_themes(&self, response: &str) -> Result<Vec<SubTheme>> {
         let json_str = self.extract_json(response);
         let theme_response: ThemeResponse =
             serde_json::from_str(&json_str).context("Failed to parse sub-themes JSON")?;
 
-        Ok(theme_response
+        let themes = theme_response
             .themes
             .into_iter()
-            .map(|t| SubTheme {
-                title: t.title,
-                description: t.description,
-                file_count: t.file_count,
-                scope: t.scope,
+            .filter_map(|t| {
+                let (title, description, file_count, scope) = self.normalize_theme_item(t)?;
+                Some(SubTheme {
+                    title,
+                    description,
+                    file_count,
+                    scope,
+                })
             })
-            .collect())
+            .collect::<Vec<_>>();
+
+        if themes.is_empty() {
+            anyhow::bail!("No valid sub-themes found in response");
+        }
+
+        Ok(themes)
     }
 
     fn fallback_sub_themes_from_summaries(&self, batch: &[ChunkSummary]) -> Vec<SubTheme> {
@@ -836,11 +863,20 @@ impl AIOrchestrator {
         let theme_response: ThemeResponse =
             serde_json::from_str(&json_str).context("Failed to parse themes JSON")?;
 
-        Ok(theme_response
+        let themes = theme_response
             .themes
             .into_iter()
-            .map(|t| Theme::new(t.title, t.description, t.file_count, t.scope))
-            .collect())
+            .filter_map(|t| {
+                let (title, description, file_count, scope) = self.normalize_theme_item(t)?;
+                Some(Theme::new(title, description, file_count, scope))
+            })
+            .collect::<Vec<_>>();
+
+        if themes.is_empty() {
+            anyhow::bail!("No valid themes found in response");
+        }
+
+        Ok(themes)
     }
 
     fn extract_json(&self, response: &str) -> String {

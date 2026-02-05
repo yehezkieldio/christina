@@ -166,7 +166,7 @@ pub fn split_recursive(
 /// WHY not true glob: Most ignore patterns are simple (lockfiles, vendor dirs).
 /// Supporting `*` prefix and suffix patterns covers >95% of use cases without
 /// adding glob crate dependency. Full glob (e.g., `**/*.lock`) can be added later.
-fn should_limit_file(path: &FilePath, ignore_patterns: &[String]) -> bool {
+pub(crate) fn should_limit_file(path: &FilePath, ignore_patterns: &[String]) -> bool {
     let path_ref: &std::path::Path = path.as_ref();
     let Some(path_str) = path_ref.to_str() else {
         return false;

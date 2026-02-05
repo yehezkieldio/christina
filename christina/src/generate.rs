@@ -7,7 +7,7 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::events::Event;
-use crate::io::git::diff_processor::DiffProcessor;
+use crate::io::git::{chunking, diff_processor::DiffProcessor, parsing};
 use crate::io::llm::provider::Provider;
 use crate::io::llm::tokenizer::get_tokenizer;
 use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
@@ -137,6 +137,16 @@ async fn generate_commit_message_with_progress_impl(
         .map_err(|e| anyhow::anyhow!("Diff processing error: {}", e))?;
 
     if chunks.is_empty() {
+        let file_paths = parsing::extract_file_paths(&diff);
+        if !file_paths.is_empty()
+            && file_paths
+                .iter()
+                .all(|path| chunking::should_limit_file(path, &config.ignore_files))
+        {
+            anyhow::bail!(
+                "All staged files are in ignore_files list. Update ignore_files in your config or stage other files."
+            );
+        }
         anyhow::bail!("No processable diff content found");
     }
 

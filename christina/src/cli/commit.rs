@@ -23,6 +23,11 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool) -> Result<()> 
         }
     };
 
+    let repo_path = repo
+        .workdir()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo.path().to_path_buf());
+
     let files = match adapter::get_staged_files(&repo) {
         Ok(files) => files,
         Err(err) => {
@@ -33,7 +38,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool) -> Result<()> 
 
     display_changes(&files);
 
-    let message = match generate_commit(diff, context.map(|s| s.to_string())).await {
+    let message = match generate_commit(diff, context.map(|s| s.to_string()), repo_path).await {
         Ok(message) => message,
         Err(err) => {
             ui::print_error(&format!("Commit message generation failed: {}", err));
@@ -64,6 +69,11 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool) -> Result<()> 
     }
 
     if let Err(err) = execute_commit(&repo, &message) {
+        if is_gpg_signing_failure(&err) {
+            ui::print_warning(
+                "GPG signing failed. Configure your GPG key/agent or disable signing with: git config commit.gpgsign false",
+            );
+        }
         ui::print_error(&format!("Failed to create commit: {}", err));
         return Err(err);
     }
@@ -72,9 +82,11 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool) -> Result<()> 
 }
 
 fn validate_repository() -> Result<(Repository, String)> {
-    let repo = Repository::discover(".").map_err(|err| {
+    let repo = Repository::open(".").map_err(|err| {
         if err.code() == git2::ErrorCode::NotFound {
-            anyhow::anyhow!("No git repository found. Run this inside a git repository.")
+            anyhow::anyhow!(
+                "No git repository found in the current directory. Run this from the repository root."
+            )
         } else {
             anyhow::anyhow!("Failed to open git repository: {}", err)
         }
@@ -107,14 +119,9 @@ fn display_changes(files: &[GitFile]) {
     }
 }
 
-async fn generate_commit(diff: String, context: Option<String>) -> Result<String> {
+async fn generate_commit(diff: String, context: Option<String>, repo_path: PathBuf) -> Result<String> {
     let spinner = ui::create_spinner("Analyzing changes...");
     let config = Config::load()?;
-    let repo = Repository::discover(".")?;
-    let repo_path = repo
-        .workdir()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| repo.path().to_path_buf());
 
     let (progress_tx, mut _progress_rx) = mpsc::channel::<Event>(100);
     let _progress_spinner = spinner.clone();
@@ -146,6 +153,10 @@ async fn generate_commit(diff: String, context: Option<String>) -> Result<String
     }
 
     Ok(generation_result.message.to_string())
+}
+
+fn is_gpg_signing_failure(err: &anyhow::Error) -> bool {
+    err.to_string().to_lowercase().contains("gpg signing failed")
 }
 
 fn confirm_commit(message: &str, yes: bool) -> Result<bool> {

@@ -61,6 +61,13 @@ pub fn print_header() {
 // =================================================================================
 
 pub fn create_spinner(msg: &str) -> ProgressBar {
+    let term = Term::stdout();
+    if !term.is_term() {
+        let pb = ProgressBar::hidden();
+        pb.set_message(msg.to_string());
+        return pb;
+    }
+
     let pb = ProgressBar::new_spinner();
     pb.set_style(
         ProgressStyle::default_spinner()
