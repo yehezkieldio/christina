@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::config::Config;
-use crate::event_loop::Event;
+use crate::events::Event;
 use crate::io::git::diff_processor::DiffProcessor;
 use crate::io::llm::provider::Provider;
 use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};

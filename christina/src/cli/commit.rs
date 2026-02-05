@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 use crate::cli::ui;
 use crate::config::Config;
-use crate::event_loop::Event;
+use crate::events::Event;
 use crate::generate::generate_commit_message_with_progress;
 use crate::io::git::adapter;
 use christina_core::GitFile;

@@ -17,9 +17,6 @@ pub struct Cli {
     pub verbose: u8,
 
     #[arg(long)]
-    pub tui: bool,
-
-    #[arg(long)]
     pub yes: bool,
 
     #[arg(short, long)]
@@ -67,8 +64,6 @@ pub enum ConfigCommands {
     List,
     /// Show configuration file path
     Path,
-    /// Open configuration TUI
-    Tui,
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -158,8 +153,6 @@ pub enum ProfileCommands {
         /// New profile name
         new_name: String,
     },
-    /// Open profile management TUI
-    Tui,
 }
 
 #[cfg(test)]
@@ -259,15 +252,6 @@ mod tests {
         assert!(
             matches!(cli.command, Some(Commands::Config(ConfigCommands::Path))),
             "Should parse config path subcommand"
-        );
-    }
-
-    #[test]
-    fn test_subcommand_config_tui() {
-        let cli = Cli::try_parse_from(["christina", "config", "tui"]).expect("Failed to parse CLI");
-        assert!(
-            matches!(cli.command, Some(Commands::Config(ConfigCommands::Tui))),
-            "Should parse config tui subcommand"
         );
     }
 
@@ -397,16 +381,6 @@ mod tests {
             }
             _ => panic!("Expected profile duplicate command"),
         }
-    }
-
-    #[test]
-    fn test_subcommand_profile_tui() {
-        let cli =
-            Cli::try_parse_from(["christina", "profile", "tui"]).expect("Failed to parse CLI");
-        assert!(
-            matches!(cli.command, Some(Commands::Profile(ProfileCommands::Tui))),
-            "Should parse profile tui subcommand"
-        );
     }
 
     #[test]

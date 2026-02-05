@@ -3,7 +3,6 @@ use std::io::{self, BufRead, Write};
 
 use crate::cli::ProfileCommands;
 use crate::config::Config;
-use crate::tui::{ProfileTuiOptions, run_profile_tui};
 use christina_core::config::{Secret, SecretRef};
 use christina_core::profile::ProviderProfile;
 use christina_core::types::{ModelName, ProviderKind, TokenCount};
@@ -104,7 +103,6 @@ fn handle_profile_command_with_deps(
         ProfileCommands::Duplicate { source, new_name } => {
             handle_duplicate(store, output, &source, &new_name)
         }
-        ProfileCommands::Tui => handle_tui(),
     }
 }
 
@@ -418,26 +416,4 @@ fn handle_duplicate(
     writeln!(output, "Duplicated '{}' to '{}'", source, new_name)?;
 
     Ok(())
-}
-
-fn handle_tui() -> Result<()> {
-    let config = Config::load().unwrap_or_default();
-
-    let options = ProfileTuiOptions {
-        profiles: config.profiles.clone(),
-        active_profile: config.profiles.active.clone(),
-        on_save: Box::new(|profiles_manager| {
-            let mut cfg = Config::load().unwrap_or_default();
-            cfg.profiles = profiles_manager.clone();
-
-            // Apply active profile if set
-            if let Some(active) = profiles_manager.get_active() {
-                cfg.apply_profile(active);
-            }
-
-            cfg.save_to_global()
-        }),
-    };
-
-    run_profile_tui(options)
 }
