@@ -13,8 +13,18 @@
 //! We enforce lowercase to maintain consistency across generated messages.
 
 use std::fmt;
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
+
+/// Regex pattern for validating Conventional Commits format.
+/// Compiled once and reused across all validations.
+/// Pattern: type(scope)?: description
+#[allow(clippy::expect_used)]
+static CONVENTIONAL_COMMIT_PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^[a-z]+(\([a-z0-9_-]+\))?:.+$")
+        .expect("Conventional commit regex pattern must be valid")
+});
 
 /// Validation mode for commit message length checks.
 ///
@@ -94,10 +104,7 @@ impl CommitMessage {
         // - `(\([a-z0-9_-]+\))?`: optional scope in parens (api, ui, core)
         // - `:.+$`: colon + space + non-empty description
         // Enforces Conventional Commits with lowercase consistency for generated messages.
-        let pattern = regex::Regex::new(r"^[a-z]+(\([a-z0-9_-]+\))?:.+$")
-            .map_err(|e| format!("Regex error: {}", e))?;
-
-        if !pattern.is_match(trimmed) {
+        if !CONVENTIONAL_COMMIT_PATTERN.is_match(trimmed) {
             return Err(
                 "Commit message must follow conventional commits format: type(scope): description"
                     .to_string(),

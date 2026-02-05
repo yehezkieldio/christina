@@ -1,5 +1,4 @@
-use crate::git::GitFile;
-use std::path::PathBuf;
+use crate::git::{GitFile, RepoRoot};
 
 #[derive(Debug, Clone)]
 pub struct RepoSnapshot {
@@ -7,12 +6,13 @@ pub struct RepoSnapshot {
     pub staged: Vec<String>,
     pub unstaged: Vec<String>,
     pub branch: String,
-    pub repo_root: PathBuf,
+    pub repo_root: RepoRoot,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_repo_snapshot_clone() {
@@ -21,7 +21,7 @@ mod tests {
             staged: vec!["file1.rs".to_string()],
             unstaged: vec!["file2.rs".to_string()],
             branch: "main".to_string(),
-            repo_root: PathBuf::from("/home/user/repo"),
+            repo_root: RepoRoot::new(PathBuf::from("/home/user/repo")),
         };
 
         let cloned = snapshot.clone();
@@ -40,7 +40,7 @@ mod tests {
             staged: vec!["file.rs".to_string()],
             unstaged: vec![],
             branch: "develop".to_string(),
-            repo_root: PathBuf::from("/repo"),
+            repo_root: RepoRoot::new(PathBuf::from("/repo")),
         };
 
         let debug_str = format!("{:?}", snapshot);

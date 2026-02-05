@@ -33,9 +33,10 @@ impl CommitHistoryProvider for GitCommitHistoryProvider {
 fn config_to_profile(config: &Config) -> ProviderProfile {
     // This function should only be called after API key validation.
     // Empty API keys will cause authorization failures downstream.
-    debug_assert!(
+    // Use regular assert (not debug_assert) to catch this in release builds.
+    assert!(
         config.api_key.as_ref().is_some_and(|k| !k.is_empty()),
-        "config_to_profile called with missing or empty API key"
+        "config_to_profile called with missing or empty API key - this is a programming error"
     );
 
     ProviderProfile {
@@ -412,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "config_to_profile called with missing or empty API key")]
+    #[should_panic(expected = "config_to_profile called with missing or empty API key - this is a programming error")]
     fn test_config_to_profile_no_api_key() {
         let config = Config {
             model: "gpt-4".into(),
