@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role};
 use llm::builder::{LLMBackend, LLMBuilder};
@@ -36,29 +38,29 @@ pub async fn execute_azure_request_with_retry(
     model: &str,
     retry_policy: &RetryPolicy,
 ) -> Result<LlmResponse, CompletionError> {
-    let request_clone = request.clone();
-    let api_key = api_key.to_string();
-    let endpoint = endpoint.to_string();
-    let deployment_id = deployment_id.to_string();
-    let api_version = api_version.to_string();
-    let model = model.to_string();
+    let request = Arc::new(request.clone());
+    let api_key: Arc<str> = Arc::from(api_key);
+    let endpoint: Arc<str> = Arc::from(endpoint);
+    let deployment_id: Arc<str> = Arc::from(deployment_id);
+    let api_version: Arc<str> = Arc::from(api_version);
+    let model: Arc<str> = Arc::from(model);
 
     retry_with_backoff(retry_policy, || {
-        let request = request_clone.clone();
-        let api_key = api_key.clone();
-        let endpoint = endpoint.clone();
-        let deployment_id = deployment_id.clone();
-        let api_version = api_version.clone();
-        let model = model.clone();
+        let request = Arc::clone(&request);
+        let api_key = Arc::clone(&api_key);
+        let endpoint = Arc::clone(&endpoint);
+        let deployment_id = Arc::clone(&deployment_id);
+        let api_version = Arc::clone(&api_version);
+        let model = Arc::clone(&model);
 
         async move {
             execute_azure_request_inner(
-                &request,
-                &api_key,
-                &endpoint,
-                &deployment_id,
-                &api_version,
-                &model,
+                request.as_ref(),
+                api_key.as_ref(),
+                endpoint.as_ref(),
+                deployment_id.as_ref(),
+                api_version.as_ref(),
+                model.as_ref(),
             )
             .await
         }

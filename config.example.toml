@@ -32,6 +32,15 @@ ignore_files = [
     "target/",
 ]
 
+# Maximum tokens to include from lockfiles when truncating
+# Default: 100
+lockfile_token_limit = 100
+
+# Maximum allowed chunk failure rate before aborting map phase
+# Recommended range: 0.01 - 0.50
+# 0.0 fails on any chunk error, 1.0 allows all failures
+max_partial_failure_rate = 0.10
+
 # Provider Profiles
 #
 # Each profile defines a connection to an LLM provider.

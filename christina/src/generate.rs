@@ -130,7 +130,8 @@ async fn generate_commit_message_with_progress_impl(
         .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
 
     let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
-        .with_ignore_files(config.ignore_files.clone());
+        .with_ignore_files(config.ignore_files.clone())
+        .with_lockfile_token_limit(config.lockfile_token_limit);
 
     let chunks = processor
         .process_safe(&diff)

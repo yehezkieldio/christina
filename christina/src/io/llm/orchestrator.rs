@@ -75,6 +75,9 @@ const LLM_TIMEOUT_SECONDS: u64 = 120;
 // 20 summaries = 1500 tokens, leaves ~2500 for context in 4K window. Higher = truncation risk.
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
 
+const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
+const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
+
 /// Fraction of max input tokens allocated for commit history context.
 ///
 /// WHY 15%: Empirically derived balance. Less (e.g., 10%) provides insufficient style reference;
@@ -238,7 +241,8 @@ impl AIOrchestrator {
             limiter: RequestLimiter::new(concurrency_limit, requests_per_second),
             retry_policy: RetryPolicy::default(),
             concurrency_limit,
-            max_partial_failure_rate: max_partial_failure_rate.clamp(0.0, 1.0),
+            max_partial_failure_rate: max_partial_failure_rate
+                .clamp(MIN_PARTIAL_FAILURE_RATE, MAX_PARTIAL_FAILURE_RATE),
         }
     }
 

@@ -21,6 +21,7 @@ pub struct DiffProcessor {
     token_limit: TokenCount,
     ignore_files: Vec<String>,
     max_diff_size: usize,
+    lockfile_token_limit: TokenCount,
 }
 
 impl DiffProcessor {
@@ -30,11 +31,17 @@ impl DiffProcessor {
             token_limit,
             ignore_files: Vec::new(),
             max_diff_size: MAX_DIFF_SIZE,
+            lockfile_token_limit: TokenCount::new_at_least_one(chunking::LOCKFILE_TOKEN_LIMIT),
         }
     }
 
     pub fn with_ignore_files(mut self, ignore_files: Vec<String>) -> Self {
         self.ignore_files = ignore_files;
+        self
+    }
+
+    pub fn with_lockfile_token_limit(mut self, limit: TokenCount) -> Self {
+        self.lockfile_token_limit = limit;
         self
     }
 
@@ -191,6 +198,7 @@ impl DiffProcessor {
             file_diffs,
             self.token_limit,
             &self.ignore_files,
+            self.lockfile_token_limit,
             self.tokenizer.as_ref(),
         )
     }
@@ -221,6 +229,7 @@ impl DiffProcessor {
             file_diffs,
             self.token_limit,
             &self.ignore_files,
+            self.lockfile_token_limit,
             self.tokenizer.as_ref(),
         )
     }
@@ -570,6 +579,10 @@ mod tests {
         assert_eq!(processor.token_limit, TokenCount::new_at_least_one(5000));
         assert_eq!(processor.ignore_files.len(), 0);
         assert_eq!(processor.max_diff_size, MAX_DIFF_SIZE);
+        assert_eq!(
+            processor.lockfile_token_limit,
+            TokenCount::new_at_least_one(chunking::LOCKFILE_TOKEN_LIMIT)
+        );
     }
 
     #[test]

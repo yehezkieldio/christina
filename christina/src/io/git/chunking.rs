@@ -47,6 +47,7 @@ pub fn split_recursive(
     file_diffs: Vec<FileDiff>,
     token_limit: TokenCount,
     ignore_patterns: &[String],
+    lockfile_token_limit: TokenCount,
     tokenizer: &dyn Tokenizer,
 ) -> Vec<DiffChunk> {
     let mut chunks = Vec::new();
@@ -58,9 +59,7 @@ pub fn split_recursive(
 
         // If lockfile, strictly limit its tokens
         let effective_token_count = if is_lockfile {
-            file_diff
-                .token_count
-                .min(TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT))
+            file_diff.token_count.min(lockfile_token_limit)
         } else {
             file_diff.token_count
         };
@@ -74,12 +73,10 @@ pub fn split_recursive(
 
             if combined_tokens <= token_limit.get() {
                 // Add to current chunk (truncate if lockfile)
-                if is_lockfile
-                    && file_diff.token_count > TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)
-                {
+                if is_lockfile && file_diff.token_count > lockfile_token_limit {
                     let truncated = truncate_to_token_limit(
                         &file_diff.content,
-                        TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
+                        lockfile_token_limit,
                         tokenizer,
                     );
                     buffer.content_mut().push_str(&truncated);
@@ -103,12 +100,10 @@ pub fn split_recursive(
                 }
 
                 // Add new file to fresh buffer
-                if is_lockfile
-                    && file_diff.token_count > TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)
-                {
+                if is_lockfile && file_diff.token_count > lockfile_token_limit {
                     let mut truncated = truncate_to_token_limit(
                         &file_diff.content,
-                        TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
+                        lockfile_token_limit,
                         tokenizer,
                     );
                     truncated.push_str("\n[... truncated lockfile ...]\n");
@@ -598,6 +593,7 @@ mod tests {
             Vec::new(),
             TokenCount::new_at_least_one(100),
             &[],
+            TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
             &tokenizer,
         );
         assert!(chunks.is_empty());
@@ -613,6 +609,7 @@ mod tests {
             vec![file],
             TokenCount::new_at_least_one(200),
             &[],
+            TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
             &tokenizer,
         );
 
@@ -633,6 +630,7 @@ mod tests {
             vec![file_a, file_b],
             TokenCount::new_at_least_one(500),
             &[],
+            TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
             &tokenizer,
         );
 
@@ -657,6 +655,7 @@ mod tests {
             vec![file],
             TokenCount::new_at_least_one(50),
             &[],
+            TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
             &tokenizer,
         );
 
@@ -674,7 +673,13 @@ mod tests {
             files.push(file_diff(&format!("file_{i}.txt"), &content, &tokenizer));
         }
 
-        let chunks = split_recursive(files, TokenCount::new_at_least_one(25), &[], &tokenizer);
+        let chunks = split_recursive(
+            files,
+            TokenCount::new_at_least_one(25),
+            &[],
+            TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
+            &tokenizer,
+        );
 
         for count in tokenize_chunks(&chunks, &tokenizer) {
             assert!(count <= 25);
@@ -696,6 +701,7 @@ mod tests {
             vec![file],
             TokenCount::new_at_least_one(500),
             &["Cargo.lock".to_string()],
+            TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
             &tokenizer,
         );
 
@@ -933,7 +939,13 @@ mod tests {
             limit in 100usize..10000
         ) {
             let tokenizer = DeterministicTokenizer;
-            let chunks = split_recursive(files, TokenCount::new_at_least_one(limit as u32), &[], &tokenizer);
+            let chunks = split_recursive(
+                files,
+                TokenCount::new_at_least_one(limit as u32),
+                &[],
+                TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT),
+                &tokenizer,
+            );
             for chunk in chunks {
                 let tokens = tokenizer.count_tokens(&chunk.content);
                 prop_assert!(tokens.get() <= limit as u32);

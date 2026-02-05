@@ -16,9 +16,44 @@ use christina_core::{
 };
 use url::Url;
 
+const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
+const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
+
 /// Default schema version for config files
 fn default_schema_version() -> u32 {
     1
+}
+
+fn default_lockfile_token_limit() -> TokenCount {
+    TokenCount::new_at_least_one(100)
+}
+
+fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {
+    let mut warnings = Vec::new();
+
+    if (value - 0.0).abs() < f64::EPSILON {
+        warnings.push(
+            "max_partial_failure_rate set to 0.0 causes any chunk failure to abort processing"
+                .to_string(),
+        );
+    }
+
+    if (value - 1.0).abs() < f64::EPSILON {
+        warnings.push(
+            "max_partial_failure_rate set to 1.0 allows all chunk failures to pass"
+                .to_string(),
+        );
+    }
+
+    let clamped = value.clamp(MIN_PARTIAL_FAILURE_RATE, MAX_PARTIAL_FAILURE_RATE);
+    if (clamped - value).abs() > f64::EPSILON {
+        warnings.push(format!(
+            "max_partial_failure_rate clamped from {} to {} (recommended range {}-{})",
+            value, clamped, MIN_PARTIAL_FAILURE_RATE, MAX_PARTIAL_FAILURE_RATE
+        ));
+    }
+
+    (clamped, warnings)
 }
 
 /// Application configuration with layered loading.
@@ -70,6 +105,10 @@ pub struct Config {
     /// Files to exclude from AI processing (lockfiles, binaries, etc.)
     #[serde(default)]
     pub ignore_files: Vec<String>,
+
+    /// Maximum tokens to include from lockfiles when truncating
+    #[serde(default = "default_lockfile_token_limit")]
+    pub lockfile_token_limit: TokenCount,
 
     /// Provider profiles for quick switching
     #[serde(default)]
@@ -132,6 +171,7 @@ impl Default for Config {
                 "poetry.lock".to_string(),
                 "Gemfile.lock".to_string(),
             ],
+            lockfile_token_limit: default_lockfile_token_limit(),
             profiles: Profiles::new(),
             diff: DiffConfig::default(),
             commit_message_max_length: None,
@@ -266,7 +306,7 @@ impl Config {
         if let Ok(env_val) = std::env::var("CHRISTINA_MAX_FAILURE_RATE")
             && let Ok(v) = env_val.parse::<f64>()
         {
-            config.max_partial_failure_rate = v.clamp(0.0, 1.0);
+            config.max_partial_failure_rate = v;
         }
 
         config.diff = config.diff.with_env_override();
@@ -322,6 +362,14 @@ impl Config {
                 original_temperature, self.model_temperature
             ));
         }
+
+        let original_failure_rate = self.max_partial_failure_rate;
+        let (clamped_failure_rate, mut failure_warnings) =
+            clamp_partial_failure_rate(original_failure_rate);
+        if (clamped_failure_rate - original_failure_rate).abs() > f64::EPSILON {
+            self.max_partial_failure_rate = clamped_failure_rate;
+        }
+        warnings.append(&mut failure_warnings);
 
         // Warn if provider is unknown (but don't fail - let factory handle it)
         warnings
@@ -386,6 +434,7 @@ impl Config {
             "azure_api_version" => self.azure_api_version.clone(),
             "azure_deployment_id" => self.azure_deployment_id.clone(),
             "ignore_files" => Some(self.ignore_files.join(",")),
+            "lockfile_token_limit" => Some(self.lockfile_token_limit.get().to_string()),
             "commit_message_max_length" => self.commit_message_max_length.map(|v| v.to_string()),
             "commit_message_validation_mode" => Some(match self.commit_message_validation_mode {
                 ValidationMode::Strict => "strict".to_string(),
@@ -508,6 +557,13 @@ impl Config {
                     .map(|s| s.to_string())
                     .collect();
             }
+            "lockfile_token_limit" => {
+                let parsed: TokenCount = value
+                    .parse()
+                    .map_err(anyhow::Error::msg)
+                    .context("Invalid number")?;
+                self.lockfile_token_limit = parsed;
+            }
             "commit_message_max_length" => {
                 if value.is_empty() {
                     self.commit_message_max_length = None;
@@ -557,7 +613,12 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                self.max_partial_failure_rate = parsed.clamp(0.0, 1.0);
+                let (clamped, warnings) = clamp_partial_failure_rate(parsed);
+                self.max_partial_failure_rate = clamped;
+                for warning in warnings {
+                    tracing::warn!("{}", warning);
+                    eprintln!("Warning: {}", warning);
+                }
             }
             "prompt_failure_rate_threshold" => {
                 let parsed: f64 = value

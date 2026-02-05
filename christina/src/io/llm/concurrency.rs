@@ -285,6 +285,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn request_limiter_stress_concurrency() {
+        let limiter = RequestLimiter::new(5, 10_000.0);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let max_concurrent = Arc::new(AtomicUsize::new(0));
+
+        let mut handles = Vec::new();
+
+        for _ in 0..100 {
+            let limiter = limiter.clone();
+            let counter = Arc::clone(&counter);
+            let max_concurrent = Arc::clone(&max_concurrent);
+
+            let handle = tokio::spawn(async move {
+                let _permit = limiter
+                    .acquire()
+                    .await
+                    .expect("semaphore should not be closed");
+
+                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                max_concurrent.fetch_max(current, Ordering::SeqCst);
+
+                tokio::time::sleep(Duration::from_millis(5)).await;
+
+                counter.fetch_sub(1, Ordering::SeqCst);
+            });
+
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.await.expect("task should not panic");
+        }
+
+        assert!(max_concurrent.load(Ordering::SeqCst) <= 5);
+    }
+
+    #[tokio::test]
     async fn request_limiter_releases_on_drop() {
         let limiter = RequestLimiter::new(1, 1_000.0);
 

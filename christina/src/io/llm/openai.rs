@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role};
 use llm::builder::{LLMBackend, LLMBuilder};
@@ -29,20 +31,25 @@ pub async fn execute_openai_request_with_retry(
     model: &str,
     retry_policy: &RetryPolicy,
 ) -> Result<LlmResponse, CompletionError> {
-    // Clone necessary data for retry closure
-    let request_clone = request.clone();
-    let api_key = api_key.to_string();
-    let base_url = base_url.map(String::from);
-    let model = model.to_string();
+    let request = Arc::new(request.clone());
+    let api_key: Arc<str> = Arc::from(api_key);
+    let base_url: Option<Arc<str>> = base_url.map(Arc::from);
+    let model: Arc<str> = Arc::from(model);
 
     retry_with_backoff(retry_policy, || {
-        let request = request_clone.clone();
-        let api_key = api_key.clone();
+        let request = Arc::clone(&request);
+        let api_key = Arc::clone(&api_key);
         let base_url = base_url.clone();
-        let model = model.clone();
+        let model = Arc::clone(&model);
 
         async move {
-            execute_openai_request_inner(&request, &api_key, base_url.as_deref(), &model).await
+            execute_openai_request_inner(
+                request.as_ref(),
+                api_key.as_ref(),
+                base_url.as_deref(),
+                model.as_ref(),
+            )
+            .await
         }
     })
     .await

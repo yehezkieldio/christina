@@ -85,6 +85,10 @@ fn handle_list_with_config(config: &Config) {
             .unwrap_or_else(|| "<not set>".to_string())
     );
     println!("  ignore_files: {}", config.ignore_files.join(", "));
+    println!(
+        "  lockfile_token_limit: {}",
+        config.lockfile_token_limit.get()
+    );
     println!("  model_temperature: {}", config.model_temperature);
     println!(
         "  commit_message_max_length: {}",

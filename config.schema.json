@@ -36,10 +36,22 @@
         "type": "string"
       }
     },
+    "lockfile_token_limit": {
+      "description": "Maximum tokens to include from lockfiles when truncating",
+      "default": 100,
+      "$ref": "#/definitions/TokenCount"
+    },
     "include_file_diffs": {
       "description": "Whether to enable file diffs in output",
       "default": false,
       "type": "boolean"
+    },
+    "max_partial_failure_rate": {
+      "description": "Maximum allowed fraction of chunk failures before aborting map phase",
+      "default": 0.1,
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 0.5
     },
     "profiles": {
       "description": "Provider profiles (with SecretRef for file storage)",

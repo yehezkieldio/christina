@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use christina::io::git::chunking::{
-    split_by_hunks, split_by_lines, split_recursive, truncate_to_token_limit,
+    LOCKFILE_TOKEN_LIMIT, split_by_hunks, split_by_lines, split_recursive,
+    truncate_to_token_limit,
 };
 
 use christina_core::{
@@ -118,6 +119,7 @@ fn bench_split_recursive_small_files(c: &mut Criterion) {
                         black_box(files.clone()),
                         black_box(TokenCount::new_at_least_one(1000)),
                         black_box(&[]),
+                        black_box(TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)),
                         black_box(&tokenizer),
                     )
                 });
@@ -146,6 +148,7 @@ fn bench_split_recursive_large_files(c: &mut Criterion) {
                         black_box(files.clone()),
                         black_box(TokenCount::new_at_least_one(500)),
                         black_box(&[]),
+                        black_box(TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)),
                         black_box(&tokenizer),
                     )
                 });
@@ -182,6 +185,7 @@ fn bench_split_recursive_with_lockfiles(c: &mut Criterion) {
                 black_box(files.clone()),
                 black_box(TokenCount::new_at_least_one(1000)),
                 black_box(&["Cargo.lock".to_string()]),
+                black_box(TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)),
                 black_box(&tokenizer),
             )
         });
@@ -389,6 +393,7 @@ fn bench_token_limit_variations(c: &mut Criterion) {
                         black_box(files.clone()),
                         black_box(TokenCount::new_at_least_one(*limit)),
                         black_box(&[]),
+                        black_box(TokenCount::new_at_least_one(LOCKFILE_TOKEN_LIMIT)),
                         black_box(&tokenizer),
                     )
                 });
