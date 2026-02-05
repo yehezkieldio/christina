@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConfigFile",
+  "description": "On-disk configuration representation (serde-friendly)",
+  "type": "object",
+  "properties": {
+    "active_profile": {
+      "description": "Active profile name",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit_message_max_length": {
+      "description": "Maximum commit message length (None = 72)",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "ignore_files": {
+      "description": "Files to exclude from AI processing",
+      "default": [
+        "Cargo.lock",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "*.lock"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "include_file_diffs": {
+      "description": "Whether to enable file diffs in output",
+      "default": false,
+      "type": "boolean"
+    },
+    "profiles": {
+      "description": "Provider profiles (with SecretRef for file storage)",
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/ProviderProfile_for_SecretRef"
+      }
+    }
+  },
+  "definitions": {
+    "ModelName": {
+      "description": "LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')",
+      "type": "string"
+    },
+    "ProviderKind": {
+      "description": "Supported LLM API providers.\n\nThis enum drives client instantiation and request formatting. Each variant corresponds to a distinct API contract.",
+      "type": "string",
+      "enum": [
+        "open_a_i",
+        "azure",
+        "groq"
+      ]
+    },
+    "ProviderProfile_for_SecretRef": {
+      "type": "object",
+      "required": [
+        "api_key",
+        "max_input_tokens",
+        "max_output_tokens",
+        "model",
+        "name",
+        "provider"
+      ],
+      "properties": {
+        "api_key": {
+          "$ref": "#/definitions/Secret_for_SecretRef"
+        },
+        "api_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "azure_api_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "azure_deployment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_input_tokens": {
+          "$ref": "#/definitions/TokenCount"
+        },
+        "max_output_tokens": {
+          "$ref": "#/definitions/TokenCount"
+        },
+        "model": {
+          "$ref": "#/definitions/ModelName"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/definitions/ProviderKind"
+        },
+        "temperature": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float"
+        }
+      }
+    },
+    "SecretRef": {
+      "description": "On-disk reference (env var or keyring)",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "env"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "keyring"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "value"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Secret_for_SecretRef": {
+      "description": "Generic secret container\n\n**Important**: This type implements a custom Debug impl that redacts all secrets for security. To access secret values, use `expose_secret()` or resolver methods.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Value"
+          ],
+          "properties": {
+            "Value": {
+              "$ref": "#/definitions/SecretRef"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "env"
+          ],
+          "properties": {
+            "env": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "keyring"
+          ],
+          "properties": {
+            "keyring": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TokenCount": {
+      "description": "Count of tokens in text, guaranteed to be non-zero.\n\nWHY NonZeroU32: Empty text is never valid input for token-counting operations. By using NonZeroU32, we: 1. Eliminate defensive checks for zero throughout the codebase 2. Enable compiler optimizations (Option<TokenCount> is the same size as u32) 3. Make the domain constraint explicit in the type system\n\nWHY saturating arithmetic: When token counts are computed from potentially malicious or corrupted input, clamping to NonZeroU32::MIN (1) is safer than panicking or wrapping. This ensures the system remains operational even with bad data, trading precision for resilience.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 1.0
+    }
+  }
+}

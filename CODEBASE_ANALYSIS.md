@@ -348,10 +348,5 @@
 ### D-003: Generate JSON Schema for Config
 
 **Finding**: No JSON schema exists for validating config files.
-**Status**: Open
-**Rationale**: Users may create invalid configs without schema validation. TOML LSPs could use JSON schema for better editor support.
-
-**Approach**:
-1. Use schemars crate to derive JSON schema from Config struct
-2. Output schema to a file during build or release process
-3. Add a bin script to generate schema on demand
+**Status**: Resolved
+**Resolution**: Added schemars dependency and derived JsonSchema for all config-related types (ConfigFile, ProviderProfile, Secret, SecretRef, ProviderKind, ModelName, TokenCount). Created comprehensive test that generates config.schema.json with proper JSON Schema Draft 07 format. Handled complex types like url::Url and CompactString with custom schema implementations and schemars attributes. The schema file is now generated and distributed with the project, enabling TOML LSP support and config validation in editors.
