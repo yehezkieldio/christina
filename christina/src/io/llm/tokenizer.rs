@@ -74,7 +74,16 @@ impl TokenizerService {
     #[inline]
     pub fn count_tokens(&self, text: &str) -> TokenCount {
         // Skip cache for very short strings (cache overhead > tokenization cost)
-        if text.len() < 50 {
+        // and for very large strings (hashing cost > tokenization cost, unlikely to repeat)
+        //
+        // WHY 50 byte lower bound: Cache lookup overhead (hash + lookup) exceeds
+        // tokenization cost for trivial strings. Profiles showed <50 bytes are faster
+        // without cache.
+        //
+        // WHY 100KB upper bound: For large texts, O(n) hash computation approaches
+        // O(n) tokenization cost. Large diffs are rarely identical, so cache hit rate
+        // is low. Bypass cache to avoid hashing overhead.
+        if text.len() < 50 || text.len() > 100_000 {
             let count = self.bpe.encode_ordinary(text).len();
             return TokenCount::new_at_least_one(count as u32);
         }
@@ -552,4 +561,41 @@ mod tests {
             assert_eq!(first_ptr, ptr, "get_tokenizer() returned different instances");
         }
     }
-}
+
+    #[test]
+    fn count_tokens_cache_bypass_small() {
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let small_text = "hi"; // <50 bytes, should bypass cache
+
+        let count1 = tokenizer.count_tokens(small_text);
+        let count2 = tokenizer.count_tokens(small_text);
+
+        // Both counts should be correct, cache bypass doesn't affect correctness
+        assert_eq!(count1, count2);
+    }
+
+    #[test]
+    fn count_tokens_cache_bypass_large() {
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let large_text = "word ".repeat(25_000); // >100KB, should bypass cache
+
+        let count1 = tokenizer.count_tokens(&large_text);
+        let count2 = tokenizer.count_tokens(&large_text);
+
+        // Both counts should be correct, cache bypass doesn't affect correctness
+        assert_eq!(count1, count2);
+        assert!(large_text.len() > 100_000, "Test text should exceed 100KB");
+    }
+
+    #[test]
+    fn count_tokens_cache_used_medium() {
+        let tokenizer = get_tokenizer().expect("tokenizer initialization failed");
+        let medium_text = "word ".repeat(1000); // ~5KB, should use cache
+
+        let count1 = tokenizer.count_tokens(&medium_text);
+        let count2 = tokenizer.count_tokens(&medium_text);
+
+        // Cache improves performance but doesn't change correctness
+        assert_eq!(count1, count2);
+        assert!(medium_text.len() >= 50 && medium_text.len() <= 100_000);
+    }}

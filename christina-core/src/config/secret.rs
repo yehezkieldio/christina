@@ -5,6 +5,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tracing;
+use zeroize::Zeroize;
 
 /// Errors that can occur during secret resolution
 #[derive(Debug, Error)]
@@ -289,6 +290,17 @@ impl SecretRef {
 /// - Encourages explicit secret handling rather than treating secrets like normal strings
 ///
 /// For comparing secrets, use `s1.expose_secret() == s2.expose_secret()`.
+///
+/// # Security
+///
+/// `SecretString` implements custom `Drop` to securely clear sensitive data from
+/// memory when dropped. The inner `String` buffer is zeroed before deallocation,
+/// reducing the window for secrets to leak through memory dumps, swap files, or
+/// allocator reuse.
+///
+/// Note: This provides defense-in-depth but is not foolproof. Secrets may still be
+/// copied during normal operations (e.g., cloning, serialization). Minimize secret
+/// lifetime and avoid unnecessary copies.
 pub struct SecretString(String);
 
 impl SecretString {
@@ -310,6 +322,18 @@ impl fmt::Debug for SecretString {
 impl Clone for SecretString {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+#[allow(unsafe_code)]
+impl Drop for SecretString {
+    fn drop(&mut self) {
+        // Zeroize the String's internal buffer before dropping
+        // SAFETY: We're about to drop self anyway, mutating is safe
+        unsafe {
+            let bytes = self.0.as_mut_vec();
+            bytes.zeroize();
+        }
     }
 }
 

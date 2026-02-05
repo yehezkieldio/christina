@@ -15,6 +15,7 @@ tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
+zeroize = { version = "1.8", features = ["alloc"] }
 
 [dev-dependencies]
 git2 = { workspace = true }
