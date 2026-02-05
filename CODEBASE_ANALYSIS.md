@@ -121,10 +121,6 @@ When using buffer_unordered for concurrent requests, systemic errors like auth f
 
 Mitigation: Consider a probe request pattern where a single request is sent first to validate auth and endpoint, then fan out on success.
 
----
-
-## Incomplete Implementations
-
 ### Secret Module Integration is Partial
 
 The christina-core secret module defines SecretRef, SecretString, and Secret types with proper redaction. However, config and generation code still uses Option of String for API keys instead of leveraging these types. This looks like unfinished integration work.
@@ -133,15 +129,11 @@ Recommendation: Unify around SecretRef in config and profiles, resolving secrets
 
 ### State Machine Defined But Possibly Unused in CLI
 
-The AppState and StateMachine in state.rs define a comprehensive state machine for a TUI application. The current CLI flow in commit.rs does not appear to use this state machine, suggesting it was designed for a TUI that may not be fully implemented.
+The AppState and StateMachine in state.rs define a comprehensive state machine for a TUI application. We remove it because, there was an TUI application, but that was temporarily removed. Currently CLI is the only interface, so this code may be dead or unfinished, so remove it.
 
 ### Provider-Specific Validation Happens Late
 
-Azure requires endpoint, api_version, and deployment_id. These are validated in Provider::from_profile which is deep in the call stack. Earlier validation in Config::validate would improve user experience with clearer error messages at startup.
-
----
-
-## Edge Cases
+Azure requires endpoint, api_version, and deployment_id. These are validated in Provider::from_profile which is deep in the call stack. Earlier validation in Config::validate would improve user experience with clearer error messages at startup. If user provided a full azure endpoint, extract api version and deployment ID from URL, and auto-populate missing fields.
 
 ### Binary Detection Has Intentional Gaps
 
@@ -159,10 +151,6 @@ In generate.rs, shallow clones trigger a warning about limited commit history bu
 
 When diffs are truncated due to size, the truncation notice is added as a separate chunk with all file paths, which may confuse the LLM about which files were truncated.
 
----
-
-## Resource Management
-
 ### No Secret Zeroization
 
 SecretString and ApiKey store secrets in regular Strings that remain in memory until freed. Cloning copies the secret. For threat models requiring memory safety, consider optional zeroize integration.
@@ -175,10 +163,6 @@ The buffer_pool module provides buffer reuse but there is no explicit limit on p
 
 Tests verify cleanup_state for merge conflicts, but production code paths that could leave repositories in conflicted state should be audited to ensure cleanup always happens.
 
----
-
-## Timeout and Retry Considerations
-
 ### Retry-After Header Not Used
 
 For rate limit errors (429), many providers return Retry-After headers. The current retry logic uses only jitter and exponential backoff, potentially retrying more aggressively than the provider allows.
@@ -190,41 +174,3 @@ The orchestrator uses tokio::time::timeout for requests. The comment explicitly 
 ### Cancellation is Not Cooperative
 
 When systemic failures occur, in-flight requests continue to completion. Consider using CancellationToken to propagate cancellation and stop remaining work immediately.
-
----
-
-## Testing Gaps
-
-### No Integration Tests for Provider Errors
-
-While unit tests cover error classification, there are no integration tests verifying actual provider error responses are classified correctly.
-
-### Config Precedence Not Tested End-to-End
-
-The config loading documentation describes a specific precedence (env vars, local config, global config, defaults) but tests focus on individual operations rather than full precedence verification.
-
-### Keyring Tests Marked as Feature-Gated
-
-Keyring-related functionality has limited test coverage when the feature is disabled. Platform-specific keyring behavior may not be adequately tested across all supported systems.
-
----
-
-## Recommendations Summary
-
-Immediate fixes:
-1. Fix token count overflow using u64 summation
-2. Fix retry jitter overflow for u64::MAX
-3. Fix empty ignore_files becoming single empty string
-4. Use from_utf8_lossy for non-UTF8 diff content
-
-Short-term improvements:
-1. Handle deleted files correctly in git diff processing
-2. Enforce local config security by separating allowed fields
-3. Apply retry policy consistently across orchestrator
-4. Improve API key validation with clear missing key errors
-
-Medium-term refactoring:
-1. Integrate SecretRef throughout config and generation
-2. Implement custom Debug for Config to redact secrets
-3. Add provider-specific validation in Config::validate
-4. Consider probe request pattern for early auth validation
