@@ -511,8 +511,7 @@ impl DiffBuilder {
 
     /// Start building a new file diff.
     pub fn file(self, path: impl Into<String>) -> FileDiffBuilder {
-        let builder = FileDiffBuilder::new(path.into());
-        builder
+        FileDiffBuilder::new(path.into())
     }
 
     /// Build the complete diff string.

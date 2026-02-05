@@ -235,6 +235,41 @@ impl<S> Profiles<S> {
     }
 }
 
+// Compile-time assertions to verify generic parameter behavior.
+//
+// These assertions ensure that the generic pattern maintains expected properties:
+// - Disk storage variants (String) are serializable
+// - SecretString is Clone but deliberately NOT PartialEq or Serialize
+#[allow(dead_code)]
+const _: () = {
+    use crate::config::SecretString;
+
+    // Verify that String variant implements Serialize + Deserialize
+    const fn assert_serde<T: Serialize + for<'de> Deserialize<'de>>() {}
+
+    const fn _check_string_variant() {
+        assert_serde::<ProviderProfile<String>>();
+        assert_serde::<Profiles<String>>();
+    }
+
+    // Verify SecretString is Clone (needed for practical use cases)
+    const fn assert_clone<T: Clone>() {}
+
+    const fn _check_secretstring_clone() {
+        assert_clone::<SecretString>();
+    }
+
+    // Note: We cannot directly assert !Serialize or !PartialEq in stable Rust,
+    // but SecretString deliberately omits these traits to prevent accidental
+    // serialization or timing-attack-vulnerable comparisons. The design ensures
+    // that attempting to serialize ProviderProfile<SecretString> will fail at
+    // compile time due to the missing Serialize bound on SecretString.
+    //
+    // SecretRef is also serializable but doesn't have Default, so we omit it
+    // from these assertions. In practice, Profiles<SecretRef> works correctly
+    // when constructed non-default, which is the normal usage pattern.
+};
+
 #[cfg(test)]
 #[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 mod tests {
@@ -277,38 +312,3 @@ mod tests {
         assert!(manager.get_active().is_none());
     }
 }
-
-// Compile-time assertions to verify generic parameter behavior.
-//
-// These assertions ensure that the generic pattern maintains expected properties:
-// - Disk storage variants (String) are serializable
-// - SecretString is Clone but deliberately NOT PartialEq or Serialize
-#[allow(dead_code)]
-const _: () = {
-    use crate::config::SecretString;
-
-    // Verify that String variant implements Serialize + Deserialize
-    const fn assert_serde<T: Serialize + for<'de> Deserialize<'de>>() {}
-
-    const fn _check_string_variant() {
-        assert_serde::<ProviderProfile<String>>();
-        assert_serde::<Profiles<String>>();
-    }
-
-    // Verify SecretString is Clone (needed for practical use cases)
-    const fn assert_clone<T: Clone>() {}
-
-    const fn _check_secretstring_clone() {
-        assert_clone::<SecretString>();
-    }
-
-    // Note: We cannot directly assert !Serialize or !PartialEq in stable Rust,
-    // but SecretString deliberately omits these traits to prevent accidental
-    // serialization or timing-attack-vulnerable comparisons. The design ensures
-    // that attempting to serialize ProviderProfile<SecretString> will fail at
-    // compile time due to the missing Serialize bound on SecretString.
-    //
-    // SecretRef is also serializable but doesn't have Default, so we omit it
-    // from these assertions. In practice, Profiles<SecretRef> works correctly
-    // when constructed non-default, which is the normal usage pattern.
-};

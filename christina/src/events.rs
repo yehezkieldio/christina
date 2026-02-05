@@ -23,6 +23,7 @@ pub enum Event {
     ///
     /// Emitted after successfully processing a diff chunk, useful for
     /// progress tracking in multi-file diffs.
+    #[allow(dead_code)]
     ChunkProcessed {
         /// Number of chunks processed so far
         chunks_processed: usize,
@@ -34,6 +35,7 @@ pub enum Event {
     ///
     /// Emitted when a transient error occurs and the request will be retried.
     /// Useful for showing retry progress and backoff delays to the user.
+    #[allow(dead_code)]
     RetryAttempt {
         /// Current attempt number (1-indexed)
         attempt: u32,
@@ -46,6 +48,7 @@ pub enum Event {
     /// A commit has been successfully created.
     ///
     /// Emitted after the commit is written to the repository.
+    #[allow(dead_code)]
     CommitCreated {
         /// Git commit hash (short form)
         commit_hash: String,
@@ -54,6 +57,7 @@ pub enum Event {
     /// Diff processing has completed.
     ///
     /// Emitted after the git diff has been parsed and chunked.
+    #[allow(dead_code)]
     DiffProcessed {
         /// Number of files in the diff
         file_count: usize,
@@ -64,6 +68,7 @@ pub enum Event {
     /// Connecting to the LLM provider.
     ///
     /// Emitted before making the first API request to the provider.
+    #[allow(dead_code)]
     ProviderConnecting {
         /// Provider name (e.g., "OpenAI", "Azure", "Groq")
         provider: String,

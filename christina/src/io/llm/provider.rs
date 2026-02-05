@@ -59,7 +59,16 @@ impl Temperature {
     }
 }
 
+/// API key wrapper with secure defaults.
+///
+/// The inner `String` is private to prevent accidental exposure through pattern matching
+/// or direct field access. Use `as_str()` to access the key value, which makes secret
+/// handling explicit and visible in code.
+///
+/// `#[non_exhaustive]` prevents external code from constructing or destructuring this type
+/// without going through the provided API.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct ApiKey(String);
 
 impl ApiKey {
