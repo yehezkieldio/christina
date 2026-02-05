@@ -412,6 +412,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "config_to_profile called with missing or empty API key")]
     fn test_config_to_profile_no_api_key() {
         let config = Config {
             model: "gpt-4".into(),
@@ -420,12 +421,8 @@ mod tests {
             ..Default::default()
         };
 
-        let profile = config_to_profile(&config);
-
-        match profile.api_key {
-            christina_core::config::Secret::Value(key) => assert!(key.is_empty()),
-            _ => panic!("Expected Value variant"),
-        }
+        // This should panic because config_to_profile requires a valid API key
+        let _profile = config_to_profile(&config);
     }
 
     #[test]

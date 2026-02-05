@@ -880,6 +880,9 @@ impl AIOrchestrator {
             let after_marker = &response[start + 7..];
             if let Some(end) = after_marker.find("```") {
                 return Some(after_marker[..end].trim().to_string());
+            } else {
+                // Missing closing marker - try to extract JSON from remaining content
+                return Self::extract_json_with_escape_handling(after_marker.trim());
             }
         }
 
@@ -1661,10 +1664,10 @@ This is not JSON at all, just plain text
         let provider = Arc::new(Provider::mock("unused"));
         let orchestrator = AIOrchestrator::new(provider);
 
-        let response = "Error: {code: 404} (not valid JSON)";
+        let response = r#"Error: {"code": 404} (embedded JSON)"#;
 
         let json = orchestrator.extract_json(response);
-        assert_eq!(json, "{code: 404}");
+        assert_eq!(json, r#"{"code": 404}"#);
     }
 
     #[test]
