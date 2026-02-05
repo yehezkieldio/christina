@@ -23,6 +23,7 @@ regex = { version = "1.12.2", default-features = false, features = ["std", "perf
 url = { version = "2.5.8", features = ["serde"] }
 tempfile = "3.10.1"
 tracing = "0.1.44"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
@@ -53,13 +54,10 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = true
-panic = "unwind"
+panic = "abort"
 
 [profile.test]
 opt-level = 1
 
 [profile.dist]
 inherits = "release"
-
-# Christina will be distributed via NPM, via prebuilt binaries, except for development or debugging only features
-# We don't have feature-gated dependencies for now, will be not needed foreseeably

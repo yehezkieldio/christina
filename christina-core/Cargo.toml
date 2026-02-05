@@ -20,12 +20,17 @@ url = { workspace = true }
 git2 = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+criterion = { workspace = true }
 
 [features]
 default = ["keyring-support"]
 git2-support = ["dep:git2"]
 keyring-support = ["keyring"]
 test-helpers = ["dep:tempfile", "dep:git2"]
+
+[[bench]]
+name = "tokenizer_bench"
+harness = false
 
 [lints]
 workspace = true
