@@ -1,5 +1,6 @@
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
 
@@ -12,6 +13,38 @@ use christina_core::{
 };
 
 use crate::io::llm::{azure, groq, openai};
+
+static REQUEST_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Parse Azure OpenAI endpoint URL and extract api_version and deployment_id if present.
+///
+/// Azure endpoints typically follow:
+/// https://{resource}.openai.azure.com/openai/deployments/{deployment_id}/chat/completions?api-version={version}
+fn parse_azure_endpoint(url: &url::Url) -> (Option<String>, Option<String>) {
+    let mut api_version = None;
+    let mut deployment_id = None;
+
+    // Extract api-version from query parameters
+    for (key, value) in url.query_pairs() {
+        if key == "api-version" {
+            api_version = Some(value.to_string());
+            break;
+        }
+    }
+
+    // Extract deployment_id from path segments
+    // Pattern: /openai/deployments/{deployment_id}/...
+    let segments: Vec<&str> = url.path_segments().map_or(Vec::new(), |s| s.collect());
+    if let Some(idx) = segments.iter().position(|&s| s == "deployments") {
+        if let Some(&id) = segments.get(idx + 1) {
+            if !id.is_empty() {
+                deployment_id = Some(id.to_string());
+            }
+        }
+    }
+
+    (api_version, deployment_id)
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Temperature(f32);
@@ -92,21 +125,46 @@ impl Provider {
                 temperature,
             }),
             ProviderKind::Azure => {
-                let endpoint = profile
+                let url = profile
                     .api_url
                     .as_ref()
-                    .ok_or_else(|| ProviderError::MissingConfig("model_api_url".to_string()))?
-                    .to_string();
+                    .ok_or_else(|| {
+                        ProviderError::MissingConfig(
+                            "model_api_url (Azure endpoint required)".to_string(),
+                        )
+                    })?;
+
+                // Try to extract from URL if not explicitly provided
+                let (url_api_version, url_deployment_id) = parse_azure_endpoint(url);
+
                 let api_version = profile
                     .azure_api_version
-                    .as_ref()
-                    .ok_or_else(|| ProviderError::MissingConfig("azure_api_version".to_string()))?
-                    .clone();
+                    .clone()
+                    .or(url_api_version)
+                    .ok_or_else(|| {
+                        ProviderError::MissingConfig(
+                            "azure_api_version (not found in config or URL)".to_string(),
+                        )
+                    })?;
+
                 let deployment_id = profile
                     .azure_deployment_id
-                    .as_ref()
-                    .ok_or_else(|| ProviderError::MissingConfig("azure_deployment_id".to_string()))?
-                    .clone();
+                    .clone()
+                    .or(url_deployment_id)
+                    .ok_or_else(|| {
+                        ProviderError::MissingConfig(
+                            "azure_deployment_id (not found in config or URL)".to_string(),
+                        )
+                    })?;
+
+                // Strip query parameters from endpoint if present
+                let endpoint = if url.query().is_some() {
+                    let mut clean_url = url.clone();
+                    clean_url.set_query(None);
+                    clean_url.to_string()
+                } else {
+                    url.to_string()
+                };
 
                 Ok(Provider::Azure {
                     model: profile.model.clone(),
@@ -250,11 +308,66 @@ fn request_from_messages(
         });
     }
 
+    let id = REQUEST_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+
     LlmRequest {
-        id: GenerationId::new(0),
+        id: GenerationId::new(id),
         messages: mapped,
         max_tokens,
         temperature,
         system_prompt: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_azure_endpoint_full_url() {
+        let url = url::Url::parse(
+            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15"
+        ).unwrap();
+
+        let (api_version, deployment_id) = parse_azure_endpoint(&url);
+
+        assert_eq!(api_version, Some("2024-02-15".to_string()));
+        assert_eq!(deployment_id, Some("gpt-4".to_string()));
+    }
+
+    #[test]
+    fn test_parse_azure_endpoint_missing_version() {
+        let url = url::Url::parse(
+            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions"
+        )
+        .unwrap();
+
+        let (api_version, deployment_id) = parse_azure_endpoint(&url);
+
+        assert_eq!(api_version, None);
+        assert_eq!(deployment_id, Some("gpt-4".to_string()));
+    }
+
+    #[test]
+    fn test_parse_azure_endpoint_missing_deployment() {
+        let url = url::Url::parse(
+            "https://my-resource.openai.azure.com/?api-version=2024-02-15"
+        )
+        .unwrap();
+
+        let (api_version, deployment_id) = parse_azure_endpoint(&url);
+
+        assert_eq!(api_version, Some("2024-02-15".to_string()));
+        assert_eq!(deployment_id, None);
+    }
+
+    #[test]
+    fn test_parse_azure_endpoint_base_url_only() {
+        let url = url::Url::parse("https://my-resource.openai.azure.com").unwrap();
+
+        let (api_version, deployment_id) = parse_azure_endpoint(&url);
+
+        assert_eq!(api_version, None);
+        assert_eq!(deployment_id, None);
     }
 }

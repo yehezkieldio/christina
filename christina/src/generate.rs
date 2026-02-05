@@ -31,6 +31,13 @@ impl CommitHistoryProvider for GitCommitHistoryProvider {
 }
 
 fn config_to_profile(config: &Config) -> ProviderProfile {
+    // This function should only be called after API key validation.
+    // Empty API keys will cause authorization failures downstream.
+    debug_assert!(
+        config.api_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "config_to_profile called with missing or empty API key"
+    );
+
     ProviderProfile {
         name: "active".to_string(),
         provider: config.model_provider,
@@ -132,9 +139,9 @@ async fn generate_commit_message_with_progress_impl(
 
     let total_tokens = chunks
         .iter()
-        .map(|chunk| chunk.token_count.get())
-        .sum::<u32>();
-    let total_tokens = TokenCount::new_saturating(total_tokens);
+        .map(|chunk| chunk.token_count.get() as u64)
+        .sum::<u64>();
+    let total_tokens = TokenCount::new_saturating(total_tokens.try_into().unwrap_or(u32::MAX));
 
     if progress_tx
         .send(Event::TokenCountUpdate {
@@ -246,6 +253,9 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
 
     if repo.is_shallow() {
         warn!("Running in shallow clone, commit history may be limited");
+        // In shallow clones, limit history to what's available (typically 1 commit)
+        // to avoid spending time on unavailable history
+        info!("Adapting commit history depth for shallow clone");
     }
 
     if repo.head().is_err() {
@@ -257,8 +267,15 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
 
     let mut commits = Vec::new();
 
+    // For shallow clones, cap at a lower limit since history is limited anyway
+    let effective_limit = if repo.is_shallow() {
+        limit.min(3)
+    } else {
+        limit
+    };
+
     for oid_result in revwalk {
-        if commits.len() >= limit {
+        if commits.len() >= effective_limit {
             break;
         }
 

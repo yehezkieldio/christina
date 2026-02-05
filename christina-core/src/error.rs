@@ -147,22 +147,59 @@ impl CompletionError {
     /// WHY default to ServerError: Unknown errors assumed retryable. False
     /// positive (retrying permanent error) wastes time but preserves correctness.
     /// False negative (not retrying transient error) surfaces user-visible failures.
+    ///
+    /// Explicit non-transient patterns are detected to prevent wasting retries
+    /// on errors that will never succeed (validation, resource not found, etc.).
     pub fn from_api_error(msg: &str) -> Self {
         let msg_lower = msg.to_lowercase();
 
+        // Authentication and authorization errors (permanent)
         if msg_lower.contains("401")
             || msg_lower.contains("unauthorized")
             || msg_lower.contains("invalid api key")
         {
             CompletionError::Unauthorized(msg.to_string())
-        } else if msg_lower.contains("429")
+        }
+        // Rate limiting (transient)
+        else if msg_lower.contains("429")
             || msg_lower.contains("rate limit")
             || msg_lower.contains("quota")
         {
             CompletionError::RateLimited
-        } else if msg_lower.contains("timeout") || msg_lower.contains("timed out") {
+        }
+        // Request validation errors (permanent)
+        else if msg_lower.contains("400")
+            || msg_lower.contains("bad request")
+            || msg_lower.contains("invalid request")
+            || msg_lower.contains("malformed")
+            || msg_lower.contains("context length")
+            || msg_lower.contains("context_length")
+            || msg_lower.contains("token limit")
+            || msg_lower.contains("too many tokens")
+            || msg_lower.contains("maximum context")
+        {
+            CompletionError::InvalidResponse(msg.to_string())
+        }
+        // Resource not found errors (permanent)
+        else if msg_lower.contains("404")
+            || msg_lower.contains("not found")
+            || msg_lower.contains("does not exist")
+            || msg_lower.contains("model not found")
+            || msg_lower.contains("no such model")
+            || msg_lower.contains("unknown model")
+        {
+            CompletionError::InvalidResponse(msg.to_string())
+        }
+        // Timeout (transient)
+        else if msg_lower.contains("timeout") || msg_lower.contains("timed out") {
             CompletionError::Timeout
-        } else if msg_lower.contains("server error")
+        }
+        // Server errors (transient)
+        else if msg_lower.contains("500")
+            || msg_lower.contains("502")
+            || msg_lower.contains("503")
+            || msg_lower.contains("504")
+            || msg_lower.contains("server error")
             || msg_lower.contains("overloaded")
             || msg_lower.contains("internal error")
             || msg_lower.contains("bad gateway")
@@ -170,13 +207,17 @@ impl CompletionError {
             || msg_lower.contains("service unavailable")
         {
             CompletionError::ServerError(msg.to_string())
-        } else if msg_lower.contains("network")
+        }
+        // Network errors (transient)
+        else if msg_lower.contains("network")
             || msg_lower.contains("connection")
             || msg_lower.contains("dns")
             || msg_lower.contains("resolve")
         {
             CompletionError::NetworkError(msg.to_string())
-        } else {
+        }
+        // Unknown errors default to ServerError (transient, but conservative)
+        else {
             CompletionError::ServerError(msg.to_string())
         }
     }
@@ -390,6 +431,50 @@ mod tests {
 
         let err = CompletionError::from_api_error("Server error 500");
         assert!(matches!(err, CompletionError::ServerError(_)));
+    }
+
+    #[test]
+    fn completion_error_from_api_error_validation() {
+        // Bad request errors should be non-transient
+        let err = CompletionError::from_api_error("400 Bad Request: invalid request");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+
+        let err = CompletionError::from_api_error("context length exceeded");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+
+        let err = CompletionError::from_api_error("too many tokens in request");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn completion_error_from_api_error_not_found() {
+        // Not found errors should be non-transient
+        let err = CompletionError::from_api_error("404 model not found");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+
+        let err = CompletionError::from_api_error("The model 'gpt-5' does not exist");
+        assert!(matches!(err, CompletionError::InvalidResponse(_)));
+        assert!(!err.is_transient());
+    }
+
+    #[test]
+    fn completion_error_from_api_error_server_codes() {
+        // Server error codes should be transient
+        let err = CompletionError::from_api_error("500 Internal Server Error");
+        assert!(matches!(err, CompletionError::ServerError(_)));
+        assert!(err.is_transient());
+
+        let err = CompletionError::from_api_error("502 Bad Gateway");
+        assert!(matches!(err, CompletionError::ServerError(_)));
+        assert!(err.is_transient());
+
+        let err = CompletionError::from_api_error("503 Service Unavailable");
+        assert!(matches!(err, CompletionError::ServerError(_)));
+        assert!(err.is_transient());
     }
 
     #[test]

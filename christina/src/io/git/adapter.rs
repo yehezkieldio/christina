@@ -153,6 +153,16 @@ impl GitRepository for MockGitRepository {
     }
 }
 
+/// Get the appropriate path from a delta based on its status.
+/// For deletions, use old_file path; otherwise use new_file path.
+fn get_delta_path(delta: &git2::DiffDelta) -> Option<String> {
+    match delta.status() {
+        git2::Delta::Deleted => delta.old_file().path(),
+        _ => delta.new_file().path(),
+    }
+    .map(|p| p.to_string_lossy().to_string())
+}
+
 /// Get staged files (changes between HEAD and index)
 pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let head_tree = match repo.head() {
@@ -186,7 +196,7 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut files = Vec::new();
     diff.foreach(
         &mut |delta, _| {
-            if let Some(path) = delta.new_file().path() {
+            if let Some(path) = get_delta_path(&delta) {
                 let status = match delta.status() {
                     git2::Delta::Added => "A",
                     git2::Delta::Deleted => "D",
@@ -195,7 +205,7 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
                     git2::Delta::Copied => "C",
                     _ => "?",
                 };
-                files.push((path.to_string_lossy().to_string(), status.to_string()));
+                files.push((path, status.to_string()));
             }
             true
         },
@@ -211,28 +221,25 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut current_diff = String::new();
 
     diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
-        let new_path = delta
-            .new_file()
-            .path()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let path = get_delta_path(&delta).unwrap_or_default();
 
         // If we've moved to a new file, save the previous one
-        if !current_path.is_empty() && new_path != current_path {
+        if !current_path.is_empty() && path != current_path {
             diff_map.insert(current_path.clone(), current_diff.clone());
             current_diff.clear();
         }
 
-        current_path = new_path;
+        current_path = path;
 
         // Include origin character for context/add/delete lines
         let origin = line.origin();
         if matches!(origin, '+' | '-' | ' ') {
             current_diff.push(origin);
         }
-        if let Ok(content) = std::str::from_utf8(line.content()) {
-            current_diff.push_str(content);
-        }
+        // Use lossy UTF-8 conversion to include content with replacement characters
+        // rather than silently dropping non-UTF8 lines
+        let content = String::from_utf8_lossy(line.content());
+        current_diff.push_str(&content);
 
         true
     })?;
@@ -278,7 +285,7 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut files = Vec::new();
     diff.foreach(
         &mut |delta, _| {
-            if let Some(path) = delta.new_file().path() {
+            if let Some(path) = get_delta_path(&delta) {
                 let status = match delta.status() {
                     git2::Delta::Added => "A",
                     git2::Delta::Deleted => "D",
@@ -287,7 +294,7 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
                     git2::Delta::Copied => "C",
                     _ => "?",
                 };
-                files.push((path.to_string_lossy().to_string(), status.to_string()));
+                files.push((path, status.to_string()));
             }
             true
         },
@@ -303,28 +310,25 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut current_diff = String::new();
 
     diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
-        let new_path = delta
-            .new_file()
-            .path()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let path = get_delta_path(&delta).unwrap_or_default();
 
         // If we've moved to a new file, save the previous one
-        if !current_path.is_empty() && new_path != current_path {
+        if !current_path.is_empty() && path != current_path {
             diff_map.insert(current_path.clone(), current_diff.clone());
             current_diff.clear();
         }
 
-        current_path = new_path;
+        current_path = path;
 
         // Include origin character for context/add/delete lines
         let origin = line.origin();
         if matches!(origin, '+' | '-' | ' ') {
             current_diff.push(origin);
         }
-        if let Ok(content) = std::str::from_utf8(line.content()) {
-            current_diff.push_str(content);
-        }
+        // Use lossy UTF-8 conversion to include content with replacement characters
+        // rather than silently dropping non-UTF8 lines
+        let content = String::from_utf8_lossy(line.content());
+        current_diff.push_str(&content);
 
         true
     })?;

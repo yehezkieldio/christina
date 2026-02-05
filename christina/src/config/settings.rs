@@ -241,7 +241,7 @@ impl Config {
         if let Ok(env_val) = std::env::var("CHRISTINA_COMMIT_HISTORY_DEPTH")
             && let Ok(v) = env_val.parse::<usize>()
         {
-            config.commit_history_depth = v.clamp(5, 20);
+            config.commit_history_depth = v.clamp(0, 50);
         }
         if let Ok(env_val) = std::env::var("CHRISTINA_CONCURRENCY_LIMIT")
             && let Ok(v) = env_val.parse::<usize>()
@@ -450,7 +450,12 @@ impl Config {
                 update_active_profile(key, value)?;
             }
             "ignore_files" => {
-                self.ignore_files = value.split(',').map(|s| s.trim().to_string()).collect();
+                self.ignore_files = value
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .collect();
             }
             "commit_message_max_length" => {
                 if value.is_empty() {
@@ -487,7 +492,7 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                self.commit_history_depth = parsed.clamp(5, 20);
+                self.commit_history_depth = parsed.clamp(0, 50);
             }
             "max_concurrent_requests" => {
                 let parsed: usize = value
@@ -799,7 +804,7 @@ mod tests {
         config
             .set("ignore_files", "")
             .expect("should accept empty string");
-        assert_eq!(config.ignore_files, vec![""]);
+        assert_eq!(config.ignore_files, Vec::<String>::new());
     }
 
     #[test]

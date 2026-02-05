@@ -577,7 +577,7 @@ impl AIOrchestrator {
         let _permit = self.limiter.acquire().await;
 
         let response =
-            generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
+            generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
                 .await
                 .context("Intent extraction failed after retries")?;
 
@@ -677,7 +677,7 @@ impl AIOrchestrator {
         let _permit = self.limiter.acquire().await;
 
         let response =
-            generate_with_retry(self.provider.as_ref(), &messages, &RetryPolicy::default())
+            generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
                 .await
                 .context("Sub-theme extraction failed")?;
 

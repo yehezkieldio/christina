@@ -136,6 +136,17 @@ pub fn rand_jitter_with_seed(max: u64, seed: u64) -> u64 {
         return 0;
     }
 
+    // Special-case u64::MAX to avoid overflow when adding 1
+    if max == u64::MAX {
+        let mut hasher = RandomState::new().build_hasher();
+        hasher.write_u64(seed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        hasher.write_u64(now.as_nanos() as u64);
+        return hasher.finish();
+    }
+
     let mut hasher = RandomState::new().build_hasher();
     hasher.write_u64(seed);
     let now = SystemTime::now()
