@@ -17,6 +17,7 @@ pub struct ProviderProfile<S = String> {
     pub name: String,
     pub provider: ProviderKind,
     pub model: ModelName,
+    #[cfg_attr(test, schemars(with = "Option<String>"))]
     pub api_url: Option<url::Url>,
     pub api_key: Secret<S>,
     pub max_input_tokens: TokenCount,

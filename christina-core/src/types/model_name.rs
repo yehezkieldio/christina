@@ -8,9 +8,27 @@ use serde::{Deserialize, Serialize};
 /// in the LLM orchestration pipeline, so avoiding heap allocation reduces pressure
 /// on the allocator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct ModelName(CompactString);
+
+#[cfg(test)]
+impl schemars::JsonSchema for ModelName {
+    fn schema_name() -> String {
+        "ModelName".to_string()
+    }
+
+    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::String.into()),
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                description: Some("LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')".to_string()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
+    }
+}
 
 impl ModelName {
     pub fn name(name: impl Into<CompactString>) -> Self {
