@@ -3,15 +3,10 @@
 ### C-001: Quality Gate Failures in Clippy
 
 **Finding**: Clippy fails with errors due to unused crate dependencies in benchmarks and lib.rs, plus unused imports in test code.
-**Status**: Open
-**Rationale**: Quality gates per AGENTS.md require zero clippy warnings. Build cannot be considered complete until this passes.
+**Status**: Resolved
+**Resolution**: Added placeholder uses for unused dependencies with appropriate conditional compilation. Fixed unused imports in error.rs. Added #![allow] attributes for test code and benchmarks to permit unwrap/expect/panic. All clippy checks now pass with zero warnings.
 
 **Assumptions**: Benchmark files do not re-export library dependencies; lib.rs exposes only `io` module.
-
-**Approach**:
-1. In christina/src/lib.rs, add placeholder uses for all crates used only in main.rs: `use cap as _; use clap as _; ...`
-2. In christina-core/benches/tokenizer_bench.rs, add placeholder uses for dev-dependencies
-3. In christina-core/src/error.rs line 688, remove unused imports `ErrorClass` and `ErrorCode` in the test
 
 ---
 
@@ -33,14 +28,10 @@
 ### C-003: debug_assert for API Key Validation in config_to_profile
 
 **Finding**: In generate.rs line 36-39, API key presence is validated with debug_assert, which is stripped in release builds.
-**Status**: Open
-**Rationale**: If api_key is None or empty in release, the function returns a profile with an empty key, leading to downstream auth failures that are harder to diagnose.
+**Status**: Resolved
+**Resolution**: Replaced debug_assert with regular assert! that works in release builds. Updated test expectations to match new panic message. The invariant violation is now properly caught in all build configurations.
 
 **Assumptions**: Callers should validate before calling, but the defensive check should remain in release.
-
-**Approach**:
-1. Replace debug_assert with a runtime check that returns an error or logs a warning
-2. Alternatively, change function signature to require a non-empty api_key string parameter directly
 
 ---
 
@@ -79,14 +70,10 @@
 ### S-003: RepoSnapshot Stores Absolute PathBuf for repo_root
 
 **Finding**: RepoSnapshot in snapshot.rs uses PathBuf for repo_root, which may be absolute.
-**Status**: Open
-**Rationale**: FilePath newtype explicitly rejects absolute paths, but RepoSnapshot.repo_root can be absolute. Inconsistent path handling across types.
+**Status**: Resolved
+**Resolution**: Created RepoRoot newtype that enforces absolute path invariants, mirroring FilePath's design for relative paths. Updated RepoSnapshot to use RepoRoot. Added comprehensive documentation and tests. Exported types from library.
 
 **Assumptions**: repo_root must be absolute for git operations, while FilePath is relative within the repo.
-
-**Approach**:
-1. Add a RepoRoot newtype that explicitly requires absolute paths
-2. Document the distinction between FilePath (relative to repo) and RepoRoot (absolute system path)
 
 ---
 
@@ -138,14 +125,10 @@
 ### E-004: CommitMessage Regex Compiled Per Validation
 
 **Finding**: In commit_message.rs line 97, Regex::new is called every time validate() is called.
-**Status**: Open
-**Rationale**: Regex compilation is expensive. For high-volume validation, this adds unnecessary overhead.
+**Status**: Resolved
+**Resolution**: Replaced inline regex compilation with LazyLock static that compiles once on first use. Added #[allow(clippy::expect_used)] since the compile-time constant pattern should never fail.
 
 **Assumptions**: Validation is called infrequently (once per generation).
-
-**Approach**:
-1. Use LazyLock or OnceLock to compile the regex once
-2. Store as static: `static PATTERN: LazyLock<Regex> = LazyLock::new(|| ...);`
 
 ---
 

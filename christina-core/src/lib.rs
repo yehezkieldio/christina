@@ -26,7 +26,7 @@ pub use error::{
     AppError, CompletionError, DiffError, DiffResult, ErrorCategory, GitError, GitResult,
     ProviderError, TokenizerError, TokenizerResult,
 };
-pub use git::{GitFile, GitFileStatus};
+pub use git::{GitFile, GitFileStatus, RepoRoot, RepoRootError};
 pub use ids::GenerationId;
 pub use llm::{ChatMessage, LlmRequest, LlmResponse, ProviderEndpoint, ProviderSpec, Role};
 pub use profile::{Profiles, ProviderProfile};
