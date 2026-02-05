@@ -1,4 +1,4 @@
-#![allow(unused_crate_dependencies)]
+#![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used, clippy::useless_format)]
 
 use christina::io::git::diff_processor::DiffProcessor;
 use christina_core::{test_helpers::DeterministicTokenizer, types::TokenCount, Tokenizer};

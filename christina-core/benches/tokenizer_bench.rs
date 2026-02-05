@@ -1,4 +1,4 @@
-#![allow(unused_crate_dependencies)]
+#![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used)]
 
 use christina_core::{types::TokenCount, Tokenizer};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
@@ -46,7 +46,7 @@ impl Tokenizer for MockTokenizer {
 }
 
 fn generate_text(word_count: usize) -> String {
-    let words = vec!["hello", "world", "test", "benchmark", "performance", "rust"];
+    let words = ["hello", "world", "test", "benchmark", "performance", "rust"];
     (0..word_count)
         .map(|i| words[i % words.len()])
         .collect::<Vec<_>>()

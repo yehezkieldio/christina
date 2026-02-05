@@ -1,4 +1,4 @@
-#![allow(unused_crate_dependencies)]
+#![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used)]
 
 use christina::io::llm::tokenizer::{get_tokenizer, TokenBudget};
 use christina_core::types::TokenCount;

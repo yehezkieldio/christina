@@ -1,3 +1,9 @@
+// Allow unwrap(), expect(), and panic!() in test code
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
+// Allow unused dev-dependencies in binary tests
+#![allow(unused_crate_dependencies)]
+
 #[cfg(not(feature = "dhat-heap"))]
 use mimalloc::MiMalloc;
 

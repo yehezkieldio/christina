@@ -1,4 +1,4 @@
-#![allow(unused_crate_dependencies)]
+#![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used)]
 
 use christina::io::git::chunking::{
     split_by_hunks, split_by_lines, split_recursive, truncate_to_token_limit,

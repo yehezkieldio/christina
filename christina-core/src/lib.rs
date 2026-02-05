@@ -3,8 +3,8 @@
 // dependencies used in benches vs lib.
 #![allow(unused_crate_dependencies)]
 
-// Allow unwrap() and expect() in test code
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+// Allow unwrap(), expect(), and panic!() in test code
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod config;
 pub mod error;

@@ -10,7 +10,6 @@
 ///
 /// Internal modules for the christina CLI application.
 /// These are exposed primarily for integration tests and benchmarks.
-
 pub mod io;
 
 // Placeholder uses for dependencies used in main.rs but not lib.rs
@@ -20,11 +19,13 @@ use clap as _;
 use clap_complete as _;
 use config as _;
 use console as _;
+#[cfg(feature = "dhat-heap")]
 use dhat as _;
 use dialoguer as _;
 use directories as _;
 use fs2 as _;
 use indicatif as _;
+#[cfg(feature = "keyring-support")]
 use keyring as _;
 use mimalloc as _;
 use tokio as _;
