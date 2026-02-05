@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tracing::info;
+
 use christina_core::{
     Tokenizer,
     error::DiffError,
@@ -126,10 +128,12 @@ impl DiffProcessor {
             if file_diffs.is_empty() {
                 let truncated = safe_truncate(diff, self.max_diff_size);
                 let files = parsing::extract_file_paths(truncated);
-                let content = format!(
-                    "{}\n\n[... diff truncated: exceeded {} byte limit ...]",
-                    truncated, self.max_diff_size
+                info!(
+                    "Diff truncated for size: {} bytes (max {})",
+                    diff.len(),
+                    self.max_diff_size
                 );
+                let content = format!("{}\n\n[diff truncated for size]", truncated);
                 let token_count = self.tokenizer.count_tokens(&content);
                 return vec![DiffChunk::new(Arc::from(content), files, token_count)];
             }
@@ -162,11 +166,16 @@ impl DiffProcessor {
             }
 
             if chunks.len() < total_files {
-                let notice = format!(
-                    "\n[... diff truncated: {} of {} files included, exceeded {} byte limit ...]",
+                info!(
+                    "Diff truncated for size: {} of {} files included (max {} bytes)",
                     chunks.len(),
                     total_files,
                     self.max_diff_size
+                );
+                let notice = format!(
+                    "\n[diff truncated: {} of {} files shown]",
+                    chunks.len(),
+                    total_files
                 );
                 chunks.push(DiffChunk::new(
                     Arc::from(notice.clone()),

@@ -194,6 +194,18 @@ impl Config {
                     "Failed to persist default profile (read-only config?): {}",
                     e
                 );
+                if let Some(path) = Self::global_config_path() {
+                    eprintln!(
+                        "Warning: unable to persist default profile to {}. {}. Check permissions or update the config path.",
+                        path.display(),
+                        e
+                    );
+                } else {
+                    eprintln!(
+                        "Warning: unable to persist default profile. {}. Check permissions or update the config path.",
+                        e
+                    );
+                }
             }
         }
 

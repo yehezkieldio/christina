@@ -39,14 +39,14 @@ impl TryFrom<Url> for AzureEndpoint {
             return Err(AzureEndpointError::NotAzureEndpoint);
         }
 
-        // Extract endpoint (scheme + host)
-        let endpoint = format!(
-            "{}://{}",
-            url.scheme(),
-            url.host_str().ok_or(AzureEndpointError::InvalidUrl(
-                "Unable to extract host".to_string()
-            ))?
-        );
+        // Extract endpoint (scheme + host + optional port)
+        let host = url.host_str().ok_or(AzureEndpointError::InvalidUrl(
+            "Unable to extract host".to_string(),
+        ))?;
+        let endpoint = match url.port() {
+            Some(port) => format!("{}://{}:{}", url.scheme(), host, port),
+            None => format!("{}://{}", url.scheme(), host),
+        };
 
         // Extract deployment_id from path "/openai/deployments/{id}"
         let path = url.path();
@@ -112,6 +112,19 @@ mod tests {
         assert_eq!(
             endpoint.endpoint,
             "https://myresource.cognitiveservices.azure.com"
+        );
+        assert_eq!(endpoint.deployment_id, "gpt-4");
+        assert_eq!(endpoint.api_version, "2024-12-01-preview");
+    }
+
+    #[test]
+    fn test_parse_azure_url_preserves_port() {
+        let url = "https://myresource.cognitiveservices.azure.com:8443/openai/deployments/gpt-4/chat/completions?api-version=2024-12-01-preview";
+        let endpoint: AzureEndpoint = url.try_into().expect("Valid Azure URL should parse");
+
+        assert_eq!(
+            endpoint.endpoint,
+            "https://myresource.cognitiveservices.azure.com:8443"
         );
         assert_eq!(endpoint.deployment_id, "gpt-4");
         assert_eq!(endpoint.api_version, "2024-12-01-preview");

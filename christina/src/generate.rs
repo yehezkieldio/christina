@@ -187,7 +187,8 @@ async fn generate_commit_message_with_progress_impl(
                     let original_count = commits.len();
                     commits.truncate(budget_limit);
 
-                    if commits.len() < original_count {
+                    let omitted_count = original_count.saturating_sub(commits.len());
+                    if omitted_count > 0 {
                         info!(
                             "Truncated commit history from {} to {} commits to fit token budget",
                             original_count,
@@ -200,7 +201,15 @@ async fn generate_commit_message_with_progress_impl(
                         .map(|c| format!("- {}: {}", c.sha, c.subject))
                         .collect::<Vec<_>>()
                         .join("\n");
-                    Some(format!("Recent commits:\n{}", formatted))
+                    let history = if omitted_count > 0 {
+                        format!(
+                            "Recent commits:\n{}\n[... {} older commits omitted ...]",
+                            formatted, omitted_count
+                        )
+                    } else {
+                        format!("Recent commits:\n{}", formatted)
+                    };
+                    Some(history)
                 }
             }
             Err(e) => {

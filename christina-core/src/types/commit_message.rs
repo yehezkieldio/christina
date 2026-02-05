@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// Pattern: type(scope)?: description
 #[allow(clippy::expect_used)]
 static CONVENTIONAL_COMMIT_PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^[a-z]+(\([a-z0-9_-]+\))?:.+$")
+    regex::Regex::new(r"^[a-z]+(\([a-z0-9_-]+\))?:\s*\S.*$")
         .expect("Conventional commit regex pattern must be valid")
 });
 
@@ -102,7 +102,7 @@ impl CommitMessage {
         // WHY this regex pattern:
         // - `^[a-z]+`: type in lowercase (feat, fix, docs, etc.)
         // - `(\([a-z0-9_-]+\))?`: optional scope in parens (api, ui, core)
-        // - `:.+$`: colon + space + non-empty description
+        // - `:\s*\S.*$`: colon + optional whitespace + non-whitespace description
         // Enforces Conventional Commits with lowercase consistency for generated messages.
         if !CONVENTIONAL_COMMIT_PATTERN.is_match(trimmed) {
             return Err(
@@ -164,6 +164,7 @@ mod tests {
         assert!(CommitMessage::try_from("no prefix".to_string()).is_err());
         assert!(CommitMessage::try_from("FEAT: wrong case".to_string()).is_err());
         assert!(CommitMessage::try_from("feat: ".to_string()).is_err());
+        assert!(CommitMessage::try_from("feat:   ".to_string()).is_err());
         assert!(CommitMessage::try_from("".to_string()).is_err());
     }
 
