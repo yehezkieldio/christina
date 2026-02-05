@@ -1,10 +1,14 @@
 use anyhow::{Context, Result};
-use git2::{DiffOptions, Oid, Repository};
+use git2::{DiffOptions, Repository};
 use std::io::Write;
 
 use christina_core::git::GitFile;
 
 #[cfg(test)]
+use git2::Oid;
+
+#[cfg(test)]
+#[allow(dead_code)]
 pub trait GitRepository {
     fn get_staged_files(&self) -> Result<Vec<GitFile>>;
     fn create_commit(&self, message: &str) -> Result<Oid>;
@@ -250,7 +254,7 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     Ok(result)
 }
 
-/// Get unstaged files (changes between index and workdir)
+#[cfg(test)]
 pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let mut opts = DiffOptions::new();
     opts.include_untracked(true)
@@ -343,6 +347,7 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
 }
 
 /// Stage files by path
+#[cfg(test)]
 pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let mut index = repo.index()?;
     let workdir = repo
@@ -364,6 +369,7 @@ pub fn stage_files(repo: &Repository, paths: &[String]) -> Result<()> {
 }
 
 /// Unstage files by path
+#[cfg(test)]
 pub fn unstage_files(repo: &Repository, paths: &[String]) -> Result<()> {
     let path_refs: Vec<&std::path::Path> = paths.iter().map(|p| p.as_ref()).collect();
 
@@ -507,6 +513,7 @@ pub fn has_staged_changes(repo: &Repository) -> Result<bool> {
 }
 
 /// Validate that the repository is ready for commit
+#[cfg(test)]
 pub fn validate_for_commit(repo: &Repository) -> Result<()> {
     // Check for staged changes
     if !has_staged_changes(repo)? {

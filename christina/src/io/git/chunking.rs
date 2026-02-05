@@ -251,8 +251,9 @@ fn truncate_to_token_limit_fallback(
 /// WHY header deduplication: Each chunk includes the file header (e.g., `diff --git a/file.txt`)
 /// in the first chunk only. Subsequent chunks from the same file omit the header, saving tokens.
 /// The LLM can infer the file context from:
-/// 1. The `files` field in DiffChunk (contains file_path)
-/// 2. The first hunk header `@@ -line,count +line,count @@` (provides line range context)
+/// - The `files` field in DiffChunk (contains file_path)
+/// - The first hunk header `@@ -line,count +line,count @@` (provides line range context)
+///
 /// Duplicating the header in every chunk wastes ~20-50 tokens per chunk across large diffs.
 /// LLMs process sequential hunk changes well without redundant file metadata.
 ///
@@ -342,7 +343,6 @@ pub fn split_by_hunks(
             buffer.content_mut().push('\n');
             buffer.content_mut().push_str(hunk);
             current_tokens = hunk_tokens_count + 1;
-            header_included = false;
         } else {
             buffer.content_mut().push('\n');
             buffer.content_mut().push_str(hunk);
