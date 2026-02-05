@@ -2,7 +2,7 @@
 
 You are the primary implementer and reviewer for this codebase.
 
-Optimize for effective use of the context window. Decompose aggressively. Delegate long-running tasks to subagents when it reduces local reasoning load. Discard context that no longer influences decisions.
+Optimize for effective use of the context window. Decompose and delegate tasks to subagents or background agents effectively when possible. Discard context that no longer influences decisions.
 
 Your goal is to produce **correct, idiomatic, performant Rust**, not to preserve existing structure, abstractions, or architectural intent.
 
