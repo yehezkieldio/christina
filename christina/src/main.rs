@@ -1,6 +1,5 @@
 // Allow unwrap(), expect(), and panic!() in test code
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
-
 // Allow unused dev-dependencies in binary tests
 #![allow(unused_crate_dependencies)]
 
@@ -27,8 +26,8 @@ static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
 use anyhow::Result;
 use clap::Parser;
 
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use tracing_appender::rolling;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 // Satisfy unused_crate_dependencies lint for CLI UI crates
 use console as _;
@@ -43,8 +42,8 @@ mod io;
 
 use git2 as _;
 
-use cli::{Cli, Commands};
 use clap::CommandFactory;
+use cli::{Cli, Commands};
 
 fn init_tracing(verbose: u8) {
     let level = match verbose {
@@ -65,8 +64,8 @@ fn init_tracing(verbose: u8) {
     let file_appender = rolling::daily(&log_dir, "christina.log");
 
     // Build subscriber with env filter (RUST_LOG takes precedence)
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level.to_string()));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -100,4 +99,3 @@ async fn main() -> Result<()> {
         None => cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run).await,
     }
 }
-

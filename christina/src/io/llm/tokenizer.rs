@@ -3,9 +3,9 @@ use std::sync::{Arc, OnceLock};
 
 use ahash::RandomState;
 use christina_core::{
+    Tokenizer,
     error::{TokenizerError, TokenizerResult},
     types::TokenCount,
-    Tokenizer,
 };
 use moka::sync::Cache;
 use tiktoken_rs::CoreBPE;

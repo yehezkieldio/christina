@@ -9,8 +9,8 @@ use crate::config::Config;
 use crate::events::Event;
 use crate::io::git::diff_processor::DiffProcessor;
 use crate::io::llm::provider::Provider;
-use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
 use crate::io::llm::tokenizer::get_tokenizer;
+use crate::io::llm::{AIOrchestrator, GenerationResult, TokenBudget};
 use christina_core::ProviderProfile;
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::TokenCount;
@@ -122,9 +122,11 @@ async fn generate_commit_message_with_progress_impl(
         config.max_output_tokens,
         reserved_for_prompt,
         reserved_for_messages,
-    ).map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
+    )
+    .map_err(|e| anyhow::anyhow!("Invalid token budget configuration: {}", e))?;
 
-    let token_limit = budget.remaining_for_diff()
+    let token_limit = budget
+        .remaining_for_diff()
         .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
 
     let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
@@ -413,7 +415,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "config_to_profile called with missing or empty API key - this is a programming error")]
+    #[should_panic(
+        expected = "config_to_profile called with missing or empty API key - this is a programming error"
+    )]
     fn test_config_to_profile_no_api_key() {
         let config = Config {
             model: "gpt-4".into(),

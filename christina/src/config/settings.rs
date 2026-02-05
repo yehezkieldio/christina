@@ -190,7 +190,10 @@ impl Config {
             // Persist the default profile to global config to prevent recreation on next run
             // This ensures user's API key and settings are not lost
             if let Err(e) = config.save_to_global() {
-                tracing::warn!("Failed to persist default profile (read-only config?): {}", e);
+                tracing::warn!(
+                    "Failed to persist default profile (read-only config?): {}",
+                    e
+                );
             }
         }
 

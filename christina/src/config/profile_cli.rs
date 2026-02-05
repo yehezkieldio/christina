@@ -421,7 +421,7 @@ fn handle_duplicate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use christina_core::profile::{ProviderProfile, Profiles};
+    use christina_core::profile::{Profiles, ProviderProfile};
     use christina_core::types::{ModelName, ProviderKind};
     use std::io::{BufReader, Cursor};
 
@@ -589,7 +589,10 @@ mod tests {
         let profile = store.config.profiles.get("azure").unwrap();
         assert_eq!(profile.provider, ProviderKind::Azure);
         assert_eq!(profile.max_input_tokens.get(), 100000);
-        assert_eq!(profile.azure_api_version, Some("2024-12-01-preview".to_string()));
+        assert_eq!(
+            profile.azure_api_version,
+            Some("2024-12-01-preview".to_string())
+        );
     }
 
     #[test]

@@ -165,11 +165,12 @@ mod tests {
         };
 
         assert!(spec.validate().is_err());
-        assert!(spec
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("valid number"));
+        assert!(
+            spec.validate()
+                .unwrap_err()
+                .to_string()
+                .contains("valid number")
+        );
     }
 
     #[test]
@@ -186,7 +187,12 @@ mod tests {
 
         let result = spec.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("between 0.0 and 2.0")
+        );
     }
 
     #[test]
@@ -203,7 +209,12 @@ mod tests {
 
         let result = spec.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("between 0.0 and 2.0")
+        );
     }
 
     #[test]

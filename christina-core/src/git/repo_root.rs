@@ -122,7 +122,10 @@ mod tests {
     fn reporoot_try_new_failure() {
         let result = RepoRoot::try_new(PathBuf::from("relative/path"));
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RepoRootError::RelativePath(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            RepoRootError::RelativePath(_)
+        ));
     }
 
     #[test]

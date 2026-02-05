@@ -1,6 +1,6 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
 
@@ -124,14 +124,11 @@ impl Provider {
                 temperature,
             }),
             ProviderKind::Azure => {
-                let url = profile
-                    .api_url
-                    .as_ref()
-                    .ok_or_else(|| {
-                        ProviderError::MissingConfig(
-                            "model_api_url (Azure endpoint required)".to_string(),
-                        )
-                    })?;
+                let url = profile.api_url.as_ref().ok_or_else(|| {
+                    ProviderError::MissingConfig(
+                        "model_api_url (Azure endpoint required)".to_string(),
+                    )
+                })?;
 
                 // Try to extract from URL if not explicitly provided
                 let (url_api_version, url_deployment_id) = parse_azure_endpoint(url);
@@ -339,7 +336,7 @@ mod tests {
     #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_missing_version() {
         let url = url::Url::parse(
-            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions"
+            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions",
         )
         .expect("valid URL");
 
@@ -352,10 +349,8 @@ mod tests {
     #[test]
     #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_missing_deployment() {
-        let url = url::Url::parse(
-            "https://my-resource.openai.azure.com/?api-version=2024-02-15"
-        )
-        .expect("valid URL");
+        let url = url::Url::parse("https://my-resource.openai.azure.com/?api-version=2024-02-15")
+            .expect("valid URL");
 
         let (api_version, deployment_id) = parse_azure_endpoint(&url);
 
@@ -366,8 +361,7 @@ mod tests {
     #[test]
     #[allow(clippy::expect_used)]
     fn test_parse_azure_endpoint_base_url_only() {
-        let url = url::Url::parse("https://my-resource.openai.azure.com")
-            .expect("valid URL");
+        let url = url::Url::parse("https://my-resource.openai.azure.com").expect("valid URL");
 
         let (api_version, deployment_id) = parse_azure_endpoint(&url);
 
@@ -486,10 +480,12 @@ mod tests {
 
         let result = Provider::from_profile(&profile, "sk-test");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Azure endpoint required"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Azure endpoint required")
+        );
     }
 
     #[test]
@@ -592,9 +588,11 @@ mod tests {
         let result = provider.generate(&messages).await;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("sequence exhausted"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("sequence exhausted")
+        );
     }
 }

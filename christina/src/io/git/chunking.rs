@@ -19,9 +19,9 @@
 use std::sync::Arc;
 
 use christina_core::{
+    Tokenizer,
     git::{DiffChunk, FileDiff},
     types::{FilePath, TokenCount},
-    Tokenizer,
 };
 
 use crate::io::git::buffer_pool;
@@ -592,7 +592,12 @@ mod tests {
     #[test]
     fn test_split_empty() {
         let tokenizer = DeterministicTokenizer;
-        let chunks = split_recursive(Vec::new(), TokenCount::new_at_least_one(100), &[], &tokenizer);
+        let chunks = split_recursive(
+            Vec::new(),
+            TokenCount::new_at_least_one(100),
+            &[],
+            &tokenizer,
+        );
         assert!(chunks.is_empty());
     }
 
@@ -602,7 +607,12 @@ mod tests {
         let content = sample_hunk(sample_header(), &["+hello"]);
         let file = file_diff("file.txt", &content, &tokenizer);
 
-        let chunks = split_recursive(vec![file], TokenCount::new_at_least_one(200), &[], &tokenizer);
+        let chunks = split_recursive(
+            vec![file],
+            TokenCount::new_at_least_one(200),
+            &[],
+            &tokenizer,
+        );
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].files, vec![FilePath::from("file.txt")]);
@@ -641,7 +651,12 @@ mod tests {
         }
         let file = file_diff("large.txt", &content, &tokenizer);
 
-        let chunks = split_recursive(vec![file], TokenCount::new_at_least_one(50), &[], &tokenizer);
+        let chunks = split_recursive(
+            vec![file],
+            TokenCount::new_at_least_one(50),
+            &[],
+            &tokenizer,
+        );
 
         assert!(chunks.len() > 1);
         let counts = tokenize_chunks(&chunks, &tokenizer);
@@ -790,7 +805,8 @@ mod tests {
     fn test_truncate_respects_limit() {
         let tokenizer = DeterministicTokenizer;
         let content = "alpha beta gamma delta epsilon";
-        let truncated = truncate_to_token_limit(content, TokenCount::new_at_least_one(3), &tokenizer);
+        let truncated =
+            truncate_to_token_limit(content, TokenCount::new_at_least_one(3), &tokenizer);
         let tokens = tokenizer.count_tokens(&truncated);
         assert!(tokens.get() <= 3);
     }
@@ -833,7 +849,8 @@ mod tests {
 
         let tokenizer = FailingDecodeTokenizer;
         let content = "alpha beta\ngamma delta\nepsilon zeta";
-        let truncated = truncate_to_token_limit(content, TokenCount::new_at_least_one(3), &tokenizer);
+        let truncated =
+            truncate_to_token_limit(content, TokenCount::new_at_least_one(3), &tokenizer);
         assert!(truncated.contains('\n'));
         let tokens = tokenizer.count_tokens(&truncated);
         assert!(tokens.get() <= 3);
@@ -884,13 +901,25 @@ mod tests {
 
         // Should match exact filename
         assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
-        assert!(should_limit_file(&FilePath::from("path/to/Cargo.lock"), &patterns));
-        assert!(should_limit_file(&FilePath::from("package.json"), &patterns));
+        assert!(should_limit_file(
+            &FilePath::from("path/to/Cargo.lock"),
+            &patterns
+        ));
+        assert!(should_limit_file(
+            &FilePath::from("package.json"),
+            &patterns
+        ));
 
         // Should NOT match partial matches
         assert!(!should_limit_file(&FilePath::from("unlock.txt"), &patterns));
-        assert!(!should_limit_file(&FilePath::from("Cargo.lock.bak"), &patterns));
-        assert!(!should_limit_file(&FilePath::from("my-package.json"), &patterns));
+        assert!(!should_limit_file(
+            &FilePath::from("Cargo.lock.bak"),
+            &patterns
+        ));
+        assert!(!should_limit_file(
+            &FilePath::from("my-package.json"),
+            &patterns
+        ));
     }
 
     #[test]
@@ -912,12 +941,24 @@ mod tests {
         let patterns = vec!["vendor/".to_string(), "node_modules/".to_string()];
 
         // Should match directory prefix
-        assert!(should_limit_file(&FilePath::from("vendor/package/file.go"), &patterns));
-        assert!(should_limit_file(&FilePath::from("node_modules/react/index.js"), &patterns));
+        assert!(should_limit_file(
+            &FilePath::from("vendor/package/file.go"),
+            &patterns
+        ));
+        assert!(should_limit_file(
+            &FilePath::from("node_modules/react/index.js"),
+            &patterns
+        ));
 
         // Should NOT match if not in directory
-        assert!(!should_limit_file(&FilePath::from("src/vendor.go"), &patterns));
-        assert!(!should_limit_file(&FilePath::from("my_node_modules.txt"), &patterns));
+        assert!(!should_limit_file(
+            &FilePath::from("src/vendor.go"),
+            &patterns
+        ));
+        assert!(!should_limit_file(
+            &FilePath::from("my_node_modules.txt"),
+            &patterns
+        ));
     }
 
     #[test]
@@ -930,13 +971,22 @@ mod tests {
 
         assert!(should_limit_file(&FilePath::from("Cargo.lock"), &patterns));
         assert!(should_limit_file(&FilePath::from("app.min.js"), &patterns));
-        assert!(should_limit_file(&FilePath::from("dist/bundle.js"), &patterns));
-        assert!(!should_limit_file(&FilePath::from("src/main.rs"), &patterns));
+        assert!(should_limit_file(
+            &FilePath::from("dist/bundle.js"),
+            &patterns
+        ));
+        assert!(!should_limit_file(
+            &FilePath::from("src/main.rs"),
+            &patterns
+        ));
     }
 
     #[test]
     fn should_limit_file_empty_patterns() {
         let patterns: Vec<String> = vec![];
-        assert!(!should_limit_file(&FilePath::from("any/file.txt"), &patterns));
+        assert!(!should_limit_file(
+            &FilePath::from("any/file.txt"),
+            &patterns
+        ));
     }
 }

@@ -1,5 +1,5 @@
-use console::{style, Emoji, Style, Term};
-use dialoguer::{theme::ColorfulTheme, Confirm};
+use console::{Emoji, Style, Term, style};
+use dialoguer::{Confirm, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 
 // =================================================================================

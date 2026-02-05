@@ -576,10 +576,9 @@ impl AIOrchestrator {
 
         let _permit = self.limiter.acquire().await;
 
-        let response =
-            generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
-                .await
-                .context("Intent extraction failed after retries")?;
+        let response = generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
+            .await
+            .context("Intent extraction failed after retries")?;
 
         match self.parse_themes(&response) {
             Ok(themes) => Ok((themes, false)),
@@ -676,10 +675,9 @@ impl AIOrchestrator {
 
         let _permit = self.limiter.acquire().await;
 
-        let response =
-            generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
-                .await
-                .context("Sub-theme extraction failed")?;
+        let response = generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
+            .await
+            .context("Sub-theme extraction failed")?;
 
         self.parse_sub_themes(&response)
     }

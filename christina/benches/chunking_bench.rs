@@ -5,10 +5,10 @@ use christina::io::git::chunking::{
 };
 
 use christina_core::{
-    git::FileDiff, test_helpers::DeterministicTokenizer, types::TokenCount, types::FilePath,
-    Tokenizer,
+    Tokenizer, git::FileDiff, test_helpers::DeterministicTokenizer, types::FilePath,
+    types::TokenCount,
 };
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 // Placeholder uses for dev-dependencies not used in this benchmark
 use ahash as _;
@@ -50,7 +50,10 @@ fn diff_header(file: &str) -> String {
 
 /// Generate a diff hunk with specified lines.
 fn diff_hunk(start_line: usize, line_count: usize) -> String {
-    let mut hunk = format!("\n@@ -{},{} +{},{} @@\n", start_line, line_count, start_line, line_count);
+    let mut hunk = format!(
+        "\n@@ -{},{} +{},{} @@\n",
+        start_line, line_count, start_line, line_count
+    );
     for i in 0..line_count {
         hunk.push_str(&format!("+Added line {}\n", i));
     }
@@ -67,7 +70,11 @@ fn generate_file_diff(filename: &str, hunk_count: usize, lines_per_hunk: usize) 
 }
 
 /// Generate multiple file diffs.
-fn generate_multi_file_diff(file_count: usize, hunks_per_file: usize, lines_per_hunk: usize) -> Vec<FileDiff> {
+fn generate_multi_file_diff(
+    file_count: usize,
+    hunks_per_file: usize,
+    lines_per_hunk: usize,
+) -> Vec<FileDiff> {
     let tokenizer = DeterministicTokenizer;
     (0..file_count)
         .map(|i| {

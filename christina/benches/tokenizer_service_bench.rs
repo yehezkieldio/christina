@@ -1,8 +1,8 @@
 #![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used)]
 
-use christina::io::llm::tokenizer::{get_tokenizer, TokenBudget};
+use christina::io::llm::tokenizer::{TokenBudget, get_tokenizer};
 use christina_core::types::TokenCount;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 // Placeholder uses for dev-dependencies not used in this benchmark
 use ahash as _;
@@ -37,8 +37,18 @@ use url as _;
 /// Generate text with specified word count.
 fn generate_text(word_count: usize) -> String {
     let words = vec![
-        "hello", "world", "test", "benchmark", "performance", "rust", "tokenization",
-        "encoding", "decoding", "optimization", "algorithm", "implementation",
+        "hello",
+        "world",
+        "test",
+        "benchmark",
+        "performance",
+        "rust",
+        "tokenization",
+        "encoding",
+        "decoding",
+        "optimization",
+        "algorithm",
+        "implementation",
     ];
     (0..word_count)
         .map(|i| words[i % words.len()])
@@ -60,7 +70,13 @@ fn generate_code(lines: usize) -> String {
 
 /// Generate long single line (minified JS style).
 fn generate_long_line(tokens: usize) -> String {
-    format!("const data = [{}];", (0..tokens).map(|i| format!("'{}'", i)).collect::<Vec<_>>().join(", "))
+    format!(
+        "const data = [{}];",
+        (0..tokens)
+            .map(|i| format!("'{}'", i))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 fn bench_count_tokens_short_text(c: &mut Criterion) {

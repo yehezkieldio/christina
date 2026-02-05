@@ -384,17 +384,12 @@ impl<'a> PromptBuilder<'a> {
         let themes_text = self
             .themes
             .iter()
-            .map(|t| {
-                match &t.scope {
-                    Some(scope) => format!(
-                        "- {} ({}): {} [{} files]",
-                        t.title, scope, t.description, t.file_count
-                    ),
-                    None => format!(
-                        "- {}: {} [{} files]",
-                        t.title, t.description, t.file_count
-                    ),
-                }
+            .map(|t| match &t.scope {
+                Some(scope) => format!(
+                    "- {} ({}): {} [{} files]",
+                    t.title, scope, t.description, t.file_count
+                ),
+                None => format!("- {}: {} [{} files]", t.title, t.description, t.file_count),
             })
             .collect::<Vec<_>>()
             .join("\n");

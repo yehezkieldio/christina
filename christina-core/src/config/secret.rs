@@ -401,10 +401,12 @@ mod tests {
         let secret = Secret::Keyring("test".to_string());
         let result = secret.resolve();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Keyring support not compiled"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Keyring support not compiled")
+        );
     }
 
     #[cfg(not(feature = "keyring-support"))]
@@ -413,10 +415,12 @@ mod tests {
         let secret = SecretRef::Keyring("test".to_string());
         let result = secret.resolve();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Keyring support not compiled"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Keyring support not compiled")
+        );
     }
 
     #[test]

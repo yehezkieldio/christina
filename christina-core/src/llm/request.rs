@@ -201,10 +201,12 @@ mod tests {
 
         let result = req.validate();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("at least one message"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("at least one message")
+        );
     }
 
     #[test]
@@ -234,7 +236,12 @@ mod tests {
 
         let result = req.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("between 0.0 and 2.0")
+        );
     }
 
     #[test]
@@ -249,7 +256,12 @@ mod tests {
 
         let result = req.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("between 0.0 and 2.0"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("between 0.0 and 2.0")
+        );
     }
 
     #[test]

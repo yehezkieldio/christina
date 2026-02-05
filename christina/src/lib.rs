@@ -2,7 +2,6 @@
 // The unused_crate_dependencies lint cannot distinguish between
 // dependencies used in benches vs lib.
 #![allow(unused_crate_dependencies)]
-
 // Allow unwrap(), expect(), and panic!() in test code
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 

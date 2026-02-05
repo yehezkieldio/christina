@@ -1,8 +1,13 @@
-#![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used, clippy::useless_format)]
+#![allow(
+    unused_crate_dependencies,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::useless_format
+)]
 
 use christina::io::git::diff_processor::DiffProcessor;
-use christina_core::{test_helpers::DeterministicTokenizer, types::TokenCount, Tokenizer};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use christina_core::{Tokenizer, test_helpers::DeterministicTokenizer, types::TokenCount};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use std::sync::Arc;
 
 // Placeholder uses for dev-dependencies not used in this benchmark
@@ -39,10 +44,7 @@ use url as _;
 fn generate_text_diff(file_count: usize, lines_per_file: usize) -> String {
     let mut diff = String::new();
     for i in 0..file_count {
-        diff.push_str(&format!(
-            "diff --git a/file{}.rs b/file{}.rs\n",
-            i, i
-        ));
+        diff.push_str(&format!("diff --git a/file{}.rs b/file{}.rs\n", i, i));
         diff.push_str(&format!("index 1234567..abcdefg 100644\n"));
         diff.push_str(&format!("--- a/file{}.rs\n", i));
         diff.push_str(&format!("+++ b/file{}.rs\n", i));
@@ -58,10 +60,7 @@ fn generate_text_diff(file_count: usize, lines_per_file: usize) -> String {
 fn generate_binary_diff(file_count: usize) -> String {
     let mut diff = String::new();
     for i in 0..file_count {
-        diff.push_str(&format!(
-            "diff --git a/image{}.png b/image{}.png\n",
-            i, i
-        ));
+        diff.push_str(&format!("diff --git a/image{}.png b/image{}.png\n", i, i));
         diff.push_str("index 1234567..abcdefg 100644\n");
         diff.push_str(&format!("--- a/image{}.png\n", i));
         diff.push_str(&format!("+++ b/image{}.png\n", i));
@@ -100,7 +99,10 @@ fn generate_large_text_diff(lines: usize) -> String {
     diff.push_str("+++ b/large.rs\n");
     diff.push_str(&format!("@@ -1,{0} +1,{0} @@\n", lines));
     for i in 0..lines {
-        diff.push_str(&format!("+// This is line number {} with some content\n", i));
+        diff.push_str(&format!(
+            "+// This is line number {} with some content\n",
+            i
+        ));
     }
     diff
 }
