@@ -224,9 +224,10 @@ async fn generate_commit(
         while let Some(event) = _progress_rx.recv().await {
             match event {
                 Event::GenerationProgress { stage, .. } => {
+                    let stage_for_trace = stage.clone();
                     _progress_spinner.set_message(stage);
                     if trace_enabled {
-                        ui::print_trace(&format!("stage: {}", stage));
+                        ui::print_trace(&format!("stage: {}", stage_for_trace));
                     }
                 }
                 Event::TokenCountUpdate { token_count } => {
