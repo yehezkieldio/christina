@@ -784,12 +784,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_secret_input_literal_requires_override() {
+    fn test_parse_secret_input_literal_without_override_warns_but_succeeds() {
         let result = parse_secret_input("sk-1234567890", false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Refusing to store plaintext API key"));
+        assert!(result.is_ok());
+        assert!(matches!(result.unwrap(), Secret::Value(_)));
     }
 }

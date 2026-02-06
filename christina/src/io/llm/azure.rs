@@ -68,7 +68,7 @@ pub async fn execute_azure_request_with_retry(
     .await
 }
 
-fn requires_completion_tokens_param(model: &str) -> bool {
+fn is_reasoning_model(model: &str) -> bool {
     let m = model.to_ascii_lowercase();
     m.starts_with("o1")
         || m.starts_with("o3")
@@ -103,6 +103,8 @@ struct AzureChatResponse {
 #[derive(Deserialize, Debug)]
 struct AzureChatChoice {
     message: AzureChatMsg,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -141,23 +143,15 @@ async fn execute_azure_request_inner(
         })
         .collect();
 
-    let use_completion_tokens = requires_completion_tokens_param(model);
+    let reasoning = is_reasoning_model(model);
     let max_tokens_value = request.max_tokens.get();
 
     let body = AzureChatRequest {
         model,
         messages,
-        max_tokens: if use_completion_tokens {
-            None
-        } else {
-            Some(max_tokens_value)
-        },
-        max_completion_tokens: if use_completion_tokens {
-            Some(max_tokens_value)
-        } else {
-            None
-        },
-        temperature: Some(request.temperature.value()),
+        max_tokens: if reasoning { None } else { Some(max_tokens_value) },
+        max_completion_tokens: if reasoning { Some(max_tokens_value) } else { None },
+        temperature: if reasoning { None } else { Some(request.temperature.value()) },
         stream: false,
     };
 
@@ -189,6 +183,7 @@ async fn execute_azure_request_inner(
             .text()
             .await
             .unwrap_or_else(|_| "<failed to read body>".to_string());
+        tracing::warn!("Azure OpenAI error response: {error_text}");
         return Err(CompletionError::InvalidResponse(format!(
             "Response Format Error: OpenAI API returned error status: {status}. Raw response: {error_text}"
         )));
@@ -199,20 +194,40 @@ async fn execute_azure_request_inner(
         .await
         .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
 
+    if tracing::enabled!(tracing::Level::TRACE) {
+        let truncated = truncate_for_log(&resp_text, 500);
+        tracing::trace!("Azure OpenAI response body: {truncated}");
+    }
+
     let parsed: AzureChatResponse = serde_json::from_str(&resp_text).map_err(|e| {
         CompletionError::InvalidResponse(format!(
             "Failed to decode Azure OpenAI response: {e}. Raw: {resp_text}"
         ))
     })?;
 
-    let content = parsed
-        .choices
-        .into_iter()
-        .next()
-        .and_then(|c| c.message.content)
-        .ok_or_else(|| {
-            CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
-        })?;
+    let choice = parsed.choices.into_iter().next().ok_or_else(|| {
+        CompletionError::InvalidResponse("No choices in Azure OpenAI response".to_string())
+    })?;
+
+    if choice.finish_reason.as_deref() == Some("length") {
+        tracing::warn!(
+            "Azure OpenAI response truncated (finish_reason=length); \
+             increase max_output_tokens for reasoning models"
+        );
+    }
+
+    let content = choice.message.content.ok_or_else(|| {
+        CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
+    })?;
+
+    if content.is_empty() {
+        return Err(CompletionError::InvalidResponse(
+            "Azure OpenAI returned empty content; \
+             for reasoning models (o1/o3/o4/gpt-5), increase max_output_tokens \
+             to at least 4096 so the model has enough budget for internal reasoning"
+                .to_string(),
+        ));
+    }
 
     Ok(LlmResponse {
         content,
@@ -238,49 +253,50 @@ mod tests {
     use christina_core::llm::ChatMessage;
 
     #[test]
-    fn requires_completion_tokens_gpt5() {
-        assert!(requires_completion_tokens_param("gpt-5-nano"));
-        assert!(requires_completion_tokens_param("gpt-5"));
-        assert!(requires_completion_tokens_param("gpt-5-mini"));
-        assert!(requires_completion_tokens_param("GPT-5-Nano"));
+    fn is_reasoning_model_gpt5() {
+        assert!(is_reasoning_model("gpt-5-nano"));
+        assert!(is_reasoning_model("gpt-5"));
+        assert!(is_reasoning_model("gpt-5-mini"));
+        assert!(is_reasoning_model("GPT-5-Nano"));
     }
 
     #[test]
-    fn requires_completion_tokens_o_series() {
-        assert!(requires_completion_tokens_param("o1"));
-        assert!(requires_completion_tokens_param("o1-mini"));
-        assert!(requires_completion_tokens_param("o1-preview"));
-        assert!(requires_completion_tokens_param("o3"));
-        assert!(requires_completion_tokens_param("o3-mini"));
-        assert!(requires_completion_tokens_param("o4-mini"));
+    fn is_reasoning_model_o_series() {
+        assert!(is_reasoning_model("o1"));
+        assert!(is_reasoning_model("o1-mini"));
+        assert!(is_reasoning_model("o1-preview"));
+        assert!(is_reasoning_model("o3"));
+        assert!(is_reasoning_model("o3-mini"));
+        assert!(is_reasoning_model("o4-mini"));
     }
 
     #[test]
-    fn does_not_require_completion_tokens_gpt4() {
-        assert!(!requires_completion_tokens_param("gpt-4"));
-        assert!(!requires_completion_tokens_param("gpt-4o"));
-        assert!(!requires_completion_tokens_param("gpt-4o-mini"));
-        assert!(!requires_completion_tokens_param("gpt-4.1"));
-        assert!(!requires_completion_tokens_param("gpt-4.1-nano"));
+    fn is_not_reasoning_model_gpt4() {
+        assert!(!is_reasoning_model("gpt-4"));
+        assert!(!is_reasoning_model("gpt-4o"));
+        assert!(!is_reasoning_model("gpt-4o-mini"));
+        assert!(!is_reasoning_model("gpt-4.1"));
+        assert!(!is_reasoning_model("gpt-4.1-nano"));
     }
 
     #[test]
-    fn request_body_uses_max_completion_tokens_for_gpt5() {
+    fn request_body_reasoning_model_omits_temperature_and_max_tokens() {
         let body = AzureChatRequest {
             model: "gpt-5-nano",
             messages: vec![],
             max_tokens: None,
             max_completion_tokens: Some(512),
-            temperature: Some(0.3),
+            temperature: None,
             stream: false,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert!(json.get("max_tokens").is_none());
         assert_eq!(json["max_completion_tokens"], 512);
+        assert!(json.get("temperature").is_none());
     }
 
     #[test]
-    fn request_body_uses_max_tokens_for_gpt4() {
+    fn request_body_non_reasoning_model_includes_temperature_and_max_tokens() {
         let body = AzureChatRequest {
             model: "gpt-4o",
             messages: vec![],
@@ -292,6 +308,7 @@ mod tests {
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["max_tokens"], 512);
         assert!(json.get("max_completion_tokens").is_none());
+        assert!(json["temperature"].as_f64().is_some_and(|t| (t - 0.3).abs() < 0.001));
     }
 
     #[test]
