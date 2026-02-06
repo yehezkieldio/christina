@@ -135,6 +135,48 @@ pub fn select_action(actions: &[&str]) -> Result<usize, dialoguer::Error> {
         .interact()
 }
 
+pub fn edit_in_editor(initial_content: &str) -> Result<String, std::io::Error> {
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| {
+            if cfg!(windows) {
+                "notepad".to_string()
+            } else {
+                "vi".to_string()
+            }
+        });
+
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("christina-commit-{}.txt", std::process::id()));
+
+    std::fs::write(&path, initial_content)?;
+
+    let status = std::process::Command::new(&editor)
+        .arg(&path)
+        .status()
+        .map_err(|e| std::io::Error::other(
+            format!("Failed to launch editor '{}': {}", editor, e),
+        ))?;
+
+    if !status.success() {
+        let _ = std::fs::remove_file(&path);
+        return Err(std::io::Error::other("Editor exited with non-zero status"));
+    }
+
+    let content = std::fs::read_to_string(&path)?;
+    let _ = std::fs::remove_file(&path);
+
+    let trimmed = content.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Commit message is empty after editing",
+        ));
+    }
+
+    Ok(trimmed)
+}
+
 // =================================================================================
 //  CONTENT DISPLAY
 // =================================================================================
@@ -147,6 +189,7 @@ pub fn print_commit_message(msg: &str) {
     for line in wrap_text(msg, width) {
         let _ = term.write_line(&line);
     }
+    let _ = term.write_line("");
 }
 
 pub fn print_file_list(files: &[String], max_items: usize) {

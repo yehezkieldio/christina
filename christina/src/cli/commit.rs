@@ -21,13 +21,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     if trace {
         ui::print_trace("validating repository state");
     }
-    let (repo, diff) = match validate_repository() {
-        Ok(values) => values,
-        Err(err) => {
-            ui::print_error(&err.to_string());
-            return Err(err);
-        }
-    };
+    let (repo, diff) = validate_repository()?;
 
     let repo_path = repo
         .workdir()
@@ -45,13 +39,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     if trace {
         ui::print_trace("collecting staged files");
     }
-    let files = match adapter::get_staged_files(&repo) {
-        Ok(files) => files,
-        Err(err) => {
-            ui::print_error(&format!("Failed to read staged files: {}", err));
-            return Err(err);
-        }
-    };
+    let files = adapter::get_staged_files(&repo)?;
 
     if let Some(stats) = trace_stats.as_ref() {
         let mut stats = match stats.lock() {
@@ -97,25 +85,25 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
         .await
         {
             Ok(message) => message,
-            Err(err) => {
-                ui::print_error(&format!("Commit message generation failed: {}", err));
-                return Err(err);
-            }
+            Err(err) => return Err(err),
         };
 
         if trace {
             ui::print_trace("awaiting commit confirmation");
         }
-        let action = match confirm_commit(&message, yes) {
-            Ok(value) => value,
-            Err(err) => {
-                ui::print_error(&format!("Failed to confirm commit: {}", err));
-                return Err(err);
-            }
-        };
+        let action = confirm_commit(&message, yes)?;
 
         match action {
             CommitAction::Accept => break message,
+            CommitAction::Edit => {
+                match ui::edit_in_editor(&message) {
+                    Ok(edited) => break edited,
+                    Err(err) => {
+                        ui::print_warning(&format!("Editor failed: {err}"));
+                        continue;
+                    }
+                }
+            }
             CommitAction::Regenerate => continue,
             CommitAction::Decline => {
                 ui::print_info("Commit cancelled.");
@@ -145,7 +133,6 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
                 "GPG signing failed. Configure your GPG key/agent or disable signing with: git config commit.gpgsign false",
             );
         }
-        ui::print_error(&format!("Failed to create commit: {}", err));
         return Err(err);
     }
 
@@ -304,6 +291,7 @@ fn is_gpg_signing_failure(err: &anyhow::Error) -> bool {
 
 enum CommitAction {
     Accept,
+    Edit,
     Regenerate,
     Decline,
 }
@@ -316,13 +304,14 @@ fn confirm_commit(message: &str, yes: bool) -> Result<CommitAction> {
         return Ok(CommitAction::Accept);
     }
 
-    let actions = ["accept", "regenerate", "decline"];
+    let actions = ["accept", "edit", "regenerate", "decline"];
     let selection = ui::select_action(&actions)
         .map_err(|err| anyhow::anyhow!("Confirmation failed: {}", err))?;
 
     let action = match selection {
         0 => CommitAction::Accept,
-        1 => CommitAction::Regenerate,
+        1 => CommitAction::Edit,
+        2 => CommitAction::Regenerate,
         _ => CommitAction::Decline,
     };
 
@@ -450,6 +439,19 @@ fn format_duration(duration: Duration) -> String {
     format!("{:.1}s", secs)
 }
 
+#[cfg(not(feature = "dhat-heap"))]
+fn format_bytes(bytes: usize) -> String {
+    if bytes < 1024 {
+        return format!("{bytes}B");
+    }
+    let kb = bytes as f64 / 1024.0;
+    if kb < 1024.0 {
+        return format!("{kb:.1}KB");
+    }
+    let mb = kb / 1024.0;
+    format!("{mb:.1}MB")
+}
+
 fn print_trace_summary(trace_stats: Option<&Arc<Mutex<TraceStats>>>) {
     let Some(stats) = trace_stats else { return };
     let stats = match stats.lock() {
@@ -525,6 +527,19 @@ fn print_trace_summary(trace_stats: Option<&Arc<Mutex<TraceStats>>>) {
     if let (Some(start), Some(end)) = (stats.generation_started, stats.generation_completed) {
         let duration = end.saturating_duration_since(start);
         ui::print_trace(&format!("generation time: {}", format_duration(duration)));
+    }
+
+    #[cfg(not(feature = "dhat-heap"))]
+    {
+        let allocated = crate::GLOBAL.allocated();
+        let peak = crate::GLOBAL.max_allocated();
+        let total = crate::GLOBAL.total_allocated();
+        ui::print_trace(&format!(
+            "memory: current {}, peak {}, total {}",
+            format_bytes(allocated),
+            format_bytes(peak),
+            format_bytes(total),
+        ));
     }
 
     let total_duration = stats.started_at.elapsed();

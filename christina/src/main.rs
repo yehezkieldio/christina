@@ -21,7 +21,7 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
-static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
+pub static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
 
 use anyhow::Result;
 use clap::Parser;
@@ -45,38 +45,22 @@ use git2 as _;
 use clap::CommandFactory;
 use cli::{Cli, Commands};
 
-fn init_tracing(verbose: u8, trace: bool) {
-    let level = if trace {
-        tracing::Level::TRACE
-    } else {
-        match verbose {
-            0 => tracing::Level::INFO,
-            1 => tracing::Level::DEBUG,
-            _ => tracing::Level::TRACE,
-        }
+fn init_tracing(verbose: u8) {
+    let level = match verbose {
+        0 => tracing::Level::INFO,
+        1 => tracing::Level::DEBUG,
+        _ => tracing::Level::TRACE,
     };
 
-    // Build subscriber with env filter (RUST_LOG takes precedence)
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
 
-    if trace {
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(fmt::layer().with_writer(std::io::stderr).with_ansi(true))
-            .init();
-        return;
-    }
-
-    // Get log directory using same pattern as config
     let log_dir = directories::ProjectDirs::from("", "", "christina")
         .map(|dirs| dirs.data_dir().join("logs"))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    // Create log directory if it doesn't exist
     let _ = std::fs::create_dir_all(&log_dir);
 
-    // Daily rolling file appender (TUI-safe - no stdout)
     let file_appender = rolling::daily(&log_dir, "christina.log");
 
     tracing_subscriber::registry()
@@ -86,28 +70,30 @@ fn init_tracing(verbose: u8, trace: bool) {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
 
     let cli = Cli::parse();
 
-    init_tracing(cli.verbose, cli.trace);
+    init_tracing(cli.verbose);
 
-    match cli.command {
-        Some(Commands::Config(cmd)) => {
-            config::cli::handle_config_command(cmd)?;
-            Ok(())
-        }
-        Some(Commands::Profile(cmd)) => {
-            config::profile_cli::handle_profile_command(cmd)?;
-            Ok(())
-        }
+    let result: Result<()> = match cli.command {
+        Some(Commands::Config(cmd)) => config::cli::handle_config_command(cmd),
+        Some(Commands::Profile(cmd)) => config::profile_cli::handle_profile_command(cmd),
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
             clap_complete::generate(shell, &mut cmd, "christina", &mut std::io::stdout());
             Ok(())
         }
         None => cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run, cli.trace).await,
+    };
+
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(err) => {
+            cli::ui::print_error(&format!("{err}"));
+            std::process::ExitCode::FAILURE
+        }
     }
 }

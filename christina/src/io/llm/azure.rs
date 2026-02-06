@@ -162,9 +162,10 @@ async fn execute_azure_request_inner(
     };
 
     if tracing::enabled!(tracing::Level::TRACE)
-        && let Ok(json) = serde_json::to_value(&body)
+        && let Ok(json) = serde_json::to_string(&body)
     {
-        tracing::trace!("Azure OpenAI request payload: {json}");
+        let truncated = truncate_for_log(&json, 500);
+        tracing::trace!("Azure OpenAI request payload: {truncated}");
     }
 
     let url = format!(
@@ -217,6 +218,17 @@ async fn execute_azure_request_inner(
         content,
         tokens_used: None,
     })
+}
+
+fn truncate_for_log(s: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {
+    if s.len() <= max_chars {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let mut end = max_chars;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    std::borrow::Cow::Owned(format!("{}…<truncated, {} total>", &s[..end], s.len()))
 }
 
 #[cfg(test)]
