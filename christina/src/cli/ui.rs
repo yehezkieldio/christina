@@ -1,16 +1,10 @@
-use console::{Emoji, Style, Term, style};
-use dialoguer::{Confirm, theme::ColorfulTheme};
+use console::{Style, Term, style};
+use dialoguer::{Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 
 // =================================================================================
 //  CONSTANTS & THEME
 // =================================================================================
-
-pub const CHECK: Emoji<'_, '_> = Emoji("✓ ", "+ ");
-pub const CROSS: Emoji<'_, '_> = Emoji("✗ ", "x ");
-pub const WARN: Emoji<'_, '_> = Emoji("⚠ ", "! ");
-pub const INFO: Emoji<'_, '_> = Emoji("ℹ ", "i ");
-pub const ARROW: Emoji<'_, '_> = Emoji("➜ ", "> ");
 
 // =================================================================================
 //  COLOR / STYLING UTILITIES
@@ -18,10 +12,6 @@ pub const ARROW: Emoji<'_, '_> = Emoji("➜ ", "> ");
 
 pub fn header_style() -> Style {
     Style::new().bold()
-}
-
-pub fn success_style() -> Style {
-    Style::new().green()
 }
 
 pub fn error_style() -> Style {
@@ -48,8 +38,7 @@ pub fn print_header() {
     let term = Term::stdout();
     let version = env!("CARGO_PKG_VERSION");
     let _ = term.write_line(&format!(
-        "{} {} {}",
-        Emoji("✨", "*"),
+        "{} {}",
         header_style().apply_to("christina"),
         muted_style().apply_to(format!("v{}", version))
     ));
@@ -87,22 +76,22 @@ pub fn create_spinner(msg: &str) -> ProgressBar {
 
 pub fn print_success(msg: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!("{} {}", success_style().apply_to(CHECK), msg));
+    let _ = term.write_line(&format!("{} {}", muted_style().apply_to("ok"), msg));
 }
 
 pub fn print_error(msg: &str) {
     let term = Term::stderr();
-    let _ = term.write_line(&format!("{} {}", error_style().apply_to(CROSS), msg));
+    let _ = term.write_line(&format!("{} {}", error_style().apply_to("error"), msg));
 }
 
 pub fn print_warning(msg: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!("{} {}", warning_style().apply_to(WARN), msg));
+    let _ = term.write_line(&format!("{} {}", warning_style().apply_to("warn"), msg));
 }
 
 pub fn print_info(msg: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!("{} {}", accent_style().apply_to(INFO), msg));
+    let _ = term.write_line(&format!("{} {}", muted_style().apply_to("info"), msg));
 }
 
 // =================================================================================
@@ -115,26 +104,27 @@ fn get_theme() -> ColorfulTheme {
         prompt_style: Style::new(),
         prompt_prefix: style(String::from("?")).dim(),
         prompt_suffix: style(String::from("›")).bold(),
-        success_prefix: style(format!("{}", CHECK)).green(),
+        success_prefix: style(String::from("ok")).green(),
         success_suffix: style(String::from("·")).dim(),
-        error_prefix: style(format!("{}", CROSS)).red(),
+        error_prefix: style(String::from("error")).red(),
         error_style: error_style(),
         hint_style: muted_style(),
         values_style: accent_style(),
         active_item_style: accent_style(),
         inactive_item_style: Style::new(),
-        active_item_prefix: style(format!("{}", ARROW)).cyan(),
+        active_item_prefix: style(String::from("> ")).cyan(),
         inactive_item_prefix: style(String::from("  ")),
-        checked_item_prefix: style(format!("{}", CHECK)).green(),
+        checked_item_prefix: style(String::from("ok")).green(),
         unchecked_item_prefix: style(String::from("  ")),
-        picked_item_prefix: style(format!("{}", ARROW)).cyan(),
+        picked_item_prefix: style(String::from("> ")).cyan(),
         unpicked_item_prefix: style(String::from("  ")),
     }
 }
 
-pub fn confirm(msg: &str) -> Result<bool, dialoguer::Error> {
-    Confirm::with_theme(&get_theme())
-        .with_prompt(msg)
+pub fn select_action(actions: &[&str]) -> Result<usize, dialoguer::Error> {
+    Select::with_theme(&get_theme())
+        .items(actions)
+        .default(0)
         .interact()
 }
 
@@ -150,6 +140,28 @@ pub fn print_commit_message(msg: &str) {
     for line in wrap_text(msg, width) {
         let _ = term.write_line(&line);
     }
+}
+
+pub fn print_file_list(files: &[String], max_items: usize) {
+    let term = Term::stdout();
+    if files.is_empty() {
+        let _ = term.write_line(&format!("{}", muted_style().apply_to("no files changed")));
+        return;
+    }
+
+    let visible = files.len().min(max_items);
+    for file in files.iter().take(visible) {
+        let _ = term.write_line(&format!("  {}", file));
+    }
+
+    if files.len() > visible {
+        let remaining = files.len() - visible;
+        let _ = term.write_line(&format!(
+            "{}",
+            muted_style().apply_to(format!("  ... {} more", remaining))
+        ));
+    }
+    let _ = term.write_line("");
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {

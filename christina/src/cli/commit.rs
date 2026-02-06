@@ -38,26 +38,32 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool) -> Result<()> 
 
     display_changes(&files);
 
-    let message = match generate_commit(diff, context.map(|s| s.to_string()), repo_path).await {
-        Ok(message) => message,
-        Err(err) => {
-            ui::print_error(&format!("Commit message generation failed: {}", err));
-            return Err(err);
+    let message = loop {
+        let message = match generate_commit(diff.clone(), context.map(|s| s.to_string()), repo_path.clone()).await {
+            Ok(message) => message,
+            Err(err) => {
+                ui::print_error(&format!("Commit message generation failed: {}", err));
+                return Err(err);
+            }
+        };
+
+        let action = match confirm_commit(&message, yes) {
+            Ok(value) => value,
+            Err(err) => {
+                ui::print_error(&format!("Failed to confirm commit: {}", err));
+                return Err(err);
+            }
+        };
+
+        match action {
+            CommitAction::Accept => break message,
+            CommitAction::Regenerate => continue,
+            CommitAction::Decline => {
+                ui::print_info("Commit cancelled.");
+                return Ok(());
+            }
         }
     };
-
-    let confirmed = match confirm_commit(&message, yes) {
-        Ok(value) => value,
-        Err(err) => {
-            ui::print_error(&format!("Failed to confirm commit: {}", err));
-            return Err(err);
-        }
-    };
-
-    if !confirmed {
-        ui::print_info("Commit cancelled.");
-        return Ok(());
-    }
 
     if dry_run {
         println!("\n{}", "═".repeat(60));
@@ -101,8 +107,13 @@ fn validate_repository() -> Result<(Repository, String)> {
 }
 
 fn display_changes(files: &[GitFile]) {
-    ui::print_section("Staged changes");
+    ui::print_section("Staged");
     ui::print_info(&format!("{} file(s) staged", files.len()));
+    let file_paths = files
+        .iter()
+        .map(|file| file.path.to_string())
+        .collect::<Vec<_>>();
+    ui::print_file_list(&file_paths, 10);
 }
 
 async fn generate_commit(diff: String, context: Option<String>, repo_path: PathBuf) -> Result<String> {
@@ -145,16 +156,31 @@ fn is_gpg_signing_failure(err: &anyhow::Error) -> bool {
     err.to_string().to_lowercase().contains("gpg signing failed")
 }
 
-fn confirm_commit(message: &str, yes: bool) -> Result<bool> {
-    ui::print_section("Proposed commit");
+enum CommitAction {
+    Accept,
+    Regenerate,
+    Decline,
+}
+
+fn confirm_commit(message: &str, yes: bool) -> Result<CommitAction> {
+    ui::print_section("Proposed");
     ui::print_commit_message(message);
 
     if yes {
-        return Ok(true);
+        return Ok(CommitAction::Accept);
     }
 
-    ui::confirm("Create commit with this message?")
-        .map_err(|err| anyhow::anyhow!("Confirmation failed: {}", err))
+    let actions = ["accept", "regenerate", "decline"];
+    let selection = ui::select_action(&actions)
+        .map_err(|err| anyhow::anyhow!("Confirmation failed: {}", err))?;
+
+    let action = match selection {
+        0 => CommitAction::Accept,
+        1 => CommitAction::Regenerate,
+        _ => CommitAction::Decline,
+    };
+
+    Ok(action)
 }
 
 fn execute_commit(repo: &Repository, message: &str) -> Result<()> {
