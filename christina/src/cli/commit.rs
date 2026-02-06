@@ -102,21 +102,7 @@ fn validate_repository() -> Result<(Repository, String)> {
 
 fn display_changes(files: &[GitFile]) {
     ui::print_section("Staged changes");
-    let file_paths = files
-        .iter()
-        .map(|file| file.path.to_string())
-        .collect::<Vec<_>>();
-    ui::print_file_list(&file_paths);
-
-    let diff_preview = files
-        .iter()
-        .map(|file| file.diff_content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    if !diff_preview.trim().is_empty() {
-        ui::print_diff_preview(&diff_preview, 120);
-    }
+    ui::print_info(&format!("{} file(s) staged", files.len()));
 }
 
 async fn generate_commit(diff: String, context: Option<String>, repo_path: PathBuf) -> Result<String> {

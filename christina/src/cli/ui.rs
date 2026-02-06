@@ -144,89 +144,45 @@ pub fn confirm(msg: &str) -> Result<bool, dialoguer::Error> {
 
 pub fn print_commit_message(msg: &str) {
     let term = Term::stdout();
-    let width = 60;
+    let width = std::cmp::min(term.size().1 as usize, 96);
+    let width = width.saturating_sub(2).max(40);
 
-    let border_style = muted_style();
+    for line in wrap_text(msg, width) {
+        let _ = term.write_line(&line);
+    }
+}
 
-    let _ = term.write_line(&format!(
-        "{}",
-        border_style.apply_to(format!("┌{}┐", "─".repeat(width)))
-    ));
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for raw_line in text.lines() {
+        if raw_line.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
 
-    for line in msg.lines() {
-        let chars_count = line.chars().count();
-        if chars_count > width {
-            let _ = term.write_line(&format!("│{}│", &line[..width]));
-        } else {
-            let padding = " ".repeat(width - chars_count);
-            let _ = term.write_line(&format!("│{}{}│", line, padding));
+        let mut current = String::new();
+        for word in raw_line.split_whitespace() {
+            if current.is_empty() {
+                current.push_str(word);
+                continue;
+            }
+
+            if current.len() + 1 + word.len() > width {
+                lines.push(current);
+                current = String::new();
+                current.push_str(word);
+            } else {
+                current.push(' ');
+                current.push_str(word);
+            }
+        }
+
+        if !current.is_empty() {
+            lines.push(current);
         }
     }
 
-    let _ = term.write_line(&format!(
-        "{}",
-        border_style.apply_to(format!("└{}┘", "─".repeat(width)))
-    ));
-}
-
-pub fn print_file_list(files: &[String]) {
-    let term = Term::stdout();
-    if files.is_empty() {
-        let _ = term.write_line(&format!("{}", muted_style().apply_to("No files changed.")));
-        return;
-    }
-
-    let _ = term.write_line(&format!("{}", muted_style().apply_to("Changed files:")));
-    for file in files {
-        let icon = if file.ends_with(".rs") {
-            "🦀"
-        } else if file.ends_with(".toml") {
-            "📦"
-        } else if file.ends_with(".md") {
-            "📝"
-        } else if file.ends_with(".json") {
-            "🔧"
-        } else if file.ends_with(".lock") {
-            "🔒"
-        } else if file.starts_with('.') {
-            "⚙️ "
-        } else {
-            "📄"
-        };
-
-        let _ = term.write_line(&format!("  {} {}", icon, file));
-    }
-    let _ = term.write_line("");
-}
-
-pub fn print_diff_preview(diff: &str, max_lines: usize) {
-    let term = Term::stdout();
-    let lines: Vec<&str> = diff.lines().take(max_lines).collect();
-
-    let _ = term.write_line(&format!("{}", muted_style().apply_to("Diff preview:")));
-
-    for line in lines {
-        if line.starts_with('+') {
-            let _ = term.write_line(&format!("{}", success_style().apply_to(line)));
-        } else if line.starts_with('-') {
-            let _ = term.write_line(&format!("{}", error_style().apply_to(line)));
-        } else if line.starts_with("@@") {
-            let _ = term.write_line(&format!("{}", accent_style().apply_to(line)));
-        } else {
-            let _ = term.write_line(&format!("{}", muted_style().apply_to(line)));
-        }
-    }
-
-    if diff.lines().count() > max_lines {
-        let _ = term.write_line(&format!(
-            "{}",
-            muted_style().apply_to(format!(
-                "... ({} more lines)",
-                diff.lines().count() - max_lines
-            ))
-        ));
-    }
-    let _ = term.write_line("");
+    lines
 }
 
 // =================================================================================
