@@ -269,8 +269,9 @@ fn bench_slice_to_token_limit_small(c: &mut Criterion) {
 fn bench_slice_to_token_limit_large(c: &mut Criterion) {
     let tokenizer = get_tokenizer();
     let mut group = c.benchmark_group("slice_to_token_limit/large");
+    group.sample_size(20);
 
-    for size in [5000, 10_000, 50_000].iter() {
+    for size in [5000, 10_000, 20_000].iter() {
         let text = generate_code(*size);
         let limit = TokenCount::new_at_least_one((*size as u32) / 2);
         group.throughput(Throughput::Bytes(text.len() as u64));
