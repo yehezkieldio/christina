@@ -5,6 +5,7 @@ description = "AI-powered conventional commit message generator."
 edition = "2024"
 repository = "https://github.com/yehezkieldio/christina"
 homepage = "https://github.com/yehezkieldio/christina"
+default-run = "christina"
 
 [[bin]]
 name = "christina"

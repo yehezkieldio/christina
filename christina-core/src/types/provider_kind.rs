@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
+    #[serde(rename = "openai", alias = "open_ai", alias = "open_a_i")]
     OpenAI,
     Azure,
     Groq,
@@ -29,7 +30,7 @@ impl FromStr for ProviderKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "openai" => Ok(ProviderKind::OpenAI),
+            "openai" | "open_ai" | "open_a_i" => Ok(ProviderKind::OpenAI),
             "azure" => Ok(ProviderKind::Azure),
             "groq" => Ok(ProviderKind::Groq),
             _ => Err(format!("Unknown provider kind: {}", s)),
@@ -89,6 +90,18 @@ mod tests {
         assert_eq!(ProviderKind::OpenAI.to_string(), "openai");
         assert_eq!(ProviderKind::Azure.to_string(), "azure");
         assert_eq!(ProviderKind::Groq.to_string(), "groq");
+    }
+
+    #[test]
+    fn provider_kind_serde_openai() {
+        let serialized = serde_json::to_string(&ProviderKind::OpenAI).expect("serialize OpenAI");
+        assert_eq!(serialized, "\"openai\"");
+
+        for raw in ["openai", "open_ai", "open_a_i"] {
+            let parsed: ProviderKind =
+                serde_json::from_str(&format!("\"{}\"", raw)).expect("deserialize OpenAI");
+            assert_eq!(parsed, ProviderKind::OpenAI);
+        }
     }
 
     #[test]
