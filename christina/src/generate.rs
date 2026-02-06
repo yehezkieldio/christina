@@ -199,16 +199,25 @@ async fn generate_commit_message_with_progress_impl(
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
 ) -> Result<GenerationResult> {
-    if config.usage_tier == UsageTier::Free && config.model_provider == ProviderKind::Groq {
+    if config.use_experimental
+        && config.usage_tier == UsageTier::Free
+        && config.model_provider == ProviderKind::Groq
+    {
         let warnings = apply_free_tier_limits(&mut config);
         for warning in warnings {
             warn!("{}", warning);
             eprintln!("Warning: {}", warning);
         }
-    } else if config.usage_tier == UsageTier::Free {
+    } else if config.use_experimental && config.usage_tier == UsageTier::Free {
         warn!(
             "usage_tier=free is configured but provider is {}, free-tier limits not applied",
             config.model_provider
+        );
+    } else if !config.use_experimental && config.usage_tier == UsageTier::Free {
+        warn!("usage_tier=free configured but experimental settings are disabled");
+        eprintln!(
+            "Warning: usage_tier=free configured but experimental settings are disabled; \
+             set use_experimental=true to apply"
         );
     }
     // Validate configuration before starting progress events

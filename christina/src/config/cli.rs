@@ -127,6 +127,7 @@ fn handle_list_with_config(config: &Config) {
             UsageTier::Free => "free",
         }
     );
+    println!("  use_experimental: {}", config.use_experimental);
     println!(
         "  free_tier_max_input_tokens: {}",
         config.free_tier.max_input_tokens.get()

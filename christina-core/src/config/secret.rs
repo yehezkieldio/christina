@@ -126,6 +126,7 @@ fn rand_jitter(max: u64) -> u64 {
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 pub enum Secret<S> {
+    #[serde(rename = "value", alias = "Value")]
     Value(S),
     #[serde(rename = "env")]
     EnvVar(String),

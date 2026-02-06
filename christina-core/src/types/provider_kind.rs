@@ -49,6 +49,16 @@ impl fmt::Display for ProviderKind {
     }
 }
 
+impl ProviderKind {
+    pub const fn default_api_key_env_var(self) -> &'static str {
+        match self {
+            ProviderKind::OpenAI => "OPENAI_API_KEY",
+            ProviderKind::Azure => "AZURE_OPENAI_API_KEY",
+            ProviderKind::Groq => "GROQ_API_KEY",
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
@@ -90,6 +100,22 @@ mod tests {
         assert_eq!(ProviderKind::OpenAI.to_string(), "openai");
         assert_eq!(ProviderKind::Azure.to_string(), "azure");
         assert_eq!(ProviderKind::Groq.to_string(), "groq");
+    }
+
+    #[test]
+    fn provider_kind_default_env_var() {
+        assert_eq!(
+            ProviderKind::OpenAI.default_api_key_env_var(),
+            "OPENAI_API_KEY"
+        );
+        assert_eq!(
+            ProviderKind::Azure.default_api_key_env_var(),
+            "AZURE_OPENAI_API_KEY"
+        );
+        assert_eq!(
+            ProviderKind::Groq.default_api_key_env_var(),
+            "GROQ_API_KEY"
+        );
     }
 
     #[test]

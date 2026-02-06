@@ -32,7 +32,7 @@ struct LocalConfigSafe {
 
 /// Default schema version for config files
 fn default_schema_version() -> u32 {
-    1
+    2
 }
 
 fn default_lockfile_token_limit() -> TokenCount {
@@ -129,6 +129,10 @@ pub struct Config {
     #[serde(default)]
     pub free_tier: FreeTierLimits,
 
+    /// Enable experimental settings (default: false)
+    #[serde(default)]
+    pub use_experimental: bool,
+
     /// Provider profiles for quick switching
     #[serde(default)]
     pub profiles: Profiles,
@@ -177,19 +181,11 @@ impl Default for Config {
             azure_api_version: None,
             azure_deployment_id: None,
             model_temperature: 0.3,
-            ignore_files: vec![
-                "package-lock.json".to_string(),
-                "yarn.lock".to_string(),
-                "pnpm-lock.yaml".to_string(),
-                "bun.lock".to_string(),
-                "Cargo.lock".to_string(),
-                "poetry.lock".to_string(),
-                "Gemfile.lock".to_string(),
-                "*.lock".to_string(),
-            ],
+            ignore_files: Vec::new(),
             lockfile_token_limit: default_lockfile_token_limit(),
             usage_tier: UsageTier::Standard,
             free_tier: FreeTierLimits::default(),
+            use_experimental: false,
             profiles: Profiles::new(),
             commit_message_max_length: None,
             commit_message_validation_mode: ValidationMode::default(),
@@ -345,20 +341,21 @@ impl Config {
     fn apply_config_file(&mut self, file: ConfigFile) {
         self.schema_version = file.schema_version;
         self.profiles = file.profiles;
-        if self.profiles.active.is_none() && file.active_profile.is_some() {
-            self.profiles.active = file.active_profile;
+        if self.profiles.active.is_none() && file.standard.active_profile.is_some() {
+            self.profiles.active = file.standard.active_profile;
         }
-        self.commit_message_max_length = file.commit_message_max_length;
-        self.commit_message_validation_mode = file.commit_message_validation_mode;
-        self.ignore_files = file.ignore_files;
-        self.lockfile_token_limit = file.lockfile_token_limit;
-        self.usage_tier = file.usage_tier;
-        self.free_tier = file.free_tier;
-        self.use_commit_history = file.use_commit_history;
-        self.commit_history_depth = file.commit_history_depth;
-        self.max_concurrent_requests = file.max_concurrent_requests;
-        self.max_partial_failure_rate = file.max_partial_failure_rate;
-        self.prompt_failure_rate_threshold = file.prompt_failure_rate_threshold;
+        self.commit_message_max_length = file.standard.commit_message_max_length;
+        self.commit_message_validation_mode = file.standard.commit_message_validation_mode;
+        self.ignore_files = file.standard.ignore_files;
+        self.lockfile_token_limit = file.advanced.lockfile_token_limit;
+        self.use_commit_history = file.advanced.use_commit_history;
+        self.commit_history_depth = file.advanced.commit_history_depth;
+        self.max_concurrent_requests = file.advanced.max_concurrent_requests;
+        self.max_partial_failure_rate = file.advanced.max_partial_failure_rate;
+        self.prompt_failure_rate_threshold = file.advanced.prompt_failure_rate_threshold;
+        self.use_experimental = file.experimental.use_experimental;
+        self.usage_tier = file.experimental.usage_tier;
+        self.free_tier = file.experimental.free_tier;
     }
 
     fn to_config_file(&self) -> ConfigFile {
@@ -368,19 +365,26 @@ impl Config {
 
         ConfigFile {
             schema_version: self.schema_version,
-            active_profile,
+            standard: christina_core::config::StandardConfig {
+                active_profile,
+                commit_message_max_length: self.commit_message_max_length,
+                commit_message_validation_mode: self.commit_message_validation_mode,
+                ignore_files: self.ignore_files.clone(),
+            },
+            advanced: christina_core::config::AdvancedConfig {
+                lockfile_token_limit: self.lockfile_token_limit,
+                use_commit_history: self.use_commit_history,
+                commit_history_depth: self.commit_history_depth,
+                max_concurrent_requests: self.max_concurrent_requests,
+                max_partial_failure_rate: self.max_partial_failure_rate,
+                prompt_failure_rate_threshold: self.prompt_failure_rate_threshold,
+            },
+            experimental: christina_core::config::ExperimentalConfig {
+                use_experimental: self.use_experimental,
+                usage_tier: self.usage_tier,
+                free_tier: self.free_tier.clone(),
+            },
             profiles,
-            commit_message_max_length: self.commit_message_max_length,
-            commit_message_validation_mode: self.commit_message_validation_mode,
-            ignore_files: self.ignore_files.clone(),
-            lockfile_token_limit: self.lockfile_token_limit,
-            usage_tier: self.usage_tier,
-            free_tier: self.free_tier.clone(),
-            use_commit_history: self.use_commit_history,
-            commit_history_depth: self.commit_history_depth,
-            max_concurrent_requests: self.max_concurrent_requests,
-            max_partial_failure_rate: self.max_partial_failure_rate,
-            prompt_failure_rate_threshold: self.prompt_failure_rate_threshold,
         }
     }
 
@@ -465,6 +469,13 @@ impl Config {
         }
         warnings.append(&mut failure_warnings);
 
+        if !self.use_experimental && self.usage_tier != UsageTier::Standard {
+            warnings.push(
+                "usage_tier set but experimental settings disabled; set use_experimental=true to apply"
+                    .to_string(),
+            );
+        }
+
         // Warn if provider is unknown (but don't fail - let factory handle it)
         warnings
     }
@@ -491,9 +502,7 @@ impl Config {
         let config_path = config_dir.join("config.toml");
         let temp_path = config_dir.join("config.toml.tmp");
 
-        let config_file = self.to_config_file();
-        let toml_content =
-            toml::to_string_pretty(&config_file).context("Failed to serialize configuration")?;
+        let toml_content = self.render_config_toml()?;
 
         {
             let mut temp_file =
@@ -529,6 +538,11 @@ impl Config {
         Ok(())
     }
 
+    fn render_config_toml(&self) -> Result<String> {
+        let config_file = self.to_config_file();
+        render_config_file_with_comments(&config_file)
+    }
+
     pub fn get(&self, key: &str) -> Option<String> {
         match key {
             "max_input_tokens" => Some(self.max_input_tokens.get().to_string()),
@@ -545,6 +559,7 @@ impl Config {
                 UsageTier::Standard => "standard".to_string(),
                 UsageTier::Free => "free".to_string(),
             }),
+            "use_experimental" => Some(self.use_experimental.to_string()),
             "free_tier_max_input_tokens" => Some(self.free_tier.max_input_tokens.get().to_string()),
             "free_tier_max_output_tokens" => Some(self.free_tier.max_output_tokens.get().to_string()),
             "free_tier_max_concurrent_requests" => {
@@ -686,6 +701,9 @@ impl Config {
                     "free" => UsageTier::Free,
                     _ => anyhow::bail!("Invalid usage_tier: must be standard or free"),
                 };
+            }
+            "use_experimental" => {
+                self.use_experimental = parse_bool(value)?;
             }
             "free_tier_max_input_tokens" => {
                 let parsed: TokenCount = value
@@ -849,13 +867,239 @@ impl Config {
                 .api_key
                 .as_ref()
                 .map(|k| christina_core::config::Secret::Value(k.clone()))
-                .unwrap_or_else(|| christina_core::config::Secret::Value(String::new())),
+                .unwrap_or_else(|| {
+                    christina_core::config::Secret::EnvVar(
+                        self.model_provider.default_api_key_env_var().to_string(),
+                    )
+                }),
             max_input_tokens: self.max_input_tokens,
             max_output_tokens: self.max_output_tokens,
             azure_api_version: self.azure_api_version.clone(),
             azure_deployment_id: self.azure_deployment_id.clone(),
             temperature: None,
         }
+    }
+}
+
+fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
+    use std::fmt::Write;
+
+    let mut out = String::new();
+
+    writeln!(out, "# Christina Configuration")?;
+    writeln!(
+        out,
+        "# Generated by Christina. Edit values as needed."
+    )?;
+    writeln!(out)?;
+
+    writeln!(out, "# Schema version for config migrations")?;
+    writeln!(out, "schema_version = {}", config.schema_version)?;
+
+    writeln!(out)?;
+    writeln!(out, "# Standard settings (common defaults)")?;
+    writeln!(out, "[standard]")?;
+    writeln!(out, "# Active profile to use by default")?;
+    if let Some(active) = &config.standard.active_profile {
+        writeln!(out, "active_profile = {}", toml_string(active))?;
+    } else {
+        writeln!(out, "# active_profile = \"default\"")?;
+    }
+    writeln!(
+        out,
+        "# Maximum length for commit messages (default: 72)"
+    )?;
+    match config.standard.commit_message_max_length {
+        Some(max_len) => writeln!(out, "commit_message_max_length = {}", max_len)?,
+        None => writeln!(out, "# commit_message_max_length = 72")?,
+    }
+    writeln!(
+        out,
+        "# Validation mode for commit message length: soft | strict | disabled"
+    )?;
+    writeln!(
+        out,
+        "commit_message_validation_mode = {}",
+        toml_string(validation_mode_to_str(
+            config.standard.commit_message_validation_mode
+        ))
+    )?;
+    writeln!(
+        out,
+        "# Files to exclude from AI processing (empty = include everything)"
+    )?;
+    writeln!(
+        out,
+        "ignore_files = {}",
+        toml_value(&config.standard.ignore_files)?
+    )?;
+
+    writeln!(out)?;
+    writeln!(out, "# Advanced settings")?;
+    writeln!(out, "[advanced]")?;
+    writeln!(
+        out,
+        "# Maximum tokens to include from lockfiles when truncating"
+    )?;
+    writeln!(
+        out,
+        "lockfile_token_limit = {}",
+        config.advanced.lockfile_token_limit.get()
+    )?;
+    writeln!(
+        out,
+        "# Whether to include commit history context in prompts"
+    )?;
+    writeln!(
+        out,
+        "use_commit_history = {}",
+        config.advanced.use_commit_history
+    )?;
+    writeln!(out, "# Number of recent commits to include")?;
+    writeln!(
+        out,
+        "commit_history_depth = {}",
+        config.advanced.commit_history_depth
+    )?;
+    writeln!(out, "# Maximum concurrent LLM requests")?;
+    writeln!(
+        out,
+        "max_concurrent_requests = {}",
+        config.advanced.max_concurrent_requests
+    )?;
+    writeln!(
+        out,
+        "# Maximum allowed chunk failure rate before aborting map phase"
+    )?;
+    writeln!(
+        out,
+        "max_partial_failure_rate = {}",
+        config.advanced.max_partial_failure_rate
+    )?;
+    writeln!(
+        out,
+        "# Failure rate threshold for prompting user confirmation"
+    )?;
+    writeln!(
+        out,
+        "prompt_failure_rate_threshold = {}",
+        config.advanced.prompt_failure_rate_threshold
+    )?;
+
+    writeln!(out)?;
+    writeln!(out, "# Experimental settings (opt-in)")?;
+    writeln!(out, "[experimental]")?;
+    writeln!(out, "# Enable experimental settings")?;
+    writeln!(out, "use_experimental = {}", config.experimental.use_experimental)?;
+    writeln!(
+        out,
+        "# Usage tier for rate-limit-aware defaults: standard | free"
+    )?;
+    writeln!(
+        out,
+        "usage_tier = {}",
+        toml_string(&config.experimental.usage_tier.to_string())
+    )?;
+
+    writeln!(out)?;
+    writeln!(out, "[experimental.free_tier]")?;
+    writeln!(out, "max_input_tokens = {}", config.experimental.free_tier.max_input_tokens.get())?;
+    writeln!(
+        out,
+        "max_output_tokens = {}",
+        config.experimental.free_tier.max_output_tokens.get()
+    )?;
+    writeln!(
+        out,
+        "max_concurrent_requests = {}",
+        config.experimental.free_tier.max_concurrent_requests
+    )?;
+    writeln!(
+        out,
+        "commit_history_depth = {}",
+        config.experimental.free_tier.commit_history_depth
+    )?;
+
+    if config.profiles.definitions.is_empty() {
+        writeln!(out)?;
+        writeln!(out, "# No profiles configured.")?;
+        return Ok(out);
+    }
+
+    writeln!(out)?;
+    writeln!(out, "# Provider profiles")?;
+
+    let mut names: Vec<&String> = config.profiles.definitions.keys().collect();
+    names.sort();
+
+    for name in names {
+        let profile = &config.profiles.definitions[name];
+        writeln!(out)?;
+        writeln!(out, "[profiles.{}]", name)?;
+        writeln!(out, "name = {}", toml_string(&profile.name))?;
+        writeln!(
+            out,
+            "provider = {}",
+            toml_string(&profile.provider.to_string())
+        )?;
+        writeln!(out, "model = {}", toml_string(profile.model.as_ref()))?;
+        writeln!(out, "api_key = {}", render_secret_inline(&profile.api_key))?;
+        writeln!(
+            out,
+            "max_input_tokens = {}",
+            profile.max_input_tokens.get()
+        )?;
+        writeln!(
+            out,
+            "max_output_tokens = {}",
+            profile.max_output_tokens.get()
+        )?;
+        if let Some(api_url) = &profile.api_url {
+            writeln!(out, "api_url = {}", toml_string(api_url.as_str()))?;
+        }
+        if let Some(version) = &profile.azure_api_version {
+            writeln!(out, "azure_api_version = {}", toml_string(version))?;
+        }
+        if let Some(deployment) = &profile.azure_deployment_id {
+            writeln!(out, "azure_deployment_id = {}", toml_string(deployment))?;
+        }
+        if let Some(temp) = profile.temperature {
+            writeln!(out, "temperature = {}", temp)?;
+        }
+    }
+
+    Ok(out)
+}
+
+fn toml_string(value: &str) -> String {
+    toml::Value::String(value.to_string()).to_string()
+}
+
+fn toml_value<T: serde::Serialize>(value: &T) -> Result<String> {
+    let rendered = toml::Value::try_from(value)
+        .map_err(|err| anyhow::anyhow!("Failed to render TOML value: {}", err))?;
+    Ok(rendered.to_string())
+}
+
+fn render_secret_inline(secret: &christina_core::config::Secret<String>) -> String {
+    match secret {
+        christina_core::config::Secret::Value(value) => {
+            format!("{{ value = {} }}", toml_string(value))
+        }
+        christina_core::config::Secret::EnvVar(name) => {
+            format!("{{ env = {} }}", toml_string(name))
+        }
+        christina_core::config::Secret::Keyring(name) => {
+            format!("{{ keyring = {} }}", toml_string(name))
+        }
+    }
+}
+
+fn validation_mode_to_str(mode: ValidationMode) -> &'static str {
+    match mode {
+        ValidationMode::Strict => "strict",
+        ValidationMode::Soft => "soft",
+        ValidationMode::Disabled => "disabled",
     }
 }
 
@@ -1265,8 +1509,7 @@ mod tests {
     fn get_ignore_files() {
         let config = Config::default();
         let ignore_files = config.get("ignore_files").unwrap();
-        assert!(ignore_files.contains("package-lock.json"));
-        assert!(ignore_files.contains("Cargo.lock"));
+        assert!(ignore_files.is_empty());
     }
 
     #[test]
@@ -1345,6 +1588,9 @@ mod tests {
         assert!(toml_value.get("max_output_tokens").is_none());
         assert!(toml_value.get("api_key").is_none());
         assert!(toml_value.get("model_api_key").is_none());
+        assert!(toml_value.get("standard").is_some());
+        assert!(toml_value.get("advanced").is_some());
+        assert!(toml_value.get("experimental").is_some());
 
         let deserialized: ConfigFile =
             toml::from_str(&toml_str).expect("should deserialize from TOML");
@@ -1356,6 +1602,7 @@ mod tests {
     #[test]
     fn config_deserialize_with_missing_fields() {
         let minimal_toml = r#"
+        [standard]
         ignore_files = ["test.lock"]
         "#;
         let config_file: ConfigFile =

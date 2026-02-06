@@ -27,13 +27,7 @@ impl Default for ResolvedConfig {
             active_profile: None,
             profiles: HashMap::new(),
             commit_message_max_length: 72,
-            ignore_files: vec![
-                "Cargo.lock".to_string(),
-                "package-lock.json".to_string(),
-                "yarn.lock".to_string(),
-                "pnpm-lock.yaml".to_string(),
-                "*.lock".to_string(),
-            ],
+            ignore_files: Vec::new(),
             include_file_diffs: false,
         }
     }
@@ -142,13 +136,6 @@ mod tests {
         assert!(config.profiles.is_empty());
         assert_eq!(config.commit_message_max_length, 72);
         assert!(!config.include_file_diffs);
-        assert_eq!(config.ignore_files.len(), 5);
-
-        assert!(config.ignore_files.contains(&"Cargo.lock".to_string()));
-        assert!(
-            config
-                .ignore_files
-                .contains(&"package-lock.json".to_string())
-        );
+        assert!(config.ignore_files.is_empty());
     }
 }

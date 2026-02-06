@@ -4,91 +4,39 @@
   "description": "On-disk configuration representation (serde-friendly)",
   "type": "object",
   "properties": {
-    "active_profile": {
-      "description": "Active profile name (legacy alias, preferred via profiles.active)",
-      "default": null,
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "commit_history_depth": {
-      "description": "Number of recent commits to include for style analysis",
-      "default": 5,
-      "type": "integer",
-      "format": "uint",
-      "minimum": 0.0
-    },
-    "commit_message_max_length": {
-      "description": "Maximum commit message length (None = 72)",
-      "default": null,
-      "type": [
-        "integer",
-        "null"
-      ],
-      "format": "uint",
-      "minimum": 0.0
-    },
-    "commit_message_validation_mode": {
-      "description": "Validation mode for commit message length",
-      "default": "soft",
-      "allOf": [
-        {
-          "$ref": "#/definitions/ValidationMode"
-        }
-      ]
-    },
-    "free_tier": {
-      "description": "Free-tier limits applied when usage_tier is set to free",
+    "advanced": {
+      "description": "Advanced settings",
       "default": {
-        "commit_history_depth": 3,
-        "max_concurrent_requests": 1,
-        "max_input_tokens": 16000,
-        "max_output_tokens": 512
+        "commit_history_depth": 5,
+        "lockfile_token_limit": 100,
+        "max_concurrent_requests": 4,
+        "max_partial_failure_rate": 0.1,
+        "prompt_failure_rate_threshold": 0.05,
+        "use_commit_history": true
       },
       "allOf": [
         {
-          "$ref": "#/definitions/FreeTierLimits"
+          "$ref": "#/definitions/AdvancedConfig"
         }
       ]
     },
-    "ignore_files": {
-      "description": "Files to exclude from AI processing",
-      "default": [
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lock",
-        "Cargo.lock",
-        "poetry.lock",
-        "Gemfile.lock"
-      ],
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "lockfile_token_limit": {
-      "description": "Maximum tokens to include from lockfiles when truncating",
-      "default": 100,
+    "experimental": {
+      "description": "Experimental settings (opt-in)",
+      "default": {
+        "free_tier": {
+          "commit_history_depth": 3,
+          "max_concurrent_requests": 1,
+          "max_input_tokens": 16000,
+          "max_output_tokens": 512
+        },
+        "usage_tier": "standard",
+        "use_experimental": false
+      },
       "allOf": [
         {
-          "$ref": "#/definitions/TokenCount"
+          "$ref": "#/definitions/ExperimentalConfig"
         }
       ]
-    },
-    "max_concurrent_requests": {
-      "description": "Maximum concurrent LLM requests",
-      "default": 4,
-      "type": "integer",
-      "format": "uint",
-      "minimum": 0.0
-    },
-    "max_partial_failure_rate": {
-      "description": "Maximum allowed fraction of chunk failures before aborting map phase",
-      "default": 0.1,
-      "type": "number",
-      "format": "double"
     },
     "profiles": {
       "description": "Provider profiles",
@@ -101,35 +49,109 @@
         }
       ]
     },
-    "prompt_failure_rate_threshold": {
-      "description": "Failure rate threshold for prompting user confirmation",
-      "default": 0.05,
-      "type": "number",
-      "format": "double"
-    },
     "schema_version": {
       "description": "Schema version for config file format migrations",
-      "default": 1,
+      "default": 2,
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
     },
-    "usage_tier": {
-      "description": "Usage tier for rate-limit-aware defaults",
-      "default": "standard",
+    "standard": {
+      "description": "Standard settings",
+      "default": {
+        "active_profile": null,
+        "commit_message_max_length": null,
+        "commit_message_validation_mode": "soft",
+        "ignore_files": []
+      },
       "allOf": [
         {
-          "$ref": "#/definitions/UsageTier"
+          "$ref": "#/definitions/StandardConfig"
         }
       ]
-    },
-    "use_commit_history": {
-      "description": "Whether to include commit history context in LLM prompts",
-      "default": true,
-      "type": "boolean"
     }
   },
   "definitions": {
+    "AdvancedConfig": {
+      "description": "Advanced configuration settings.",
+      "type": "object",
+      "properties": {
+        "commit_history_depth": {
+          "description": "Number of recent commits to include for style analysis",
+          "default": 5,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "lockfile_token_limit": {
+          "description": "Maximum tokens to include from lockfiles when truncating",
+          "default": 100,
+          "allOf": [
+            {
+              "$ref": "#/definitions/TokenCount"
+            }
+          ]
+        },
+        "max_concurrent_requests": {
+          "description": "Maximum concurrent LLM requests",
+          "default": 4,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "max_partial_failure_rate": {
+          "description": "Maximum allowed fraction of chunk failures before aborting map phase",
+          "default": 0.1,
+          "type": "number",
+          "format": "double"
+        },
+        "prompt_failure_rate_threshold": {
+          "description": "Failure rate threshold for prompting user confirmation",
+          "default": 0.05,
+          "type": "number",
+          "format": "double"
+        },
+        "use_commit_history": {
+          "description": "Whether to include commit history context in LLM prompts",
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "ExperimentalConfig": {
+      "description": "Experimental configuration settings (opt-in).",
+      "type": "object",
+      "properties": {
+        "free_tier": {
+          "description": "Free-tier limits applied when usage_tier is set to free",
+          "default": {
+            "commit_history_depth": 3,
+            "max_concurrent_requests": 1,
+            "max_input_tokens": 16000,
+            "max_output_tokens": 512
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/FreeTierLimits"
+            }
+          ]
+        },
+        "usage_tier": {
+          "description": "Usage tier for rate-limit-aware defaults",
+          "default": "standard",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UsageTier"
+            }
+          ]
+        },
+        "use_experimental": {
+          "description": "Enable experimental settings (default: false)",
+          "default": false,
+          "type": "boolean"
+        }
+      }
+    },
     "FreeTierLimits": {
       "description": "Limits applied to the free usage tier.",
       "type": "object",
@@ -185,7 +207,7 @@
       "description": "Supported LLM API providers.\n\nThis enum drives client instantiation and request formatting. Each variant corresponds to a distinct API contract.",
       "type": "string",
       "enum": [
-        "open_a_i",
+        "openai",
         "azure",
         "groq"
       ]
@@ -253,10 +275,10 @@
         {
           "type": "object",
           "required": [
-            "Value"
+            "value"
           ],
           "properties": {
-            "Value": {
+            "value": {
               "type": "string"
             }
           },
@@ -287,6 +309,47 @@
           "additionalProperties": false
         }
       ]
+    },
+    "StandardConfig": {
+      "description": "Standard (common) configuration settings.",
+      "type": "object",
+      "properties": {
+        "active_profile": {
+          "description": "Active profile name (preferred over profiles.active)",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commit_message_max_length": {
+          "description": "Maximum commit message length (None = 72)",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "commit_message_validation_mode": {
+          "description": "Validation mode for commit message length",
+          "default": "soft",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ValidationMode"
+            }
+          ]
+        },
+        "ignore_files": {
+          "description": "Files to exclude from AI processing",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "TokenCount": {
       "description": "Count of tokens in text, guaranteed to be non-zero.\n\nWHY NonZeroU32: Empty text is never valid input for token-counting operations. By using NonZeroU32, we: 1. Eliminate defensive checks for zero throughout the codebase 2. Enable compiler optimizations (Option<TokenCount> is the same size as u32) 3. Make the domain constraint explicit in the type system\n\nWHY saturating arithmetic: When token counts are computed from potentially malicious or corrupted input, clamping to NonZeroU32::MIN (1) is safer than panicking or wrapping. This ensures the system remains operational even with bad data, trading precision for resilience.",

@@ -8,19 +8,13 @@ use crate::{
     },
 };
 
-/// On-disk configuration representation (serde-friendly)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Standard (common) configuration settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(default)]
-pub struct ConfigFile {
-    /// Schema version for config file format migrations
-    pub schema_version: u32,
-
-    /// Active profile name (legacy alias, preferred via profiles.active)
+pub struct StandardConfig {
+    /// Active profile name (preferred over profiles.active)
     pub active_profile: Option<String>,
-
-    /// Provider profiles
-    pub profiles: Profiles,
 
     /// Maximum commit message length (None = 72)
     pub commit_message_max_length: Option<usize>,
@@ -30,15 +24,15 @@ pub struct ConfigFile {
 
     /// Files to exclude from AI processing
     pub ignore_files: Vec<String>,
+}
 
+/// Advanced configuration settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+#[serde(default)]
+pub struct AdvancedConfig {
     /// Maximum tokens to include from lockfiles when truncating
     pub lockfile_token_limit: TokenCount,
-
-    /// Usage tier for rate-limit-aware defaults
-    pub usage_tier: UsageTier,
-
-    /// Free-tier limits applied when usage_tier is set to free
-    pub free_tier: FreeTierLimits,
 
     /// Whether to include commit history context in LLM prompts
     pub use_commit_history: bool,
@@ -56,27 +50,58 @@ pub struct ConfigFile {
     pub prompt_failure_rate_threshold: f64,
 }
 
+/// Experimental configuration settings (opt-in).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+#[serde(default)]
+pub struct ExperimentalConfig {
+    /// Enable experimental settings (default: false)
+    pub use_experimental: bool,
+
+    /// Usage tier for rate-limit-aware defaults
+    pub usage_tier: UsageTier,
+
+    /// Free-tier limits applied when usage_tier is set to free
+    pub free_tier: FreeTierLimits,
+}
+
+/// On-disk configuration representation (serde-friendly)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+#[serde(default)]
+pub struct ConfigFile {
+    /// Schema version for config file format migrations
+    pub schema_version: u32,
+
+    /// Standard settings
+    pub standard: StandardConfig,
+
+    /// Advanced settings
+    pub advanced: AdvancedConfig,
+
+    /// Experimental settings (opt-in)
+    pub experimental: ExperimentalConfig,
+
+    /// Provider profiles
+    pub profiles: Profiles,
+}
+
 impl Default for ConfigFile {
     fn default() -> Self {
         Self {
-            schema_version: 1,
-            active_profile: None,
+            schema_version: 2,
+            standard: StandardConfig::default(),
+            advanced: AdvancedConfig::default(),
+            experimental: ExperimentalConfig::default(),
             profiles: Profiles::new(),
-            commit_message_max_length: None,
-            commit_message_validation_mode: ValidationMode::default(),
-            ignore_files: vec![
-                "package-lock.json".to_string(),
-                "yarn.lock".to_string(),
-                "pnpm-lock.yaml".to_string(),
-                "bun.lock".to_string(),
-                "Cargo.lock".to_string(),
-                "poetry.lock".to_string(),
-                "Gemfile.lock".to_string(),
-                "*.lock".to_string(),
-            ],
+        }
+    }
+}
+
+impl Default for AdvancedConfig {
+    fn default() -> Self {
+        Self {
             lockfile_token_limit: TokenCount::new_at_least_one(100),
-            usage_tier: UsageTier::Standard,
-            free_tier: FreeTierLimits::default(),
             use_commit_history: true,
             commit_history_depth: 5,
             max_concurrent_requests: 4,
@@ -95,70 +120,78 @@ mod tests {
     fn test_default_values() {
         let config = ConfigFile::default();
 
-        assert_eq!(config.active_profile, None);
+        assert_eq!(config.standard.active_profile, None);
         assert!(config.profiles.definitions.is_empty());
-        assert_eq!(config.commit_message_max_length, None);
-        assert_eq!(config.commit_message_validation_mode, ValidationMode::Soft);
-        assert!(config.use_commit_history);
-        assert_eq!(config.commit_history_depth, 5);
-        assert_eq!(config.max_concurrent_requests, 4);
-        assert_eq!(config.prompt_failure_rate_threshold, 0.05);
+        assert_eq!(config.standard.commit_message_max_length, None);
+        assert_eq!(
+            config.standard.commit_message_validation_mode,
+            ValidationMode::Soft
+        );
+        assert!(config.advanced.use_commit_history);
+        assert_eq!(config.advanced.commit_history_depth, 5);
+        assert_eq!(config.advanced.max_concurrent_requests, 4);
+        assert_eq!(config.advanced.prompt_failure_rate_threshold, 0.05);
+        assert!(!config.experimental.use_experimental);
     }
 
     #[test]
     fn test_serde_roundtrip() {
         let config = ConfigFile {
-            active_profile: Some("default".to_string()),
-            commit_message_max_length: Some(100),
-            commit_message_validation_mode: ValidationMode::Strict,
+            standard: StandardConfig {
+                active_profile: Some("default".to_string()),
+                commit_message_max_length: Some(100),
+                commit_message_validation_mode: ValidationMode::Strict,
+                ..StandardConfig::default()
+            },
             ..ConfigFile::default()
         };
 
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: ConfigFile = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.active_profile, config.active_profile);
         assert_eq!(
-            deserialized.commit_message_max_length,
-            config.commit_message_max_length
+            deserialized.standard.active_profile,
+            config.standard.active_profile
         );
         assert_eq!(
-            deserialized.commit_message_validation_mode,
-            config.commit_message_validation_mode
+            deserialized.standard.commit_message_max_length,
+            config.standard.commit_message_max_length
         );
-        assert_eq!(deserialized.ignore_files, config.ignore_files);
+        assert_eq!(
+            deserialized.standard.commit_message_validation_mode,
+            config.standard.commit_message_validation_mode
+        );
+        assert_eq!(
+            deserialized.standard.ignore_files,
+            config.standard.ignore_files
+        );
     }
 
     #[test]
     fn test_optional_fields() {
         let config = ConfigFile {
-            active_profile: None,
+            standard: StandardConfig {
+                active_profile: None,
+                commit_message_max_length: None,
+                ignore_files: vec![],
+                ..StandardConfig::default()
+            },
             profiles: Profiles::new(),
-            commit_message_max_length: None,
-            ignore_files: vec![],
             ..ConfigFile::default()
         };
 
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: ConfigFile = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.active_profile, None);
-        assert_eq!(deserialized.commit_message_max_length, None);
+        assert_eq!(deserialized.standard.active_profile, None);
+        assert_eq!(deserialized.standard.commit_message_max_length, None);
     }
 
     #[test]
     fn test_ignore_files_default() {
         let config = ConfigFile::default();
 
-        assert!(config.ignore_files.contains(&"Cargo.lock".to_string()));
-        assert!(
-            config
-                .ignore_files
-                .contains(&"package-lock.json".to_string())
-        );
-        assert!(config.ignore_files.contains(&"yarn.lock".to_string()));
-        assert!(config.ignore_files.contains(&"pnpm-lock.yaml".to_string()));
-        assert!(config.ignore_files.contains(&"*.lock".to_string()));
+        assert!(config.standard.ignore_files.is_empty());
     }
 
     #[test]

@@ -4,44 +4,62 @@
 # Copy this file to ~/.config/christina/config.toml (Linux/macOS) or
 # %APPDATA%\christina\config.toml (Windows) and customize as needed.
 
+# Schema version for config migrations
+schema_version = 2
+
+# Standard settings (common defaults)
+[standard]
 # Active profile to use by default
-# If not set, you must specify --profile when running christina
 active_profile = "default"
 
 # Maximum length for commit messages (default: 72 characters)
 # Set to null or omit to use the default
-commit_message_max_length = 72
+# commit_message_max_length = 72
+
+# Validation mode for commit message length: soft | strict | disabled
+commit_message_validation_mode = "soft"
 
 # Files to exclude from AI processing
 # These patterns support:
 # - Exact filename matches: "Cargo.lock"
 # - Wildcard suffixes: "*.lock"
 # - Directory prefixes: "vendor/"
-ignore_files = [
-    "Cargo.lock",
-    "package-lock.json",
-    "yarn.lock",
-    "pnpm-lock.yaml",
-    "*.lock",
-    "dist/",
-    "build/",
-    "target/",
-]
+# Empty list means no exclusions
+ignore_files = []
 
+# Advanced settings
+[advanced]
 # Maximum tokens to include from lockfiles when truncating
 # Default: 100
 lockfile_token_limit = 100
+
+# Whether to include commit history context in LLM prompts
+use_commit_history = true
+
+# Number of recent commits to include for style analysis
+commit_history_depth = 5
+
+# Maximum concurrent LLM requests
+max_concurrent_requests = 4
 
 # Maximum allowed chunk failure rate before aborting map phase
 # Recommended range: 0.01 - 0.50
 # 0.0 fails on any chunk error, 1.0 allows all failures
 max_partial_failure_rate = 0.10
 
+# Failure rate threshold for prompting user confirmation
+prompt_failure_rate_threshold = 0.05
+
+# Experimental settings (opt-in)
+[experimental]
+# Enable experimental settings (default: false)
+use_experimental = false
+
 # Usage tier for rate-limit-aware defaults: standard | free
 usage_tier = "standard"
 
 # Free-tier limits applied when usage_tier = "free"
-[free_tier]
+[experimental.free_tier]
 max_input_tokens = 16000
 max_output_tokens = 512
 max_concurrent_requests = 1
@@ -59,7 +77,7 @@ provider = "openai"
 model = "gpt-4o"
 # API key can be:
 # - Inline: api_key = { value = "sk-..." }
-# - From keyring: api_key = { keyring = { service = "christina", username = "openai-key" } }
+# - From keyring: api_key = { keyring = "christina.openai" }
 # - From environment: api_key = { env = "OPENAI_API_KEY" }
 api_key = { env = "OPENAI_API_KEY" }
 max_input_tokens = 128000
@@ -114,15 +132,3 @@ api_key = { env = "OPENAI_API_KEY" }
 max_input_tokens = 256000
 max_output_tokens = 4096
 temperature = 0.3
-
-# API Key Reference Options:
-#
-# 1. Environment Variable (recommended for security):
-#    api_key = { env = "OPENAI_API_KEY" }
-#
-# 2. System Keyring (most secure):
-#    api_key = { keyring = { service = "christina", username = "my-key" } }
-#    Note: Store the key using: christina config keyring set --service christina --username my-key
-#
-# 3. Direct Value (not recommended for production):
-#    api_key = { value = "sk-..." }

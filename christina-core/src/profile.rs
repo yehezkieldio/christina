@@ -110,7 +110,7 @@ impl ProviderProfile<String> {
             provider,
             model,
             api_url: None,
-            api_key: Secret::Value(String::new()),
+            api_key: Secret::EnvVar(provider.default_api_key_env_var().to_string()),
             max_input_tokens: TokenCount::new_at_least_one(128000),
             max_output_tokens: TokenCount::new_at_least_one(2048),
             azure_api_version: Some("2024-12-01-preview".to_string()),
