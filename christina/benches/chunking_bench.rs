@@ -21,6 +21,7 @@ use clap as _;
 use clap_complete as _;
 use config as _;
 use console as _;
+#[cfg(feature = "dhat-heap")]
 use dhat as _;
 use dialoguer as _;
 use directories as _;

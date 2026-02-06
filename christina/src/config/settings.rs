@@ -185,6 +185,7 @@ impl Default for Config {
                 "Cargo.lock".to_string(),
                 "poetry.lock".to_string(),
                 "Gemfile.lock".to_string(),
+                "*.lock".to_string(),
             ],
             lockfile_token_limit: default_lockfile_token_limit(),
             usage_tier: UsageTier::Standard,
@@ -1338,9 +1339,12 @@ mod tests {
         let config = Config::default();
         let toml_str = toml::to_string(&config.to_config_file()).expect("should serialize to TOML");
 
-        assert!(!toml_str.contains("max_input_tokens"));
-        assert!(!toml_str.contains("max_output_tokens"));
-        assert!(!toml_str.contains("api_key"));
+        let toml_value: toml::Value =
+            toml::from_str(&toml_str).expect("should deserialize TOML into value");
+        assert!(toml_value.get("max_input_tokens").is_none());
+        assert!(toml_value.get("max_output_tokens").is_none());
+        assert!(toml_value.get("api_key").is_none());
+        assert!(toml_value.get("model_api_key").is_none());
 
         let deserialized: ConfigFile =
             toml::from_str(&toml_str).expect("should deserialize from TOML");

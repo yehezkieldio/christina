@@ -20,17 +20,9 @@ pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
 
 /// Extract file paths from a diff string.
 ///
-/// Scans for "diff --git" headers at line starts and extracts the file path.
+/// Scans for diff headers at line starts and extracts the file path.
 pub fn extract_file_paths(diff: &str) -> Vec<FilePath> {
-    diff.lines()
-        .filter_map(|line| {
-            if line.starts_with(FILE_HEADER) {
-                parse_git_diff_header(line)
-            } else {
-                None
-            }
-        })
-        .collect()
+    diff.lines().filter_map(parse_git_diff_header).collect()
 }
 
 /// Parse a git diff header line to extract the file path(s).

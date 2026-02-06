@@ -72,6 +72,7 @@ impl Default for ConfigFile {
                 "Cargo.lock".to_string(),
                 "poetry.lock".to_string(),
                 "Gemfile.lock".to_string(),
+                "*.lock".to_string(),
             ],
             lockfile_token_limit: TokenCount::new_at_least_one(100),
             usage_tier: UsageTier::Standard,
