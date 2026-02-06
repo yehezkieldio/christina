@@ -1,3 +1,6 @@
+pub mod components;
+pub mod events;
+
 use console::{Style, Term, style};
 use dialoguer::{Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};

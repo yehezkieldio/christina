@@ -2,7 +2,8 @@ use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 
 pub mod commit;
-pub mod ui;
+pub mod config;
+pub mod profile;
 
 /// AI-powered commit message generator
 #[derive(Parser)]

@@ -6,9 +6,9 @@ use anyhow::Result;
 use git2::Repository;
 use tokio::sync::mpsc;
 
-use crate::cli::ui;
+use crate::ui;
 use crate::config::Config;
-use crate::events::Event;
+use crate::ui::events::Event;
 use crate::generate::generate_commit_message_with_progress;
 use crate::io::git::adapter;
 use christina_core::GitFile;

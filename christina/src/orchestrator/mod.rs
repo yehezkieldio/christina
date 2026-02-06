@@ -39,10 +39,10 @@ use crate::engines::Provider;
 use crate::orchestrator::retry::RetryPolicy;
 
 use christina_core::error::CompletionError;
-use christina_core::git::DiffChunk;
+use christina_core::types::DiffChunk;
 use christina_core::llm::{ChatMessage, Role};
 use christina_core::prompt::{PromptBuilder, Theme};
-use christina_core::types::{CommitMessage, FilePath, commit_message::ValidationMode};
+use christina_core::types::{CommitMessage, FilePath, commit::ValidationMode};
 
 // WHY 5 concurrent: Balance between throughput and rate limits. Lower = slower; higher
 // risks rate limit violations. Most providers allow 10-50 req/s; 5 concurrent @ 1s/req = 5 req/s.
@@ -481,7 +481,7 @@ impl AIOrchestrator {
                     })
                 }
                 .await;
-                result.map_err(|e| (e, files_for_error))
+                result.map_err(|e: MapError| (e, files_for_error))
             }
         }))
         .buffer_unordered(map_concurrency);
