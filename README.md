@@ -70,6 +70,12 @@ cargo install --path christina
 ## Configuration
 
 Christina stores configuration and profiles in your OS-standard config directory (e.g., `~/.config/christina/` on Linux).
+See `config.example.toml` for the full reference and `docs/guides/advanced-config.md` for deep usage patterns.
+
+Quick tips:
+- Global config: `~/.config/christina/config.toml` (Linux/macOS) or `%APPDATA%\\christina\\config.toml` (Windows)
+- Local overrides: `./christina.toml` (safe fields only, per-repo)
+- CLI helpers: `christina config list|get|set|path`
 
 ### Example `config.toml`
 
@@ -103,7 +109,7 @@ commit_history_depth = 3
 [profiles.default]
 name = "default"
 provider = "openai"
-model = "gpt-4o"
+model = "gpt-4.1-mini"
 api_key = { value = "YOUR_KEY" }
 max_input_tokens = 128000
 max_output_tokens = 4096
@@ -117,6 +123,9 @@ Profiles allow you to manage multiple LLM configurations.
 ```bash
 # List all profiles
 christina profile list
+
+# Create a profile (OpenAI example)
+christina profile create my-openai --provider openai --model gpt-4.1-mini --api-key env:OPENAI_API_KEY
 
 # Switch to a different profile
 christina profile switch my-groq-profile

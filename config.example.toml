@@ -3,13 +3,21 @@
 # This file demonstrates all available configuration options for Christina.
 # Copy this file to ~/.config/christina/config.toml (Linux/macOS) or
 # %APPDATA%\christina\config.toml (Windows) and customize as needed.
+#
+# Local overrides are supported via ./christina.toml (safe fields only):
+# - ignore_files
+# - lockfile_token_limit
+# - commit_message_max_length
+# - commit_message_validation_mode
+# - use_commit_history
+# - commit_history_depth
 
 # Schema version for config migrations
 schema_version = 2
 
 # Standard settings (common defaults)
 [standard]
-# Active profile to use by default
+# Active profile to use by default (preferred over profiles.active)
 active_profile = "default"
 
 # Maximum length for commit messages (default: 72 characters)
@@ -25,7 +33,7 @@ commit_message_validation_mode = "soft"
 # - Wildcard suffixes: "*.lock"
 # - Directory prefixes: "vendor/"
 # Empty list means no exclusions
-ignore_files = []
+ignore_files = ["Cargo.lock", "*.lock", "vendor/"]
 
 # Advanced settings
 [advanced]
@@ -74,7 +82,7 @@ commit_history_depth = 3
 [profiles.default]
 name = "default"
 provider = "openai"
-model = "gpt-4o"
+model = "gpt-4.1-mini"
 # API key can be:
 # - Inline: api_key = { value = "sk-..." }
 # - From keyring: api_key = { keyring = "christina.openai" }
@@ -112,7 +120,7 @@ temperature = 0.3
 # Optional: Override API base URL
 # api_url = "https://api.groq.com/openai/v1"
 
-# Alternative OpenAI-compatible provider example
+# OpenAI-compatible provider example
 [profiles.custom]
 name = "custom"
 provider = "openai"
@@ -127,7 +135,7 @@ temperature = 0.5
 [profiles.large-context]
 name = "large-context"
 provider = "openai"
-model = "gpt-4o"
+model = "gpt-4.1"
 api_key = { env = "OPENAI_API_KEY" }
 max_input_tokens = 256000
 max_output_tokens = 4096
