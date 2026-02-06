@@ -68,3 +68,21 @@ Profiles are stored in `~/.config/christina/profiles.json` (or OS equivalent), w
 - **Memory**: Uses `mimalloc` for better allocation performance in multi-threaded environments.
 - **Concurrency**: LLM requests are handled asynchronously via `tokio`.
 - **Tokenization**: Efficiently handles large diffs by pre-calculating tokens before sending requests.
+
+## Detailed Documentation
+
+For more in-depth information, please refer to the following resources:
+
+### Architecture Decision Records (ADRs)
+- [ADR 001: Crate Split](docs/adrs/001-crate-split.md)
+- [ADR 002: Diff Chunking Strategy](docs/adrs/002-diff-chunking-strategy.md)
+- [ADR 003: Provider-Agnostic Interface](docs/adrs/003-provider-agnostic-interface.md)
+
+### Component Specifications
+- [AI Orchestrator](docs/specs/ai-orchestrator.md)
+- [Diff Processor](docs/specs/diff-processor.md)
+
+### Developer Guides
+- [Rust Design Patterns](docs/guides/design-patterns.md)
+- [Provider Implementation Guide](docs/guides/provider-implementation.md)
+- [Advanced Configuration Guide](docs/guides/advanced-config.md)
