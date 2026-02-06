@@ -19,6 +19,14 @@ pub enum Event {
         token_count: TokenCount,
     },
 
+    /// Diff content has been chunked for processing.
+    DiffChunked {
+        /// Number of chunks generated from the diff
+        chunk_count: usize,
+        /// Whether the diff only contains binary files
+        binary_only: bool,
+    },
+
     /// A file chunk has been processed.
     ///
     /// Emitted after successfully processing a diff chunk, useful for

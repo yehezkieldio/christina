@@ -16,6 +16,10 @@ pub struct Cli {
     #[arg(short, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Enable full pipeline tracing with detailed telemetry output
+    #[arg(long)]
+    pub trace: bool,
+
     #[arg(long)]
     pub yes: bool,
 
@@ -214,6 +218,13 @@ mod tests {
             matches!(cli.command, Some(Commands::Config(_))),
             "Should have config command"
         );
+    }
+
+    #[test]
+    fn test_cli_trace_flag() {
+        let cli = Cli::try_parse_from(["christina", "--trace"]).expect("Failed to parse CLI");
+        assert!(cli.trace, "Trace flag should be enabled");
+        assert_eq!(cli.verbose, 0, "Verbose count should be 0 by default");
     }
 
     #[test]

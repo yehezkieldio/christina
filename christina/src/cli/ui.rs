@@ -94,6 +94,13 @@ pub fn print_info(msg: &str) {
     let _ = term.write_line(&format!("{} {}", muted_style().apply_to("info"), msg));
 }
 
+pub fn print_trace(msg: &str) {
+    let term = Term::stderr();
+    let label = muted_style().apply_to("trace");
+    let body = muted_style().apply_to(msg);
+    let _ = term.write_line(&format!("{} {}", label, body));
+}
+
 // =================================================================================
 //  INTERACTIVE PROMPTS
 // =================================================================================

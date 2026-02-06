@@ -45,12 +45,28 @@ use git2 as _;
 use clap::CommandFactory;
 use cli::{Cli, Commands};
 
-fn init_tracing(verbose: u8) {
-    let level = match verbose {
-        0 => tracing::Level::INFO,
-        1 => tracing::Level::DEBUG,
-        _ => tracing::Level::TRACE,
+fn init_tracing(verbose: u8, trace: bool) {
+    let level = if trace {
+        tracing::Level::TRACE
+    } else {
+        match verbose {
+            0 => tracing::Level::INFO,
+            1 => tracing::Level::DEBUG,
+            _ => tracing::Level::TRACE,
+        }
     };
+
+    // Build subscriber with env filter (RUST_LOG takes precedence)
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
+
+    if trace {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt::layer().with_writer(std::io::stderr).with_ansi(true))
+            .init();
+        return;
+    }
 
     // Get log directory using same pattern as config
     let log_dir = directories::ProjectDirs::from("", "", "christina")
@@ -62,10 +78,6 @@ fn init_tracing(verbose: u8) {
 
     // Daily rolling file appender (TUI-safe - no stdout)
     let file_appender = rolling::daily(&log_dir, "christina.log");
-
-    // Build subscriber with env filter (RUST_LOG takes precedence)
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -80,7 +92,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    init_tracing(cli.verbose);
+    init_tracing(cli.verbose, cli.trace);
 
     match cli.command {
         Some(Commands::Config(cmd)) => {
@@ -96,6 +108,6 @@ async fn main() -> Result<()> {
             clap_complete::generate(shell, &mut cmd, "christina", &mut std::io::stdout());
             Ok(())
         }
-        None => cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run).await,
+        None => cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run, cli.trace).await,
     }
 }

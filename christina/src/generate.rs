@@ -382,6 +382,17 @@ async fn generate_commit_message_with_progress_impl(
         .iter()
         .all(|chunk| chunk.content.starts_with("[Binary file:"));
 
+    if progress_tx
+        .send(Event::DiffChunked {
+            chunk_count: chunks.len(),
+            binary_only,
+        })
+        .await
+        .is_err()
+    {
+        anyhow::bail!("Progress receiver dropped, aborting generation");
+    }
+
     let total_tokens = chunks
         .iter()
         .map(|chunk| chunk.token_count.get() as u64)
