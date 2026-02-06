@@ -9,9 +9,9 @@ use christina_core::{
     ConfigFile,
     profile::{Profiles, ProviderProfile},
     types::{
-        FreeTierLimits, ModelName, ProviderKind, TokenCount, UsageTier,
-        commit_message::ValidationMode,
-        token_count::{MAX_INPUT, MAX_OUTPUT},
+        FreeTierLimits, ModelName, ProviderKind, UsageTier,
+        commit::ValidationMode,
+        tokens::{TokenCount, MAX_INPUT, MAX_OUTPUT},
     },
 };
 use url::Url;

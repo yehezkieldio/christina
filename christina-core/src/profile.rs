@@ -58,7 +58,7 @@ use crate::{
     config::Secret,
     types::{
         ModelName, ProviderKind, TokenCount,
-        token_count::{MAX_INPUT, MAX_OUTPUT},
+        tokens::{MAX_INPUT, MAX_OUTPUT},
     },
 };
 

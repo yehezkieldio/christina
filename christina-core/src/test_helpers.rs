@@ -10,7 +10,7 @@
 
 use std::path::Path;
 
-use crate::{config::ResolvedConfig, tokenizer::Tokenizer, types::TokenCount};
+use crate::{config::ResolvedConfig, tokenizer::Tokenizer, types::tokens::TokenCount};
 
 /// Temporary Git repository for testing.
 ///

@@ -1,0 +1,99 @@
+// Allow unwrap(), expect(), and panic!() in test code
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+// Allow unused dev-dependencies in binary tests
+#![allow(unused_crate_dependencies)]
+
+#[cfg(not(feature = "dhat-heap"))]
+use mimalloc::MiMalloc;
+
+#[cfg(not(feature = "dhat-heap"))]
+use cap::Cap;
+
+// Satisfy unused_crate_dependencies lint - these are used via global_allocator
+#[cfg(feature = "dhat-heap")]
+use cap as _;
+#[cfg(feature = "dhat-heap")]
+use mimalloc as _;
+
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
+#[cfg(not(feature = "dhat-heap"))]
+#[global_allocator]
+pub static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
+
+use anyhow::Result;
+use clap::Parser;
+
+use tracing_appender::rolling;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+// Satisfy unused_crate_dependencies lint for CLI UI crates
+use console as _;
+use dialoguer as _;
+use indicatif as _;
+
+mod cli;
+mod config;
+mod events;
+mod generate;
+mod io;
+
+use git2 as _;
+
+use clap::CommandFactory;
+use cli::{Cli, Commands};
+
+fn init_tracing(verbose: u8) {
+    let level = match verbose {
+        0 => tracing::Level::INFO,
+        1 => tracing::Level::DEBUG,
+        _ => tracing::Level::TRACE,
+    };
+
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
+
+    let log_dir = directories::ProjectDirs::from("", "", "christina")
+        .map(|dirs| dirs.data_dir().join("logs"))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let file_appender = rolling::daily(&log_dir, "christina.log");
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_writer(file_appender).with_ansi(false))
+        .init();
+}
+
+#[tokio::main]
+async fn main() -> std::process::ExitCode {
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
+
+    let cli = Cli::parse();
+
+    init_tracing(cli.verbose);
+
+    let result: Result<()> = match cli.command {
+        Some(Commands::Config(cmd)) => config::cli::handle_config_command(cmd),
+        Some(Commands::Profile(cmd)) => config::profile_cli::handle_profile_command(cmd),
+        Some(Commands::Completions { shell }) => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "christina", &mut std::io::stdout());
+            Ok(())
+        }
+        None => cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run, cli.trace).await,
+    };
+
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(err) => {
+            cli::ui::print_error(&format!("{err}"));
+            std::process::ExitCode::FAILURE
+        }
+    }
+}

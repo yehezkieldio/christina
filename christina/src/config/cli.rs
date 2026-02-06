@@ -101,9 +101,9 @@ fn handle_list_with_config(config: &Config) {
     println!(
         "  commit_message_validation_mode: {}",
         match config.commit_message_validation_mode {
-            christina_core::types::commit_message::ValidationMode::Strict => "strict",
-            christina_core::types::commit_message::ValidationMode::Soft => "soft",
-            christina_core::types::commit_message::ValidationMode::Disabled => "disabled",
+            christina_core::types::commit::ValidationMode::Strict => "strict",
+            christina_core::types::commit::ValidationMode::Soft => "soft",
+            christina_core::types::commit::ValidationMode::Disabled => "disabled",
         }
     );
     println!("  use_commit_history: {}", config.use_commit_history);

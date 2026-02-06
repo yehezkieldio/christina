@@ -1,6 +1,6 @@
 use crate::error::ProviderError;
-use crate::ids::GenerationId;
-use crate::types::{Temperature, TokenCount};
+use crate::types::backend_id::GenerationId;
+use crate::types::{Temperature, tokens::TokenCount};
 
 /// Represents a single message in a chat conversation
 #[derive(Debug, Clone)]

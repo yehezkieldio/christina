@@ -8,8 +8,9 @@
 pub mod config;
 pub mod error;
 pub mod git;
-pub mod ids;
 pub mod llm;
+pub mod pipeline;
+pub mod processing;
 pub mod profile;
 pub mod prompt;
 #[cfg(any(test, feature = "test-helpers"))]
@@ -26,7 +27,8 @@ pub use error::{
     ProviderError, TokenizerError, TokenizerResult,
 };
 pub use git::{GitFile, GitFileStatus, RepoRoot, RepoRootError};
-pub use ids::GenerationId;
 pub use llm::{ChatMessage, LlmRequest, LlmResponse, ProviderEndpoint, ProviderSpec, Role};
+pub use pipeline::LlmBackend;
 pub use profile::{Profiles, ProviderProfile};
 pub use tokenizer::Tokenizer;
+pub use types::backend_id::GenerationId;

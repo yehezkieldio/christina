@@ -62,7 +62,7 @@ christina/
 │   │   └── secrets/        # Secure storage (Keyring integration)
 │   ├── engines/            # CONCRETE AI IMPLEMENTATIONS
 │   │   ├── mod.rs          # Engine Factory & Feature Switching
-│   │   ├── standard_llm/   # [feature = "engine-llm"]
+│   │   ├── default/   # [feature = "engine-default"]
 │   │   │   ├── mod.rs      # Based on the `llm` crate
 │   │   │   ├── openai.rs
 │   │   │   ├── azure.rs
@@ -191,7 +191,7 @@ Based on the current codebase state, the following gaps must be addressed to rea
 ### Phase 3: CLI & UI Alignment
 *   **UI Promotion**: Move `christina/src/cli/ui.rs` to a top-level `christina/src/ui/` module and implement the UI Event Bus.
 *   **Telemetry**: Implement `christina/src/telemetry/` to centralize tracing and logging initialization currently scattered in `main.rs`.
-*   **Feature Gating**: Update `christina/Cargo.toml` with the proposed `engine-llm` and `engine-copilot` feature markers.
+*   **Feature Gating**: Update `christina/Cargo.toml` with the proposed `engine-default` and `engine-copilot` feature markers.
 
 ### Phase 4: Experimental Features
 *   **Copilot Support**: Copilot section is currently stub dead code.

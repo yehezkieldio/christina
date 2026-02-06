@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::types::TokenCount;
+use super::TokenCount;
 
 const FREE_TIER_MAX_INPUT_TOKENS: u32 = 16_000;
 const FREE_TIER_MAX_OUTPUT_TOKENS: u32 = 512;

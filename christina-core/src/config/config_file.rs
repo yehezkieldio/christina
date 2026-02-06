@@ -4,7 +4,7 @@ use crate::{
     profile::Profiles,
     types::{
         FreeTierLimits, TokenCount, UsageTier,
-        commit_message::ValidationMode,
+        commit::ValidationMode,
     },
 };
 

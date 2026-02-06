@@ -10,20 +10,24 @@
 //! - Validated at creation (invalid values rejected)
 //! - Cheap to clone (either Copy or using CompactString/NonZero optimizations)
 
-pub mod commit_message;
-pub mod file_path;
+pub mod backend_id;
+pub mod commit;
+pub mod diff;
 pub mod free_tier;
 pub mod model_name;
+pub mod path;
 pub mod provider_kind;
 pub mod temperature;
-pub mod token_count;
+pub mod tokens;
 pub mod usage_tier;
 
-pub use commit_message::CommitMessage;
-pub use file_path::FilePath;
+pub use backend_id::GenerationId;
+pub use commit::CommitMessage;
+pub use diff::{DiffChunk, FileDiff, MAX_DIFF_SIZE};
 pub use free_tier::FreeTierLimits;
 pub use model_name::ModelName;
+pub use path::FilePath;
 pub use provider_kind::ProviderKind;
 pub use temperature::Temperature;
-pub use token_count::TokenCount;
+pub use tokens::TokenCount;
 pub use usage_tier::UsageTier;

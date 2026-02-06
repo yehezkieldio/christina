@@ -5,7 +5,8 @@ use crate::cli::ProfileCommands;
 use crate::config::Config;
 use christina_core::config::{Secret, SecretRef};
 use christina_core::profile::ProviderProfile;
-use christina_core::types::{ModelName, ProviderKind, TokenCount};
+use christina_core::types::{ModelName, ProviderKind};
+use christina_core::types::tokens::TokenCount;
 
 trait ConfigStore {
     fn load(&mut self) -> Result<Config>;
