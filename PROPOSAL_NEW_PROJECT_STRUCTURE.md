@@ -167,3 +167,29 @@ impl AiBackend for Engine {
 3.  **Linear Pipelines**: The `main` run loop looks like a simple functional chain:
     *   `load_config() -> gather_diff() -> plan_chunks() -> run_map_reduce() -> finalize_message()`.
 4.  **Ownership moves forward**: Diffs are converted into Chunk Summaries, which are converted into Intent Themes, which are converted into a Final Message. Older data is dropped as soon as its information is consumed.
+
+---
+
+## Migration Roadmap & Gap Analysis
+
+Based on the current codebase state, the following gaps must be addressed to reach the target architecture.
+
+### Phase 1: Core Logic Extraction (The "Hot Path")
+*   **Move `chunking.rs`**: Relocate from `christina/src/io/git/chunking.rs` to `christina-core/src/processing/chunking.rs`.
+*   **Move `tokenizer.rs`**: Relocate from `christina/src/io/llm/tokenizer.rs` to `christina-core/src/processing/tokenizer.rs`.
+*   **Establish `AiBackend`**: Define the trait in `christina-core/src/pipeline/backend.rs`.
+*   **Prompt Restructuring**: Break down `christina-core/src/prompt.rs` into the `src/prompt/` directory structure with modular templates.
+
+### Phase 2: Orchestration & Engines Refactor
+*   **Flatten `io/`**: Eliminate `christina/src/io/` by promoting `llm/orchestrator.rs` to `christina/src/orchestrator/`.
+*   **Engine Decoupling**: Implement the `engines/` hierarchy in `christina`, moving existing OpenAI/Azure/Groq logic into `engines/standard_llm/`.
+*   **Secret Migration**: Move secret management from `christina-core/src/config/secret.rs` to `christina/src/config/secrets/`.
+
+### Phase 3: CLI & UI Alignment
+*   **UI Promotion**: Move `christina/src/cli/ui.rs` to a top-level `christina/src/ui/` module and implement the UI Event Bus.
+*   **Telemetry**: Implement `christina/src/telemetry/` to centralize tracing and logging initialization currently scattered in `main.rs`.
+*   **Feature Gating**: Update `christina/Cargo.toml` with the proposed `engine-llm` and `engine-copilot` feature markers.
+
+### Phase 4: Experimental Features
+*   **Copilot Support**: Implement the `engines/copilot/` module and the necessary OAuth/GitHub token authentication flow.
+*   **JSON Schema**: Finalize the transition of `generate_json_schema.rs` to a dedicated maintenance tool in `core`.
