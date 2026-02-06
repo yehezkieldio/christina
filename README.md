@@ -42,10 +42,11 @@ cargo install --path christina
 1. **Configure your first profile:**
    ```bash
    # Add a new profile (OpenAI example)
-   # Prefer env or keyring references
+   # Plaintext keys are accepted by default (you'll get a warning)
+   christina profile create my-openai --provider openai --model gpt-4o --api-key YOUR_KEY
+   # Environment or keyring references are recommended for security
    christina profile create my-openai --provider openai --model gpt-4o --api-key env:OPENAI_API_KEY
-   # Plaintext keys require explicit opt-in (not recommended)
-   christina profile create my-openai --provider openai --model gpt-4o --api-key YOUR_KEY --allow-plaintext
+   christina profile create my-openai --provider openai --model gpt-4o --api-key keyring:christina.openai
    ```
 
 2. **Generate a commit message:**
@@ -73,16 +74,37 @@ Christina stores configuration and profiles in your OS-standard config directory
 ### Example `config.toml`
 
 ```toml
+schema_version = 2
+
+[standard]
 active_profile = "default"
 commit_message_max_length = 72
+commit_message_validation_mode = "soft"
+ignore_files = []
+
+[advanced]
+lockfile_token_limit = 100
 use_commit_history = true
 commit_history_depth = 5
+max_concurrent_requests = 4
+max_partial_failure_rate = 0.10
+prompt_failure_rate_threshold = 0.05
+
+[experimental]
+use_experimental = false
+usage_tier = "standard"
+
+[experimental.free_tier]
+max_input_tokens = 16000
+max_output_tokens = 512
+max_concurrent_requests = 1
+commit_history_depth = 3
 
 [profiles.default]
 name = "default"
 provider = "openai"
 model = "gpt-4o"
-api_key = { env = "OPENAI_API_KEY" }
+api_key = { value = "YOUR_KEY" }
 max_input_tokens = 128000
 max_output_tokens = 4096
 temperature = 0.3
@@ -103,7 +125,13 @@ christina profile switch my-groq-profile
 christina profile show my-openai
 ```
 
-Keys are securely stored using your system's native keyring (via the `keyring` crate).
+### API Keys
+You can provide API keys in three ways:
+- Plaintext (default): `api_key = { value = "YOUR_KEY" }`
+- Environment variable: `api_key = { env = "OPENAI_API_KEY" }`
+- Keyring reference: `api_key = { keyring = "christina.openai" }`
+
+Plaintext is accepted by default (with a warning). For security, prefer env or keyring.
 
 ## Architecture
 

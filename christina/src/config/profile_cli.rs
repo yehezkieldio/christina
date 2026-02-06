@@ -29,14 +29,15 @@ fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>
         SecretRef::EnvVar(name) => Ok(Secret::EnvVar(name)),
         SecretRef::Keyring(key_name) => Ok(Secret::Keyring(key_name)),
         SecretRef::Literal(value) => {
-            if allow_plaintext {
-                Ok(Secret::Value(value))
-            } else {
-                anyhow::bail!(
-                    "Refusing to store plaintext API key. Use env:VAR_NAME or keyring:KEY_NAME, \
-                     or pass --allow-plaintext to override."
+            if !allow_plaintext {
+                tracing::warn!(
+                    "Storing plaintext API key. Consider env:VAR_NAME or keyring:KEY_NAME."
+                );
+                eprintln!(
+                    "Warning: storing plaintext API key. Consider env:VAR_NAME or keyring:KEY_NAME."
                 );
             }
+            Ok(Secret::Value(value))
         }
     }
 }

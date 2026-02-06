@@ -15,19 +15,40 @@ You can override any configuration value using environment variables with the `C
 - `CHRISTINA_ACTIVE_PROFILE=groq`
 - `CHRISTINA_TEMPERATURE=0.7`
 
-## Secure Secret Storage
-Christina never stores API keys in plaintext in the configuration file unless explicitly requested with `--allow-plaintext`.
+## API Keys
+Plaintext API keys are accepted by default (with a warning). For security, prefer environment or keyring references.
+
+### Plaintext (default)
+```toml
+api_key = { value = "YOUR_KEY" }
+```
 
 ### The Keyring
-By default, keys are stored in your OS's secure keyring:
+You can store keys in your OS's secure keyring:
 - **Linux**: Secret Service (libsecret) or KWallet.
 - **macOS**: Keychain.
 - **Windows**: Credential Manager.
+
+```toml
+api_key = { keyring = "christina.openai" }
+```
 
 ### Environment Variable References
 You can also reference environment variables in your config:
 ```toml
 api_key = { env = "MY_SECRET_KEY" }
+```
+
+### CLI Examples
+```bash
+# Plaintext (default, warning emitted)
+christina profile create my-openai --provider openai --model gpt-4o --api-key YOUR_KEY
+
+# Environment variable
+christina profile create my-openai --provider openai --model gpt-4o --api-key env:OPENAI_API_KEY
+
+# Keyring reference
+christina profile create my-openai --provider openai --model gpt-4o --api-key keyring:christina.openai
 ```
 
 ## Customizing Token Budgets
