@@ -448,10 +448,11 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
             })
             .unwrap_or_else(|_| "gpg".to_string());
 
+        let stdin_is_tty = std::io::stdin().is_terminal();
         let gpg_tty = std::env::var("GPG_TTY").ok().or_else(|| {
             #[cfg(unix)]
             {
-                if std::io::stdin().is_terminal() {
+                if stdin_is_tty {
                     Some("/dev/tty".to_string())
                 } else {
                     None
@@ -467,10 +468,11 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .arg("--batch")
-            .arg("--pinentry-mode")
-            .arg("loopback")
             .arg("-bsa");
+
+        if !stdin_is_tty {
+            cmd.arg("--batch").arg("--pinentry-mode").arg("loopback");
+        }
 
         if let Some(ref key) = signing_key {
             cmd.arg("-u").arg(key);
@@ -551,6 +553,7 @@ fn is_noninteractive_gpg_error(stderr: &str) -> bool {
     let lower = stderr.to_lowercase();
     lower.contains("pinentry")
         || lower.contains("no pinentry")
+        || lower.contains("batchmode")
         || lower.contains("inappropriate ioctl")
         || lower.contains("no tty")
         || lower.contains("cannot open")
