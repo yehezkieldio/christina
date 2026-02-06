@@ -1,6 +1,6 @@
 # Proposal: Comprehensive Project Reorganization for Christina
 
-This document outlines a structural rewrite for Christina, optimized for modularity, extreme performance, and a clear distinction between generic LLM providers and specialized AI integrations (like Copilot).
+This document outlines a structural rewrite for Christina, optimized for modularity, extreme performance, and a clear distinction between generic LLM providers and specialized AI integrations (like Copilot. though current stub dead code, we focus on the default backend).
 
 It adheres strictly to the Rust mental model defined in [AGENTS.md](AGENTS.md): **Data-oriented, linear pipelines, and types as invariants.**
 
@@ -90,29 +90,32 @@ christina/
 We decouple the "AI Engine" (the high-level library/SDK integration) from the "Provider" (the specific endpoint).
 
 ### 1. The Strategy: Hierarchical Selection
-1.  **Engine Level**: Choose between `standard-llm` (using standard API keys) or `copilot` (using GitHub token/OAuth).
-2.  **Implementation Level**: Within `standard-llm`, choose the provider (OpenAI vs Azure).
+1.  **Engine Level**: Choose between `default` (using `llm` and its providers) or `copilot` (current stub)
+2.  **Implementation Level**: Within `default`, choose the provider
 
 ### 2. Feature Gating in `Cargo.toml`
 ```toml
 [features]
-default = ["engine-llm", "openai"]
+default = ["engine-default", "openai"]
 
 # High-level engine selection
-engine-llm = ["dep:llm", "dep:reqwest"]
+engine-default = ["dep:llm"]
 engine-copilot = ["dep:copilot-sdk"] # Mutually exclusive possibility
 
-# Providers for the 'engine-llm'
+# Providers for the 'engine-default'
 openai = ["llm/openai"]
 azure = ["llm/azure_openai"]
 groq = ["llm/groq"]
+
+# note: llm feature flags contains the providers, like below, not sure how above works
+# llm = { version = "1.3.7", default-features = false, features = ["rustls-tls", "azure_openai", "groq", "openai"] }
 ```
 
-### 3. The `AiBackend` Trait in `core`
+### 3. The `LlmBackend` Trait in `core`
 The core only cares that something can turn a request into a result.
 ```rust
 // christina-core/src/pipeline/backend.rs
-pub trait AiBackend: Send + Sync {
+pub trait LLmBackend: Send + Sync {
     async fn generate(&self, request: GenerationRequest) -> Result<String, BackendError>;
 }
 ```
@@ -121,18 +124,18 @@ pub trait AiBackend: Send + Sync {
 ```rust
 // christina/src/engines/mod.rs
 pub enum Engine {
-    #[cfg(feature = "engine-llm")]
-    Llm(LlmEngine),
+    #[cfg(feature = "engine-default")]
+    Default(DefaultEngine),
 
     #[cfg(feature = "engine-copilot")]
     Copilot(CopilotEngine),
 }
 
-impl AiBackend for Engine {
+impl LlmBackend for Engine {
     async fn generate(&self, req: GenerationRequest) -> Result<String, BackendError> {
         match self {
-            #[cfg(feature = "engine-llm")]
-            Self::Llm(e) => e.generate(req).await,
+            #[cfg(feature = "engine-default")]
+            Self::Default(e) => e.generate(req).await,
             #[cfg(feature = "engine-copilot")]
             Self::Copilot(e) => e.generate(req).await,
         }
@@ -191,5 +194,5 @@ Based on the current codebase state, the following gaps must be addressed to rea
 *   **Feature Gating**: Update `christina/Cargo.toml` with the proposed `engine-llm` and `engine-copilot` feature markers.
 
 ### Phase 4: Experimental Features
-*   **Copilot Support**: Implement the `engines/copilot/` module and the necessary OAuth/GitHub token authentication flow.
+*   **Copilot Support**: Copilot section is currently stub dead code.
 *   **JSON Schema**: Finalize the transition of `generate_json_schema.rs` to a dedicated maintenance tool in `core`.
