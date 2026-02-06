@@ -231,6 +231,7 @@ dependencies = [
  "mimalloc",
  "moka",
  "proptest",
+ "reqwest",
  "serde",
  "serde_json",
  "tiktoken-rs",

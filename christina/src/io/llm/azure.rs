@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role};
-use llm::builder::{LLMBackend, LLMBuilder};
-use llm::chat::ChatMessage as LLMChatMessage;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
 use super::retry::{RetryPolicy, retry_with_backoff};
 
@@ -68,17 +68,55 @@ pub async fn execute_azure_request_with_retry(
     .await
 }
 
+fn requires_completion_tokens_param(model: &str) -> bool {
+    let m = model.to_ascii_lowercase();
+    m.starts_with("o1")
+        || m.starts_with("o3")
+        || m.starts_with("o4")
+        || m.starts_with("gpt-5")
+}
+
+#[derive(Serialize, Debug)]
+struct AzureChatMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Serialize, Debug)]
+struct AzureChatRequest<'a> {
+    model: &'a str,
+    messages: Vec<AzureChatMessage<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    stream: bool,
+}
+
+#[derive(Deserialize, Debug)]
+struct AzureChatResponse {
+    choices: Vec<AzureChatChoice>,
+}
+
+#[derive(Deserialize, Debug)]
+struct AzureChatChoice {
+    message: AzureChatMsg,
+}
+
+#[derive(Deserialize, Debug)]
+struct AzureChatMsg {
+    #[allow(dead_code)]
+    role: String,
+    content: Option<String>,
+}
+
 /// Inner implementation without retry logic.
 ///
-/// HTTP Timeout Configuration:
-/// The llm crate v1.3.7 supports HTTP-level timeouts via LLMBuilder::timeout_seconds().
-/// However, this codebase relies on orchestrator-level tokio::timeout wrapping all
-/// LLM calls (see orchestrator.rs:generate_with_retry). The orchestrator applies
-/// progressive timeouts (30s initial, 60s retry, 120s final) that wrap the entire
-/// HTTP request, providing more precise control than backend-level timeouts.
-///
-/// If future versions need backend-level timeout configuration (e.g., to distinguish
-/// connection vs. read timeouts), call .timeout_seconds(60) on the builder.
+/// Bypasses the `llm` crate's Azure backend to directly construct the HTTP
+/// request. This allows using `max_completion_tokens` for models that require
+/// it (o1, o3, gpt-5 families) while keeping `max_tokens` for older models.
 async fn execute_azure_request_inner(
     request: &LlmRequest,
     api_key: &str,
@@ -87,62 +125,98 @@ async fn execute_azure_request_inner(
     api_version: &str,
     model: &str,
 ) -> Result<LlmResponse, CompletionError> {
-    let system_prompt = extract_system_prompt(&request.messages);
+    let messages: Vec<AzureChatMessage<'_>> = request
+        .messages
+        .iter()
+        .map(|msg| {
+            let role = match msg.role {
+                Role::System => "system",
+                Role::User => "user",
+                Role::Assistant => "assistant",
+            };
+            AzureChatMessage {
+                role,
+                content: &msg.content,
+            }
+        })
+        .collect();
 
-    let mut builder = LLMBuilder::new()
-        .backend(LLMBackend::AzureOpenAI)
-        .api_key(api_key)
-        .base_url(endpoint)
-        .deployment_id(deployment_id)
-        .api_version(api_version)
-        .model(model)
-        .max_tokens(request.max_tokens.get())
-        .temperature(request.temperature.value());
+    let use_completion_tokens = requires_completion_tokens_param(model);
+    let max_tokens_value = request.max_tokens.get();
 
-    if let Some(system) = system_prompt {
-        builder = builder.system(system);
+    let body = AzureChatRequest {
+        model,
+        messages,
+        max_tokens: if use_completion_tokens {
+            None
+        } else {
+            Some(max_tokens_value)
+        },
+        max_completion_tokens: if use_completion_tokens {
+            Some(max_tokens_value)
+        } else {
+            None
+        },
+        temperature: Some(request.temperature.value()),
+        stream: false,
+    };
+
+    if tracing::enabled!(tracing::Level::TRACE)
+        && let Ok(json) = serde_json::to_value(&body)
+    {
+        tracing::trace!("Azure OpenAI request payload: {json}");
     }
 
-    let llm = builder
-        .build()
-        .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
+    let url = format!(
+        "{endpoint}/openai/deployments/{deployment_id}/chat/completions?api-version={api_version}"
+    );
 
-    let llm_messages = convert_messages(&request.messages);
-
-    let response = llm
-        .chat(&llm_messages)
+    let client = Client::new();
+    let response = client
+        .post(&url)
+        .header("api-key", api_key)
+        .json(&body)
+        .send()
         .await
         .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
 
-    let content = response
+    let status = response.status();
+    tracing::debug!("Azure OpenAI HTTP status: {status}");
+
+    if !status.is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
+        return Err(CompletionError::InvalidResponse(format!(
+            "Response Format Error: OpenAI API returned error status: {status}. Raw response: {error_text}"
+        )));
+    }
+
+    let resp_text = response
         .text()
+        .await
+        .map_err(|e| CompletionError::from_api_error(&e.to_string()))?;
+
+    let parsed: AzureChatResponse = serde_json::from_str(&resp_text).map_err(|e| {
+        CompletionError::InvalidResponse(format!(
+            "Failed to decode Azure OpenAI response: {e}. Raw: {resp_text}"
+        ))
+    })?;
+
+    let content = parsed
+        .choices
+        .into_iter()
+        .next()
+        .and_then(|c| c.message.content)
         .ok_or_else(|| {
             CompletionError::InvalidResponse("No text in Azure OpenAI response".to_string())
-        })?
-        .to_string();
+        })?;
 
     Ok(LlmResponse {
         content,
         tokens_used: None,
     })
-}
-
-fn convert_messages(messages: &[christina_core::llm::ChatMessage]) -> Vec<LLMChatMessage> {
-    messages
-        .iter()
-        .filter_map(|msg| match msg.role {
-            Role::User => Some(LLMChatMessage::user().content(&msg.content).build()),
-            Role::Assistant => Some(LLMChatMessage::assistant().content(&msg.content).build()),
-            Role::System => None,
-        })
-        .collect()
-}
-
-fn extract_system_prompt(messages: &[christina_core::llm::ChatMessage]) -> Option<&str> {
-    messages
-        .iter()
-        .find(|m| m.role == Role::System)
-        .map(|m| m.content.as_str())
 }
 
 #[cfg(test)]
@@ -152,8 +226,65 @@ mod tests {
     use christina_core::llm::ChatMessage;
 
     #[test]
-    fn convert_messages_filters_system() {
-        let messages = vec![
+    fn requires_completion_tokens_gpt5() {
+        assert!(requires_completion_tokens_param("gpt-5-nano"));
+        assert!(requires_completion_tokens_param("gpt-5"));
+        assert!(requires_completion_tokens_param("gpt-5-mini"));
+        assert!(requires_completion_tokens_param("GPT-5-Nano"));
+    }
+
+    #[test]
+    fn requires_completion_tokens_o_series() {
+        assert!(requires_completion_tokens_param("o1"));
+        assert!(requires_completion_tokens_param("o1-mini"));
+        assert!(requires_completion_tokens_param("o1-preview"));
+        assert!(requires_completion_tokens_param("o3"));
+        assert!(requires_completion_tokens_param("o3-mini"));
+        assert!(requires_completion_tokens_param("o4-mini"));
+    }
+
+    #[test]
+    fn does_not_require_completion_tokens_gpt4() {
+        assert!(!requires_completion_tokens_param("gpt-4"));
+        assert!(!requires_completion_tokens_param("gpt-4o"));
+        assert!(!requires_completion_tokens_param("gpt-4o-mini"));
+        assert!(!requires_completion_tokens_param("gpt-4.1"));
+        assert!(!requires_completion_tokens_param("gpt-4.1-nano"));
+    }
+
+    #[test]
+    fn request_body_uses_max_completion_tokens_for_gpt5() {
+        let body = AzureChatRequest {
+            model: "gpt-5-nano",
+            messages: vec![],
+            max_tokens: None,
+            max_completion_tokens: Some(512),
+            temperature: Some(0.3),
+            stream: false,
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert!(json.get("max_tokens").is_none());
+        assert_eq!(json["max_completion_tokens"], 512);
+    }
+
+    #[test]
+    fn request_body_uses_max_tokens_for_gpt4() {
+        let body = AzureChatRequest {
+            model: "gpt-4o",
+            messages: vec![],
+            max_tokens: Some(512),
+            max_completion_tokens: None,
+            temperature: Some(0.3),
+            stream: false,
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["max_tokens"], 512);
+        assert!(json.get("max_completion_tokens").is_none());
+    }
+
+    #[test]
+    fn azure_chat_message_role_mapping() {
+        let messages = [
             ChatMessage {
                 role: Role::System,
                 content: "You are a commit message generator".to_string(),
@@ -168,35 +299,24 @@ mod tests {
             },
         ];
 
-        let result = convert_messages(&messages);
-        assert_eq!(result.len(), 2);
-    }
+        let mapped: Vec<AzureChatMessage<'_>> = messages
+            .iter()
+            .map(|msg| {
+                let role = match msg.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                };
+                AzureChatMessage {
+                    role,
+                    content: &msg.content,
+                }
+            })
+            .collect();
 
-    #[test]
-    fn extract_system_prompt_found() {
-        let messages = vec![
-            ChatMessage {
-                role: Role::System,
-                content: "You are a commit message generator".to_string(),
-            },
-            ChatMessage {
-                role: Role::User,
-                content: "Generate a commit message".to_string(),
-            },
-        ];
-
-        let result = extract_system_prompt(&messages);
-        assert_eq!(result, Some("You are a commit message generator"));
-    }
-
-    #[test]
-    fn extract_system_prompt_not_found() {
-        let messages = vec![ChatMessage {
-            role: Role::User,
-            content: "Generate a commit message".to_string(),
-        }];
-
-        let result = extract_system_prompt(&messages);
-        assert!(result.is_none());
+        assert_eq!(mapped.len(), 3);
+        assert_eq!(mapped[0].role, "system");
+        assert_eq!(mapped[1].role, "user");
+        assert_eq!(mapped[2].role, "assistant");
     }
 }
