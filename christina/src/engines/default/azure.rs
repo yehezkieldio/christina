@@ -138,8 +138,10 @@ struct AzureChatMsg {
 /// Inner implementation without retry logic.
 ///
 /// Bypasses the `llm` crate's Azure backend to directly construct the HTTP
-/// request. This allows using `max_completion_tokens` for models that require
-/// it (o1, o3, gpt-5 families) while keeping `max_tokens` for older models.
+/// request.
+///
+/// This allows using `max_completion_tokens` for models that require
+/// it while keeping `max_tokens` for older models.
 async fn execute_azure_request_inner(
     request: &LlmRequest,
     api_key: &str,
@@ -256,7 +258,7 @@ async fn execute_azure_request_inner(
     if content.is_empty() {
         return Err(CompletionError::InvalidResponse(
             "Azure OpenAI returned empty content; \
-             for reasoning models (o1/o3/o4/gpt-5), increase max_output_tokens \
+             for reasoning models (gpt-5), increase max_output_tokens \
              to at least 4096 so the model has enough budget for internal reasoning"
                 .to_string(),
         ));
