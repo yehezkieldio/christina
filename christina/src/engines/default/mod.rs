@@ -1,11 +1,9 @@
-//! Default provider implementations (OpenAI, Azure, Groq).
+//! Default provider implementations (Azure).
 //!
 //! WHY in one module: keeps provider-specific HTTP logic together while sharing
 //! request construction and validation rules.
 
 mod azure;
-mod groq;
-mod openai;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(test)]
@@ -107,26 +105,12 @@ impl std::fmt::Debug for ApiKey {
 
 #[derive(Debug, Clone)]
 pub enum Provider {
-    OpenAI {
-        model: ModelName,
-        api_key: ApiKey,
-        base_url: Option<url::Url>,
-        max_tokens: TokenCount,
-        temperature: Temperature,
-    },
     Azure {
         model: ModelName,
         api_key: ApiKey,
         endpoint: String,
         api_version: String,
         deployment_id: String,
-        max_tokens: TokenCount,
-        temperature: Temperature,
-    },
-    Groq {
-        model: ModelName,
-        api_key: ApiKey,
-        base_url: Option<url::Url>,
         max_tokens: TokenCount,
         temperature: Temperature,
     },
@@ -144,13 +128,6 @@ impl Provider {
         let temperature = Temperature::new_clamped(profile.temperature.unwrap_or(0.3));
 
         match profile.provider {
-            ProviderKind::OpenAI => Ok(Provider::OpenAI {
-                model: profile.model.clone(),
-                api_key: ApiKey::new(api_key),
-                base_url: profile.api_url.clone(),
-                max_tokens: profile.max_output_tokens,
-                temperature,
-            }),
             ProviderKind::Azure => {
                 let url = profile.api_url.as_ref().ok_or_else(|| {
                     ProviderError::MissingConfig(
@@ -211,31 +188,13 @@ impl Provider {
                     temperature,
                 })
             }
-            ProviderKind::Groq => Ok(Provider::Groq {
-                model: profile.model.clone(),
-                api_key: ApiKey::new(api_key),
-                base_url: profile.api_url.clone(),
-                max_tokens: profile.max_output_tokens,
-                temperature,
-            }),
+            _ => Err(ProviderError::UnsupportedProvider(format!("{:?}", profile.provider)).into()),
         }
     }
 
     pub async fn generate(&self, messages: &[ChatMessage]) -> Result<String, CompletionError> {
         let request = match self {
-            Provider::OpenAI {
-                model,
-                max_tokens,
-                temperature,
-                ..
-            }
-            | Provider::Groq {
-                model,
-                max_tokens,
-                temperature,
-                ..
-            }
-            | Provider::Azure {
+            Provider::Azure {
                 model,
                 max_tokens,
                 temperature,
@@ -257,23 +216,6 @@ impl Provider {
 
         let generate_impl = async {
             match self {
-                Provider::OpenAI {
-                    model,
-                    api_key,
-                    base_url,
-                    max_tokens,
-                    temperature,
-                } => {
-                    let request = request_from_messages(messages, *max_tokens, *temperature);
-                    let response = openai::execute_openai_request(
-                        &request,
-                        api_key.as_str(),
-                        base_url.as_ref().map(|u| u.as_str()),
-                        model.as_str(),
-                    )
-                    .await?;
-                    Ok(response.content)
-                }
                 Provider::Azure {
                     model,
                     api_key,
@@ -290,23 +232,6 @@ impl Provider {
                         endpoint,
                         deployment_id,
                         api_version,
-                        model.as_str(),
-                    )
-                    .await?;
-                    Ok(response.content)
-                }
-                Provider::Groq {
-                    model,
-                    api_key,
-                    base_url,
-                    max_tokens,
-                    temperature,
-                } => {
-                    let request = request_from_messages(messages, *max_tokens, *temperature);
-                    let response = groq::execute_groq_request(
-                        &request,
-                        api_key.as_str(),
-                        base_url.as_ref().map(|u| u.as_str()),
                         model.as_str(),
                     )
                     .await?;
@@ -344,9 +269,7 @@ impl Provider {
 
     fn provider_kind(&self) -> &'static str {
         match self {
-            Provider::OpenAI { .. } => "openai",
             Provider::Azure { .. } => "azure",
-            Provider::Groq { .. } => "groq",
             #[cfg(test)]
             Provider::Mock { .. } => "mock",
             #[cfg(test)]
@@ -407,23 +330,6 @@ fn request_from_messages(
     }
 }
 
-fn convert_messages(messages: &[ChatMessage]) -> Vec<LLMChatMessage> {
-    messages
-        .iter()
-        .filter_map(|msg| match msg.role {
-            Role::User => Some(LLMChatMessage::user().content(&msg.content).build()),
-            Role::Assistant => Some(LLMChatMessage::assistant().content(&msg.content).build()),
-            Role::System => None,
-        })
-        .collect()
-}
-
-fn extract_system_prompt(messages: &[ChatMessage]) -> Option<&str> {
-    messages
-        .iter()
-        .find(|m| m.role == Role::System)
-        .map(|m| m.content.as_str())
-}
 
 #[cfg(test)]
 mod tests {
@@ -516,33 +422,6 @@ mod tests {
     fn test_api_key_as_str() {
         let key = ApiKey::new("sk-test");
         assert_eq!(key.as_str(), "sk-test");
-    }
-
-    #[test]
-    #[allow(clippy::unwrap_used)]
-    fn test_provider_from_profile_openai() {
-        let mut profile = ProviderProfile::new(
-            "test".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4"),
-        );
-        profile.temperature = Some(0.5);
-
-        let provider = Provider::from_profile(&profile, "sk-test").unwrap();
-
-        match provider {
-            Provider::OpenAI {
-                model,
-                temperature,
-                max_tokens,
-                ..
-            } => {
-                assert_eq!(model, ModelName::from("gpt-4"));
-                assert_eq!(temperature.value(), 0.5);
-                assert!(max_tokens.get() > 0);
-            }
-            _ => panic!("Expected OpenAI provider"),
-        }
     }
 
     #[test]

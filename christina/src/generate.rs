@@ -23,7 +23,6 @@ use christina_core::processing::{
 };
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::TokenCount;
-use christina_core::types::UsageTier;
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -93,21 +92,6 @@ async fn generate_commit_message_with_progress_impl(
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
 ) -> Result<GenerationResult> {
-    if config.use_experimental && config.usage_tier == UsageTier::Free {
-        // Free-tier limits are intentionally gated behind experimental to avoid
-        // surprising existing users unless explicitly enabled.
-        let warnings = apply_free_tier_limits(&mut config);
-        for warning in warnings {
-            warn!("{}", warning);
-            eprintln!("Warning: {}", warning);
-        }
-    } else if !config.use_experimental && config.usage_tier == UsageTier::Free {
-        warn!("usage_tier=free configured but experimental settings are disabled");
-        eprintln!(
-            "Warning: usage_tier=free configured but experimental settings are disabled; \
-             set use_experimental=true to apply"
-        );
-    }
     // Validate configuration before starting progress events
     let api_key = require_api_key(&config)?;
 
@@ -357,46 +341,6 @@ async fn generate_commit_message_with_progress_impl(
     Ok(result)
 }
 
-fn apply_free_tier_limits(config: &mut Config) -> Vec<String> {
-    let mut warnings = Vec::new();
-    let limits = &config.free_tier;
-
-    if config.max_input_tokens > limits.max_input_tokens {
-        warnings.push(format!(
-            "Free-tier mode: max_input_tokens reduced from {} to {}",
-            config.max_input_tokens.get(),
-            limits.max_input_tokens.get()
-        ));
-        config.max_input_tokens = limits.max_input_tokens;
-    }
-
-    if config.max_output_tokens > limits.max_output_tokens {
-        warnings.push(format!(
-            "Free-tier mode: max_output_tokens reduced from {} to {}",
-            config.max_output_tokens.get(),
-            limits.max_output_tokens.get()
-        ));
-        config.max_output_tokens = limits.max_output_tokens;
-    }
-
-    if config.max_concurrent_requests > limits.max_concurrent_requests {
-        warnings.push(format!(
-            "Free-tier mode: max_concurrent_requests reduced from {} to {}",
-            config.max_concurrent_requests, limits.max_concurrent_requests
-        ));
-        config.max_concurrent_requests = limits.max_concurrent_requests;
-    }
-
-    if config.commit_history_depth > limits.commit_history_depth {
-        warnings.push(format!(
-            "Free-tier mode: commit_history_depth reduced from {} to {}",
-            config.commit_history_depth, limits.commit_history_depth
-        ));
-        config.commit_history_depth = limits.commit_history_depth;
-    }
-
-    warnings
-}
 
 #[derive(Debug, Clone)]
 pub struct CommitInfo {
@@ -505,13 +449,13 @@ mod tests {
     }
 
     #[test]
-    fn test_config_to_profile_openai() {
+    fn test_config_to_profile_azure() {
         let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
+            model: "gpt-4o".into(),
+            model_provider: ProviderKind::Azure,
             api_key: Some("test-key".to_string()),
-            max_input_tokens: TokenCount::new_at_least_one(4000),
-            max_output_tokens: TokenCount::new_at_least_one(500),
+            max_input_tokens: TokenCount::new_at_least_one(256000),
+            max_output_tokens: TokenCount::new_at_least_one(8192),
             model_temperature: 0.7,
             ..Default::default()
         };
@@ -520,10 +464,10 @@ mod tests {
         let profile = config_to_profile(&config, api_key);
 
         assert_eq!(profile.name, "active");
-        assert_eq!(profile.provider, ProviderKind::OpenAI);
-        assert_eq!(profile.model.as_str(), "gpt-4");
-        assert_eq!(profile.max_input_tokens, TokenCount::new_at_least_one(4000));
-        assert_eq!(profile.max_output_tokens, TokenCount::new_at_least_one(500));
+        assert_eq!(profile.provider, ProviderKind::Azure);
+        assert_eq!(profile.model.as_str(), "gpt-4o");
+        assert_eq!(profile.max_input_tokens, TokenCount::new_at_least_one(256000));
+        assert_eq!(profile.max_output_tokens, TokenCount::new_at_least_one(8192));
         assert_eq!(profile.temperature, Some(0.7));
     }
 
@@ -553,30 +497,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_config_to_profile_groq() {
-        let config = Config {
-            model: "mixtral-8x7b".into(),
-            model_provider: ProviderKind::Groq,
-            api_key: Some("groq-key".to_string()),
-            max_input_tokens: TokenCount::new_at_least_one(32000),
-            max_output_tokens: TokenCount::new_at_least_one(2000),
-            model_temperature: 0.3,
-            ..Default::default()
-        };
-
-        let api_key = require_api_key(&config).unwrap();
-        let profile = config_to_profile(&config, api_key);
-
-        assert_eq!(profile.provider, ProviderKind::Groq);
-        assert_eq!(profile.model.as_str(), "mixtral-8x7b");
-    }
 
     #[test]
     fn test_config_to_profile_no_api_key() {
         let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
+            model: "gpt-4o".into(),
+            model_provider: ProviderKind::Azure,
             api_key: None,
             ..Default::default()
         };
@@ -664,8 +590,8 @@ mod tests {
     #[tokio::test]
     async fn test_generate_with_missing_api_key() {
         let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
+            model: "gpt-4o".into(),
+            model_provider: ProviderKind::Azure,
             api_key: None,
             ..Default::default()
         };
@@ -692,8 +618,8 @@ mod tests {
     #[tokio::test]
     async fn test_generate_with_empty_api_key() {
         let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
+            model: "gpt-4o".into(),
+            model_provider: ProviderKind::Azure,
             api_key: Some(String::new()),
             ..Default::default()
         };
@@ -720,11 +646,11 @@ mod tests {
     #[tokio::test]
     async fn test_generate_with_empty_diff() {
         let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
+            model: "gpt-4o".into(),
+            model_provider: ProviderKind::Azure,
             api_key: Some("test-key".to_string()),
-            max_input_tokens: TokenCount::new_at_least_one(4000),
-            max_output_tokens: TokenCount::new_at_least_one(500),
+            max_input_tokens: TokenCount::new_at_least_one(256000),
+            max_output_tokens: TokenCount::new_at_least_one(8192),
             ..Default::default()
         };
 

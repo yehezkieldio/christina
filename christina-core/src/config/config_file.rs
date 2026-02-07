@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     profile::Profiles,
-    types::{FreeTierLimits, TokenCount, UsageTier, commit::ValidationMode},
+    types::{TokenCount, commit::ValidationMode},
 };
 
 /// Standard (common) configuration settings.
@@ -60,12 +60,6 @@ pub struct AdvancedConfig {
 pub struct ExperimentalConfig {
     /// Enable experimental settings (default: false)
     pub use_experimental: bool,
-
-    /// Usage tier for rate-limit-aware defaults
-    pub usage_tier: UsageTier,
-
-    /// Free-tier limits applied when usage_tier is set to free
-    pub free_tier: FreeTierLimits,
 }
 
 /// On-disk configuration representation (serde-friendly)

@@ -7,7 +7,6 @@ use anyhow::Result;
 
 use crate::cli::ConfigCommands;
 use crate::config::Config;
-use christina_core::types::UsageTier;
 
 /// Handle config commands - routes between CLI and TUI based on subcommand.
 pub fn handle_config_command(command: ConfigCommands) -> Result<()> {
@@ -126,30 +125,7 @@ fn handle_list_with_config(config: &Config) {
         "  prompt_failure_rate_threshold: {}",
         config.prompt_failure_rate_threshold
     );
-    println!(
-        "  usage_tier: {}",
-        match config.usage_tier {
-            UsageTier::Standard => "standard",
-            UsageTier::Free => "free",
-        }
-    );
     println!("  use_experimental: {}", config.use_experimental);
-    println!(
-        "  free_tier_max_input_tokens: {}",
-        config.free_tier.max_input_tokens.get()
-    );
-    println!(
-        "  free_tier_max_output_tokens: {}",
-        config.free_tier.max_output_tokens.get()
-    );
-    println!(
-        "  free_tier_max_concurrent_requests: {}",
-        config.free_tier.max_concurrent_requests
-    );
-    println!(
-        "  free_tier_commit_history_depth: {}",
-        config.free_tier.commit_history_depth
-    );
     println!();
     println!(
         "  Active profile: {}",
@@ -181,8 +157,8 @@ mod tests {
 
     fn create_test_config() -> Config {
         Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
+            model: "gpt-4o".into(),
+            model_provider: ProviderKind::Azure,
             api_key: Some("test-key".to_string()),
             ..Default::default()
         }
@@ -282,10 +258,6 @@ mod tests {
     #[test]
     fn test_handle_set_different_types() {
         let mut config = create_test_config();
-
-        let result = handle_set_with_config(&mut config, "model_provider", "azure");
-        assert!(result.is_ok());
-        assert_eq!(config.model_provider, ProviderKind::Azure);
 
         let result = handle_set_with_config(&mut config, "max_input_tokens", "2000");
         assert!(result.is_ok());

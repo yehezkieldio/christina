@@ -91,7 +91,7 @@ pub enum ProfileCommands {
     Create {
         /// Profile name
         name: String,
-        /// Model provider (openai, azure, etc.)
+        /// Model provider (azure, etc.)
         #[arg(long)]
         provider: Option<String>,
         /// Model name
@@ -123,7 +123,7 @@ pub enum ProfileCommands {
     Edit {
         /// Profile name
         name: String,
-        /// Model provider (openai, azure, etc.)
+        /// Model provider (azure, etc.)
         #[arg(long)]
         provider: Option<String>,
         /// Model name
@@ -326,9 +326,9 @@ mod tests {
             "create",
             "my-profile",
             "--provider",
-            "openai",
+            "azure",
             "--model",
-            "gpt-4",
+            "gpt-4o",
         ])
         .expect("Failed to parse CLI");
 

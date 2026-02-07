@@ -136,7 +136,7 @@ impl ProviderProfile<String> {
 /// directly into the parent config structure, enabling TOML files like:
 /// ```toml
 /// [profiles.default]
-/// provider = "openai"
+/// provider = "azure"
 /// model = "gpt-4"
 /// ```
 ///
@@ -292,8 +292,8 @@ mod tests {
     fn profile_validation() {
         let profile = ProviderProfile::new(
             "test".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-5-nano"),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4o"),
         );
         assert!(profile.validate().is_ok());
 
@@ -309,8 +309,8 @@ mod tests {
         let mut manager = Profiles::new();
         let profile = ProviderProfile::new(
             "test".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4.1-mini"),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4o"),
         );
 
         assert!(manager.add(profile.clone()).is_ok());
@@ -326,18 +326,11 @@ mod tests {
     }
 
     #[test]
-    fn provider_profile_new_sets_azure_version_only_for_azure() {
-        let openai = ProviderProfile::new(
-            "openai".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4.1-mini"),
-        );
-        assert!(openai.azure_api_version.is_none());
-
+    fn provider_profile_new_sets_azure_version_for_azure() {
         let azure = ProviderProfile::new(
             "azure".to_string(),
             ProviderKind::Azure,
-            ModelName::from("gpt-4.1-mini"),
+            ModelName::from("gpt-4o"),
         );
         assert_eq!(
             azure.azure_api_version,

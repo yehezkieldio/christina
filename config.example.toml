@@ -63,36 +63,10 @@ prompt_failure_rate_threshold = 0.05
 # Enable experimental settings (default: false)
 use_experimental = false
 
-# Usage tier for rate-limit-aware defaults: standard | free
-usage_tier = "standard"
-
-# Free-tier limits applied when usage_tier = "free"
-[experimental.free_tier]
-max_input_tokens = 16000
-max_output_tokens = 512
-max_concurrent_requests = 1
-commit_history_depth = 3
-
 # Provider Profiles
 #
 # Each profile defines a connection to an LLM provider.
 # You can define multiple profiles and switch between them.
-
-# OpenAI Example
-[profiles.default]
-name = "default"
-provider = "openai"
-model = "gpt-4.1-mini"
-# API key can be:
-# - Inline: api_key = { value = "sk-..." }
-# - From keyring: api_key = { keyring = "christina.openai" }
-# - From environment: api_key = { env = "OPENAI_API_KEY" }
-api_key = { env = "OPENAI_API_KEY" }
-max_input_tokens = 128000
-max_output_tokens = 4096
-temperature = 0.3
-# Optional: Override API base URL (for proxies or compatible endpoints)
-# api_url = "https://api.openai.com/v1"
 
 # Azure OpenAI Example
 [profiles.azure]
@@ -104,39 +78,19 @@ api_key = { env = "AZURE_OPENAI_API_KEY" }
 api_url = "https://your-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions"
 azure_api_version = "2024-12-01-preview"
 azure_deployment_id = "gpt-4"
-max_input_tokens = 128000
-max_output_tokens = 4096
+max_input_tokens = 256000
+max_output_tokens = 8192
 temperature = 0.3
-
-# Groq Example
-[profiles.groq]
-name = "groq"
-provider = "groq"
-model = "llama-3.1-70b-versatile"
-api_key = { env = "GROQ_API_KEY" }
-max_input_tokens = 128000
-max_output_tokens = 4096
-temperature = 0.3
-# Optional: Override API base URL
-# api_url = "https://api.groq.com/openai/v1"
-
-# OpenAI-compatible provider example
-[profiles.custom]
-name = "custom"
-provider = "openai"
-model = "custom-model"
-api_key = { value = "your-api-key" }
-api_url = "https://custom-provider.example.com/v1"
-max_input_tokens = 32000
-max_output_tokens = 2048
-temperature = 0.5
 
 # High-token model for large diffs
 [profiles.large-context]
 name = "large-context"
-provider = "openai"
-model = "gpt-4.1"
-api_key = { env = "OPENAI_API_KEY" }
-max_input_tokens = 256000
-max_output_tokens = 4096
+provider = "azure"
+model = "gpt-4o"
+api_key = { env = "AZURE_OPENAI_API_KEY" }
+api_url = "https://your-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions"
+azure_api_version = "2024-12-01-preview"
+azure_deployment_id = "gpt-4o"
+max_input_tokens = 512000
+max_output_tokens = 16384
 temperature = 0.3

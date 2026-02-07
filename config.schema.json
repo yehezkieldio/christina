@@ -23,13 +23,6 @@
     "experimental": {
       "description": "Experimental settings (opt-in)",
       "default": {
-        "free_tier": {
-          "commit_history_depth": 3,
-          "max_concurrent_requests": 1,
-          "max_input_tokens": 16000,
-          "max_output_tokens": 512
-        },
-        "usage_tier": "standard",
         "use_experimental": false
       },
       "allOf": [
@@ -122,67 +115,10 @@
       "description": "Experimental configuration settings (opt-in).",
       "type": "object",
       "properties": {
-        "free_tier": {
-          "description": "Free-tier limits applied when usage_tier is set to free",
-          "default": {
-            "commit_history_depth": 3,
-            "max_concurrent_requests": 1,
-            "max_input_tokens": 16000,
-            "max_output_tokens": 512
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/FreeTierLimits"
-            }
-          ]
-        },
-        "usage_tier": {
-          "description": "Usage tier for rate-limit-aware defaults",
-          "default": "standard",
-          "allOf": [
-            {
-              "$ref": "#/definitions/UsageTier"
-            }
-          ]
-        },
         "use_experimental": {
           "description": "Enable experimental settings (default: false)",
           "default": false,
           "type": "boolean"
-        }
-      }
-    },
-    "FreeTierLimits": {
-      "description": "Limits applied to the free usage tier.",
-      "type": "object",
-      "properties": {
-        "commit_history_depth": {
-          "default": 3,
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "max_concurrent_requests": {
-          "default": 1,
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "max_input_tokens": {
-          "default": 16000,
-          "allOf": [
-            {
-              "$ref": "#/definitions/TokenCount"
-            }
-          ]
-        },
-        "max_output_tokens": {
-          "default": 512,
-          "allOf": [
-            {
-              "$ref": "#/definitions/TokenCount"
-            }
-          ]
         }
       }
     },
@@ -207,9 +143,7 @@
       "description": "Supported LLM API providers.\n\nThis enum drives client instantiation and request formatting. Each variant corresponds to a distinct API contract.",
       "type": "string",
       "enum": [
-        "openai",
-        "azure",
-        "groq"
+        "azure"
       ]
     },
     "ProviderProfile_for_String": {
@@ -356,14 +290,6 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 1.0
-    },
-    "UsageTier": {
-      "description": "Usage tier for rate-limit-aware defaults.",
-      "type": "string",
-      "enum": [
-        "standard",
-        "free"
-      ]
     },
     "ValidationMode": {
       "description": "Validation mode for commit message length checks.\n\nWHY three modes: Different teams have different policies. Strict enforces limits (CI integration), Soft guides without blocking (developer experience), Disabled allows custom workflows (automated tools, migrations).",

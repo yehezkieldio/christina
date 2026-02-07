@@ -381,7 +381,6 @@ struct TraceStats {
     model: Option<christina_core::types::ModelName>,
     max_input_tokens: Option<christina_core::types::tokens::TokenCount>,
     max_output_tokens: Option<christina_core::types::tokens::TokenCount>,
-    usage_tier: Option<christina_core::types::UsageTier>,
     use_commit_history: Option<bool>,
     commit_history_depth: Option<usize>,
     max_concurrent_requests: Option<usize>,
@@ -411,7 +410,6 @@ impl TraceStats {
             model: None,
             max_input_tokens: None,
             max_output_tokens: None,
-            usage_tier: None,
             use_commit_history: None,
             commit_history_depth: None,
             max_concurrent_requests: None,
@@ -424,7 +422,6 @@ impl TraceStats {
         self.model = Some(config.model.clone());
         self.max_input_tokens = Some(config.max_input_tokens);
         self.max_output_tokens = Some(config.max_output_tokens);
-        self.usage_tier = Some(config.usage_tier);
         self.use_commit_history = Some(config.use_commit_history);
         self.commit_history_depth = Some(config.commit_history_depth);
         self.max_concurrent_requests = Some(config.max_concurrent_requests);
@@ -497,9 +494,6 @@ fn print_trace_summary(trace_stats: Option<&Arc<Mutex<TraceStats>>>) {
     }
     if let Some(max_output) = stats.max_output_tokens {
         ui::print_trace(&format!("max output tokens: {}", max_output.get()));
-    }
-    if let Some(usage_tier) = stats.usage_tier {
-        ui::print_trace(&format!("usage tier: {}", usage_tier));
     }
     if let Some(use_history) = stats.use_commit_history {
         ui::print_trace(&format!("commit history: {}", use_history));

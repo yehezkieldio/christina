@@ -13,21 +13,17 @@
 pub mod backend_id;
 pub mod commit;
 pub mod diff;
-pub mod free_tier;
 pub mod model_name;
 pub mod path;
 pub mod provider_kind;
 pub mod temperature;
 pub mod tokens;
-pub mod usage_tier;
 
 pub use backend_id::GenerationId;
 pub use commit::CommitMessage;
 pub use diff::{DiffChunk, FileDiff, MAX_DIFF_SIZE};
-pub use free_tier::FreeTierLimits;
 pub use model_name::ModelName;
 pub use path::FilePath;
 pub use provider_kind::ProviderKind;
 pub use temperature::Temperature;
 pub use tokens::TokenCount;
-pub use usage_tier::UsageTier;

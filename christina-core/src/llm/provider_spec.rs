@@ -11,7 +11,7 @@ use url::Url;
 /// Configuration for an LLM provider
 #[derive(Debug, Clone)]
 pub struct ProviderSpec {
-    /// The kind of provider (OpenAI, Azure, Groq, etc.)
+    /// The kind of provider (Azure, etc.)
     pub kind: ProviderKind,
     /// The model name to use
     pub model: ModelName,
@@ -32,9 +32,7 @@ impl ProviderSpec {
 
     fn validate_endpoint_consistency(&self) -> Result<(), ProviderError> {
         match (&self.kind, &self.endpoint) {
-            (ProviderKind::OpenAI, ProviderEndpoint::OpenAi { .. }) => Ok(()),
             (ProviderKind::Azure, ProviderEndpoint::AzureOpenAi { .. }) => Ok(()),
-            (ProviderKind::Groq, ProviderEndpoint::Groq { .. }) => Ok(()),
             (kind, endpoint) => Err(ProviderError::InvalidConfig(format!(
                 "Provider kind {:?} is incompatible with endpoint variant {:?}",
                 kind, endpoint
@@ -44,8 +42,6 @@ impl ProviderSpec {
 
     fn validate_url_scheme(&self) -> Result<(), ProviderError> {
         let scheme = match &self.endpoint {
-            ProviderEndpoint::OpenAi { base_url } => base_url.scheme(),
-            ProviderEndpoint::Groq { base_url } => base_url.scheme(),
             ProviderEndpoint::AzureOpenAi { endpoint, .. } => {
                 endpoint.endpoint.split("://").next().unwrap_or("https")
             }
@@ -66,16 +62,12 @@ impl ProviderSpec {
 /// Provider-specific endpoint configuration
 #[derive(Debug, Clone)]
 pub enum ProviderEndpoint {
-    /// OpenAI-compatible endpoint
-    OpenAi { base_url: Url },
     /// Azure OpenAI endpoint with deployment details
     AzureOpenAi {
         endpoint: AzureEndpoint,
         api_version: String,
         deployment_id: String,
     },
-    /// Groq endpoint
-    Groq { base_url: Url },
 }
 
 #[cfg(test)]
@@ -83,64 +75,6 @@ pub enum ProviderEndpoint {
 mod tests {
     use super::*;
 
-    #[test]
-    fn provider_spec_creation() {
-        let model = ModelName::from("gpt-4");
-        let max_tokens = TokenCount::new(2048).unwrap();
-        let base_url = Url::parse("https://api.openai.com/v1").unwrap();
-
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model,
-            endpoint: ProviderEndpoint::OpenAi { base_url },
-            max_tokens,
-            temperature: Temperature::try_new(0.7).unwrap(),
-        };
-
-        assert_eq!(spec.kind, ProviderKind::OpenAI);
-        assert_eq!(spec.temperature.value(), 0.7);
-    }
-
-    #[test]
-    fn provider_endpoint_openai() {
-        let url = Url::parse("https://api.openai.com/v1").unwrap();
-        let endpoint = ProviderEndpoint::OpenAi { base_url: url };
-
-        match endpoint {
-            ProviderEndpoint::OpenAi { base_url } => {
-                assert_eq!(base_url.host_str(), Some("api.openai.com"));
-            }
-            _ => panic!("Expected OpenAi variant"),
-        }
-    }
-
-    #[test]
-    fn provider_endpoint_groq() {
-        let url = Url::parse("https://api.groq.com/v1").unwrap();
-        let endpoint = ProviderEndpoint::Groq { base_url: url };
-
-        match endpoint {
-            ProviderEndpoint::Groq { base_url } => {
-                assert_eq!(base_url.host_str(), Some("api.groq.com"));
-            }
-            _ => panic!("Expected Groq variant"),
-        }
-    }
-
-    #[test]
-    fn validate_valid_spec() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: Temperature::try_new(0.7).unwrap(),
-        };
-
-        assert!(spec.validate().is_ok());
-    }
 
     #[test]
     fn validate_temperature_nan() {
@@ -161,21 +95,6 @@ mod tests {
     fn validate_temperature_boundary_values() {
         assert!(Temperature::try_new(0.0).is_ok());
         assert!(Temperature::try_new(2.0).is_ok());
-    }
-
-    #[test]
-    fn validate_endpoint_consistency_openai_ok() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: Temperature::try_new(0.7).unwrap(),
-        };
-
-        assert!(spec.validate().is_ok());
     }
 
     #[test]
@@ -200,45 +119,18 @@ mod tests {
     }
 
     #[test]
-    fn validate_endpoint_consistency_groq_ok() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::Groq,
-            model: ModelName::from("llama-3"),
-            endpoint: ProviderEndpoint::Groq {
-                base_url: Url::parse("https://api.groq.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: Temperature::try_new(0.7).unwrap(),
-        };
-
-        assert!(spec.validate().is_ok());
-    }
-
-    #[test]
-    fn validate_endpoint_consistency_mismatch() {
-        // Azure kind with OpenAI endpoint
+    fn validate_url_scheme_https_ok() {
         let spec = ProviderSpec {
             kind: ProviderKind::Azure,
             model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
-            },
-            max_tokens: TokenCount::new(2048).unwrap(),
-            temperature: Temperature::try_new(0.7).unwrap(),
-        };
-
-        let result = spec.validate();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("incompatible"));
-    }
-
-    #[test]
-    fn validate_url_scheme_https_ok() {
-        let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("https://api.openai.com/v1").unwrap(),
+            endpoint: ProviderEndpoint::AzureOpenAi {
+                endpoint: AzureEndpoint {
+                    endpoint: "https://test.openai.azure.com".to_string(),
+                    api_version: "2024-02-15".to_string(),
+                    deployment_id: "gpt-4".to_string(),
+                },
+                api_version: "2024-02-15".to_string(),
+                deployment_id: "gpt-4".to_string(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
             temperature: Temperature::try_new(0.7).unwrap(),
@@ -250,10 +142,16 @@ mod tests {
     #[test]
     fn validate_url_scheme_http_rejected() {
         let spec = ProviderSpec {
-            kind: ProviderKind::OpenAI,
+            kind: ProviderKind::Azure,
             model: ModelName::from("gpt-4"),
-            endpoint: ProviderEndpoint::OpenAi {
-                base_url: Url::parse("http://api.openai.com/v1").unwrap(),
+            endpoint: ProviderEndpoint::AzureOpenAi {
+                endpoint: AzureEndpoint {
+                    endpoint: "http://test.openai.azure.com".to_string(), // Using http
+                    api_version: "2024-02-15".to_string(),
+                    deployment_id: "gpt-4".to_string(),
+                },
+                api_version: "2024-02-15".to_string(),
+                deployment_id: "gpt-4".to_string(),
             },
             max_tokens: TokenCount::new(2048).unwrap(),
             temperature: Temperature::try_new(0.7).unwrap(),

@@ -114,13 +114,6 @@ pub struct Config {
     #[serde(default = "default_lockfile_token_limit")]
     pub lockfile_token_limit: TokenCount,
 
-    /// Usage tier for rate-limit-aware defaults (standard or free)
-    #[serde(default)]
-    pub usage_tier: UsageTier,
-
-    /// Free-tier limits applied when usage_tier is set to free
-    #[serde(default)]
-    pub free_tier: FreeTierLimits,
 
     /// Enable experimental settings (default: false)
     #[serde(default)]
@@ -165,10 +158,10 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            max_input_tokens: TokenCount::new_at_least_one(4096),
-            max_output_tokens: TokenCount::new_at_least_one(500),
-            model_provider: ProviderKind::OpenAI,
-            model: ModelName::from("gpt-4.1-mini"),
+            max_input_tokens: TokenCount::new_at_least_one(256000),
+            max_output_tokens: TokenCount::new_at_least_one(8192),
+            model_provider: ProviderKind::Azure,
+            model: ModelName::from("gpt-4o"),
             api_key: None,
             model_api_url: None,
             azure_api_version: None,
@@ -176,8 +169,6 @@ impl Default for Config {
             model_temperature: 0.3,
             ignore_files: Vec::new(),
             lockfile_token_limit: default_lockfile_token_limit(),
-            usage_tier: UsageTier::Standard,
-            free_tier: FreeTierLimits::default(),
             use_experimental: false,
             profiles: Profiles::new(),
             commit_message_max_length: None,
@@ -355,8 +346,6 @@ impl Config {
         self.max_partial_failure_rate = file.advanced.max_partial_failure_rate;
         self.prompt_failure_rate_threshold = file.advanced.prompt_failure_rate_threshold;
         self.use_experimental = file.experimental.use_experimental;
-        self.usage_tier = file.experimental.usage_tier;
-        self.free_tier = file.experimental.free_tier;
     }
 
     fn to_config_file(&self) -> ConfigFile {
@@ -382,8 +371,6 @@ impl Config {
             },
             experimental: christina_core::config::ExperimentalConfig {
                 use_experimental: self.use_experimental,
-                usage_tier: self.usage_tier,
-                free_tier: self.free_tier.clone(),
             },
             profiles,
         }
@@ -442,43 +429,6 @@ impl Config {
             ));
         }
 
-        if self.free_tier.max_input_tokens > max_input {
-            warnings.push(format!(
-                "free_tier.max_input_tokens clamped from {} to {}",
-                self.free_tier.max_input_tokens.get(),
-                max_input.get()
-            ));
-            self.free_tier.max_input_tokens = max_input;
-        }
-
-        if self.free_tier.max_output_tokens > max_output {
-            warnings.push(format!(
-                "free_tier.max_output_tokens clamped from {} to {}",
-                self.free_tier.max_output_tokens.get(),
-                max_output.get()
-            ));
-            self.free_tier.max_output_tokens = max_output;
-        }
-
-        let original_free_concurrency = self.free_tier.max_concurrent_requests;
-        self.free_tier.max_concurrent_requests =
-            self.free_tier.max_concurrent_requests.clamp(1, 20);
-        if self.free_tier.max_concurrent_requests != original_free_concurrency {
-            warnings.push(format!(
-                "free_tier.max_concurrent_requests clamped from {} to {}",
-                original_free_concurrency, self.free_tier.max_concurrent_requests
-            ));
-        }
-
-        let original_free_history = self.free_tier.commit_history_depth;
-        self.free_tier.commit_history_depth = self.free_tier.commit_history_depth.clamp(0, 50);
-        if self.free_tier.commit_history_depth != original_free_history {
-            warnings.push(format!(
-                "free_tier.commit_history_depth clamped from {} to {}",
-                original_free_history, self.free_tier.commit_history_depth
-            ));
-        }
-
         let original_failure_rate = self.max_partial_failure_rate;
         let (clamped_failure_rate, mut failure_warnings) =
             clamp_partial_failure_rate(original_failure_rate);
@@ -486,13 +436,6 @@ impl Config {
             self.max_partial_failure_rate = clamped_failure_rate;
         }
         warnings.append(&mut failure_warnings);
-
-        if !self.use_experimental && self.usage_tier != UsageTier::Standard {
-            warnings.push(
-                "usage_tier set but experimental settings disabled; set use_experimental=true to apply"
-                    .to_string(),
-            );
-        }
 
         // Warn if provider is unknown (but don't fail - let provider selection handle it)
         warnings
@@ -574,21 +517,7 @@ impl Config {
             "azure_deployment_id" => self.azure_deployment_id.clone(),
             "ignore_files" => Some(self.ignore_files.join(",")),
             "lockfile_token_limit" => Some(self.lockfile_token_limit.get().to_string()),
-            "usage_tier" => Some(match self.usage_tier {
-                UsageTier::Standard => "standard".to_string(),
-                UsageTier::Free => "free".to_string(),
-            }),
             "use_experimental" => Some(self.use_experimental.to_string()),
-            "free_tier_max_input_tokens" => Some(self.free_tier.max_input_tokens.get().to_string()),
-            "free_tier_max_output_tokens" => {
-                Some(self.free_tier.max_output_tokens.get().to_string())
-            }
-            "free_tier_max_concurrent_requests" => {
-                Some(self.free_tier.max_concurrent_requests.to_string())
-            }
-            "free_tier_commit_history_depth" => {
-                Some(self.free_tier.commit_history_depth.to_string())
-            }
             "commit_message_max_length" => self.commit_message_max_length.map(|v| v.to_string()),
             "commit_message_validation_mode" => Some(match self.commit_message_validation_mode {
                 ValidationMode::Strict => "strict".to_string(),
@@ -714,43 +643,8 @@ impl Config {
                     .context("Invalid number")?;
                 self.lockfile_token_limit = parsed;
             }
-            "usage_tier" => {
-                self.usage_tier = match value.to_lowercase().as_str() {
-                    "standard" => UsageTier::Standard,
-                    "free" => UsageTier::Free,
-                    _ => anyhow::bail!("Invalid usage_tier: must be standard or free"),
-                };
-            }
             "use_experimental" => {
                 self.use_experimental = parse_bool(value)?;
-            }
-            "free_tier_max_input_tokens" => {
-                let parsed: TokenCount = value
-                    .parse()
-                    .map_err(anyhow::Error::msg)
-                    .context("Invalid number")?;
-                self.free_tier.max_input_tokens = parsed;
-            }
-            "free_tier_max_output_tokens" => {
-                let parsed: TokenCount = value
-                    .parse()
-                    .map_err(anyhow::Error::msg)
-                    .context("Invalid number")?;
-                self.free_tier.max_output_tokens = parsed;
-            }
-            "free_tier_max_concurrent_requests" => {
-                let parsed: usize = value
-                    .parse()
-                    .map_err(anyhow::Error::msg)
-                    .context("Invalid number")?;
-                self.free_tier.max_concurrent_requests = parsed;
-            }
-            "free_tier_commit_history_depth" => {
-                let parsed: usize = value
-                    .parse()
-                    .map_err(anyhow::Error::msg)
-                    .context("Invalid number")?;
-                self.free_tier.commit_history_depth = parsed;
             }
             "commit_message_max_length" => {
                 if value.is_empty() {
@@ -904,27 +798,19 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     writeln!(out, "# Generated by Christina. Edit values as needed.")?;
     writeln!(out)?;
 
-    writeln!(out, "# Schema version for config migrations")?;
     writeln!(out, "schema_version = {}", config.schema_version)?;
 
     writeln!(out)?;
-    writeln!(out, "# Standard settings (common defaults)")?;
     writeln!(out, "[standard]")?;
-    writeln!(out, "# Active profile to use by default")?;
     if let Some(active) = &config.standard.active_profile {
         writeln!(out, "active_profile = {}", toml_string(active))?;
     } else {
         writeln!(out, "# active_profile = \"default\"")?;
     }
-    writeln!(out, "# Maximum length for commit messages (default: 72)")?;
     match config.standard.commit_message_max_length {
         Some(max_len) => writeln!(out, "commit_message_max_length = {}", max_len)?,
         None => writeln!(out, "# commit_message_max_length = 72")?,
     }
-    writeln!(
-        out,
-        "# Validation mode for commit message length: soft | strict | disabled"
-    )?;
     writeln!(
         out,
         "commit_message_validation_mode = {}",
@@ -934,21 +820,12 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     )?;
     writeln!(
         out,
-        "# Files to exclude from AI processing (empty = include everything)"
-    )?;
-    writeln!(
-        out,
         "ignore_files = {}",
         toml_value(&config.standard.ignore_files)?
     )?;
 
     writeln!(out)?;
-    writeln!(out, "# Advanced settings")?;
     writeln!(out, "[advanced]")?;
-    writeln!(
-        out,
-        "# Maximum tokens to include from lockfiles when truncating"
-    )?;
     writeln!(
         out,
         "lockfile_token_limit = {}",
@@ -956,28 +833,18 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     )?;
     writeln!(
         out,
-        "# Whether to include commit history context in prompts"
-    )?;
-    writeln!(
-        out,
         "use_commit_history = {}",
         config.advanced.use_commit_history
     )?;
-    writeln!(out, "# Number of recent commits to include")?;
     writeln!(
         out,
         "commit_history_depth = {}",
         config.advanced.commit_history_depth
     )?;
-    writeln!(out, "# Maximum concurrent LLM requests")?;
     writeln!(
         out,
         "max_concurrent_requests = {}",
         config.advanced.max_concurrent_requests
-    )?;
-    writeln!(
-        out,
-        "# Maximum allowed chunk failure rate before aborting map phase"
     )?;
     writeln!(
         out,
@@ -986,54 +853,16 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     )?;
     writeln!(
         out,
-        "# Failure rate threshold for prompting user confirmation"
-    )?;
-    writeln!(
-        out,
         "prompt_failure_rate_threshold = {}",
         config.advanced.prompt_failure_rate_threshold
     )?;
 
     writeln!(out)?;
-    writeln!(out, "# Experimental settings (opt-in)")?;
     writeln!(out, "[experimental]")?;
-    writeln!(out, "# Enable experimental settings")?;
     writeln!(
         out,
         "use_experimental = {}",
         config.experimental.use_experimental
-    )?;
-    writeln!(
-        out,
-        "# Usage tier for rate-limit-aware defaults: standard | free"
-    )?;
-    writeln!(
-        out,
-        "usage_tier = {}",
-        toml_string(&config.experimental.usage_tier.to_string())
-    )?;
-
-    writeln!(out)?;
-    writeln!(out, "[experimental.free_tier]")?;
-    writeln!(
-        out,
-        "max_input_tokens = {}",
-        config.experimental.free_tier.max_input_tokens.get()
-    )?;
-    writeln!(
-        out,
-        "max_output_tokens = {}",
-        config.experimental.free_tier.max_output_tokens.get()
-    )?;
-    writeln!(
-        out,
-        "max_concurrent_requests = {}",
-        config.experimental.free_tier.max_concurrent_requests
-    )?;
-    writeln!(
-        out,
-        "commit_history_depth = {}",
-        config.experimental.free_tier.commit_history_depth
     )?;
 
     if config.profiles.definitions.is_empty() {
@@ -1127,10 +956,10 @@ mod tests {
     #[test]
     fn default_config() {
         let config = Config::default();
-        assert_eq!(config.max_input_tokens.get(), 4096);
-        assert_eq!(config.max_output_tokens.get(), 500);
-        assert_eq!(config.model_provider, ProviderKind::OpenAI);
-        assert_eq!(config.model, ModelName::from("gpt-4.1-mini"));
+        assert_eq!(config.max_input_tokens.get(), 256000);
+        assert_eq!(config.max_output_tokens.get(), 8192);
+        assert_eq!(config.model_provider, ProviderKind::Azure);
+        assert_eq!(config.model, ModelName::from("gpt-4o"));
         assert!(config.api_key.is_none());
     }
 
@@ -1215,13 +1044,8 @@ mod tests {
     fn set_model_provider_valid() {
         let mut config = Config::default();
         config
-            .set("model_provider", "openai")
-            .expect("should set openai provider");
-        assert_eq!(config.model_provider, ProviderKind::OpenAI);
-
-        config
             .set("model_provider", "azure")
-            .expect("should set valid provider");
+            .expect("should set azure provider");
         assert_eq!(config.model_provider, ProviderKind::Azure);
     }
 
@@ -1677,19 +1501,19 @@ mod tests {
     #[test]
     fn to_profile() {
         let mut config = Config::default();
-        config.model_provider = ProviderKind::OpenAI;
-        config.model = ModelName::from("gpt-5.2");
-        config.api_key = Some("sk-openai-test".to_string());
-        config.max_input_tokens = TokenCount::new_at_least_one(16384);
-        config.max_output_tokens = TokenCount::new_at_least_one(2048);
+        config.model_provider = ProviderKind::Azure;
+        config.model = ModelName::from("gpt-4o");
+        config.api_key = Some("sk-azure-test".to_string());
+        config.max_input_tokens = TokenCount::new_at_least_one(256000);
+        config.max_output_tokens = TokenCount::new_at_least_one(8192);
 
-        let profile = config.to_profile("openai-profile".to_string());
+        let profile = config.to_profile("azure-profile".to_string());
 
-        assert_eq!(profile.name, "openai-profile");
-        assert_eq!(profile.provider, ProviderKind::OpenAI);
-        assert_eq!(profile.model, ModelName::from("gpt-5.2"));
-        assert_eq!(profile.api_key, Secret::Value("sk-openai-test".to_string()));
-        assert_eq!(profile.max_input_tokens.get(), 16384);
-        assert_eq!(profile.max_output_tokens.get(), 2048);
+        assert_eq!(profile.name, "azure-profile");
+        assert_eq!(profile.provider, ProviderKind::Azure);
+        assert_eq!(profile.model, ModelName::from("gpt-4o"));
+        assert_eq!(profile.api_key, Secret::Value("sk-azure-test".to_string()));
+        assert_eq!(profile.max_input_tokens.get(), 256000);
+        assert_eq!(profile.max_output_tokens.get(), 8192);
     }
 }

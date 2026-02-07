@@ -241,7 +241,7 @@ fn handle_create(
     // Parse provider with fallback
     let provider_kind = match provider {
         Some(p) => p.parse().map_err(anyhow::Error::msg)?,
-        None => ProviderKind::OpenAI,
+        None => ProviderKind::Azure,
     };
 
     // Create base profile
@@ -443,8 +443,8 @@ mod tests {
         let mut config = base_config();
         let profile = ProviderProfile::new(
             name.to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4"),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4o"),
         );
         config.profiles.add(profile).unwrap();
         config
@@ -489,7 +489,7 @@ mod tests {
 
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Profile: test"));
-        assert!(output_str.contains("Provider: openai"));
+        assert!(output_str.contains("Provider: azure"));
     }
 
     #[test]
@@ -511,9 +511,9 @@ mod tests {
             &mut config,
             &mut output,
             "new",
-            Some("openai".to_string()),
-            Some("gpt-4".to_string()),
-            Some("env:OPENAI_KEY".to_string()),
+            Some("azure".to_string()),
+            Some("gpt-4o".to_string()),
+            Some("env:AZURE_OPENAI_API_KEY".to_string()),
             false,
             None,
             None,
@@ -525,7 +525,7 @@ mod tests {
 
         assert!(config.profiles.exists("new"));
         let profile = config.profiles.get("new").unwrap();
-        assert_eq!(profile.provider, ProviderKind::OpenAI);
+        assert_eq!(profile.provider, ProviderKind::Azure);
     }
 
     #[test]
@@ -680,8 +680,8 @@ mod tests {
         let mut config = config_with_profile("dev");
         let profile = ProviderProfile::new(
             "prod".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4"),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4o"),
         );
         config.profiles.add(profile).unwrap();
         let mut output = Vec::new();
@@ -728,8 +728,8 @@ mod tests {
         let mut config = config_with_profile("source");
         let profile = ProviderProfile::new(
             "target".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4"),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4o"),
         );
         config.profiles.add(profile).unwrap();
         let mut output = Vec::new();

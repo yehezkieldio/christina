@@ -19,10 +19,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
-    #[serde(rename = "openai", alias = "open_ai", alias = "open_a_i")]
-    OpenAI,
     Azure,
-    Groq,
 }
 
 impl FromStr for ProviderKind {
@@ -30,9 +27,7 @@ impl FromStr for ProviderKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "openai" | "open_ai" | "open_a_i" => Ok(ProviderKind::OpenAI),
             "azure" => Ok(ProviderKind::Azure),
-            "groq" => Ok(ProviderKind::Groq),
             _ => Err(format!("Unknown provider kind: {}", s)),
         }
     }
@@ -41,9 +36,7 @@ impl FromStr for ProviderKind {
 impl fmt::Display for ProviderKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            ProviderKind::OpenAI => "openai",
             ProviderKind::Azure => "azure",
-            ProviderKind::Groq => "groq",
         };
         write!(f, "{}", s)
     }
@@ -52,9 +45,7 @@ impl fmt::Display for ProviderKind {
 impl ProviderKind {
     pub const fn default_api_key_env_var(self) -> &'static str {
         match self {
-            ProviderKind::OpenAI => "OPENAI_API_KEY",
             ProviderKind::Azure => "AZURE_OPENAI_API_KEY",
-            ProviderKind::Groq => "GROQ_API_KEY",
         }
     }
 }
@@ -67,10 +58,6 @@ mod tests {
 
     #[test]
     fn provider_kind_from_str() {
-        match ProviderKind::from_str("openai") {
-            Ok(kind) => assert_eq!(kind, ProviderKind::OpenAI),
-            Err(err) => panic!("unexpected error: {}", err),
-        }
         match ProviderKind::from_str("azure") {
             Ok(kind) => assert_eq!(kind, ProviderKind::Azure),
             Err(err) => panic!("unexpected error: {}", err),
@@ -79,10 +66,6 @@ mod tests {
 
     #[test]
     fn provider_kind_case_insensitive() {
-        match ProviderKind::from_str("OpenAI") {
-            Ok(kind) => assert_eq!(kind, ProviderKind::OpenAI),
-            Err(err) => panic!("unexpected error: {}", err),
-        }
         match ProviderKind::from_str("AZURE") {
             Ok(kind) => assert_eq!(kind, ProviderKind::Azure),
             Err(err) => panic!("unexpected error: {}", err),
@@ -97,45 +80,14 @@ mod tests {
 
     #[test]
     fn provider_kind_display() {
-        assert_eq!(ProviderKind::OpenAI.to_string(), "openai");
         assert_eq!(ProviderKind::Azure.to_string(), "azure");
-        assert_eq!(ProviderKind::Groq.to_string(), "groq");
     }
 
     #[test]
     fn provider_kind_default_env_var() {
         assert_eq!(
-            ProviderKind::OpenAI.default_api_key_env_var(),
-            "OPENAI_API_KEY"
-        );
-        assert_eq!(
             ProviderKind::Azure.default_api_key_env_var(),
             "AZURE_OPENAI_API_KEY"
         );
-        assert_eq!(ProviderKind::Groq.default_api_key_env_var(), "GROQ_API_KEY");
-    }
-
-    #[test]
-    fn provider_kind_serde_openai() {
-        let serialized = serde_json::to_string(&ProviderKind::OpenAI).expect("serialize OpenAI");
-        assert_eq!(serialized, "\"openai\"");
-
-        for raw in ["openai", "open_ai", "open_a_i"] {
-            let parsed: ProviderKind =
-                serde_json::from_str(&format!("\"{}\"", raw)).expect("deserialize OpenAI");
-            assert_eq!(parsed, ProviderKind::OpenAI);
-        }
-    }
-
-    #[test]
-    fn provider_kind_groq_from_str() {
-        match ProviderKind::from_str("groq") {
-            Ok(kind) => assert_eq!(kind, ProviderKind::Groq),
-            Err(err) => panic!("unexpected error: {}", err),
-        }
-        match ProviderKind::from_str("GROQ") {
-            Ok(kind) => assert_eq!(kind, ProviderKind::Groq),
-            Err(err) => panic!("unexpected error: {}", err),
-        }
     }
 }

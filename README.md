@@ -102,13 +102,6 @@ prompt_failure_rate_threshold = 0.05
 
 [experimental]
 use_experimental = false
-usage_tier = "standard"
-
-[experimental.free_tier]
-max_input_tokens = 16000
-max_output_tokens = 512
-max_concurrent_requests = 1
-commit_history_depth = 3
 
 [profiles.default]
 name = "default"
