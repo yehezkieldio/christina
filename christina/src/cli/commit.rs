@@ -29,6 +29,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
         ui::print_trace("validating repository state");
     }
     let (repo_path, diff) = validate_repository().await?;
+    let diff = Arc::<str>::from(diff);
 
     if let Some(stats) = trace_stats.as_ref() {
         let mut stats = match stats.lock() {
@@ -59,7 +60,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            let diff_stats = compute_diff_stats(&diff);
+            let diff_stats = compute_diff_stats(diff.as_ref());
             stats.diff_bytes = diff.len();
             stats.diff_lines = diff_stats.lines_total;
             stats.diff_additions = diff_stats.additions;
@@ -75,7 +76,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     }
     let message = loop {
         let message = match generate_commit(
-            diff.clone(),
+            Arc::clone(&diff),
             context.map(|s| s.to_string()),
             repo_path.clone(),
             trace,
@@ -183,7 +184,7 @@ fn display_changes(files: &[GitFile]) {
 }
 
 async fn generate_commit(
-    diff: String,
+    diff: Arc<str>,
     context: Option<String>,
     repo_path: PathBuf,
     trace: bool,

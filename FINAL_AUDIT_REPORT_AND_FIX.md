@@ -130,25 +130,25 @@ Each finding is a self-contained unit. Findings within the same priority tier ar
 
 ## P3 — Code Quality and Duplication
 
-### P3-01: Duplicated convert_messages and extract_system_prompt
+### P3-01: Duplicated convert_messages and extract_system_prompt — ✅ Solved
 
 - Location: christina/src/engines/default/openai.rs lines 119-135, christina/src/engines/default/groq.rs lines 105-121
 - Problem: Identical functions in both files. Maintenance burden; a fix in one must be mirrored in the other.
 - Approach: Extract both functions into christina/src/engines/default/mod.rs as `pub(super)` or `pub(crate)` functions. Update openai.rs and groq.rs to import from the parent module.
 
-### P3-02: Duplicated diff collection logic in adapter.rs
+### P3-02: Duplicated diff collection logic in adapter.rs — ✅ Solved
 
 - Location: christina/src/git/adapter.rs `get_staged_files()` lines 23-118, `get_unstaged_files()` lines 121-207
 - Problem: Near-identical code for collecting file metadata and diff content. Only the diff source differs (`diff_tree_to_index` vs `diff_index_to_workdir`).
 - Approach: Extract the shared logic into a private `collect_files_from_diff(diff: &git2::Diff) -> Result<Vec<GitFile>>` function. Both public functions create the diff and delegate to the shared collector.
 
-### P3-03: clamp_partial_failure_rate warnings are unreachable
+### P3-03: clamp_partial_failure_rate warnings are unreachable — ✅ Solved
 
 - Location: christina/src/config/settings.rs lines 49-74
 - Problem: Warnings for 0.0 and 1.0 are generated before clamping to 0.01-0.50. Since 0.0 and 1.0 are outside the clamp range, the clamp warning will always fire, making the specific 0.0/1.0 warnings redundant noise.
 - Approach: Remove the 0.0 and 1.0 specific checks. The clamp warning already covers these cases with a more informative message showing the actual clamped value.
 
-### P3-04: PipelineState::advance_chunk uses unreachable!
+### P3-04: PipelineState::advance_chunk uses unreachable! — ✅ Solved
 
 - Location: christina-core/src/pipeline/state.rs line 55
 - Problem: `unreachable!()` panics in release builds (with panic=abort, this terminates the process). This is a programming error, not an invariant violation that should terminate.
@@ -158,37 +158,37 @@ Each finding is a self-contained unit. Findings within the same priority tier ar
 
 ## P4 — Improvements and Hardening Opportunities
 
-### P4-01: Implement Tokenizer trait for TokenizerService
+### P4-01: Implement Tokenizer trait for TokenizerService — ✅ Solved
 
 - Location: christina-core/src/processing/tokenizer.rs
 - Problem: `TokenizerService` implements `count_tokens_exact`, `encode`, `decode` as inherent methods, plus `slice_to_token_limit` as an inherent method. It also has the `Tokenizer` trait impl (via the trait definition in tokenizer.rs). The inherent `slice_to_token_limit` differs from the trait's default impl by adding line-boundary preference. This behavioral inconsistency is confusing.
 - Approach: Ensure `slice_to_token_limit` is only defined in one place. If the line-boundary behavior is desired, override the trait method. If not, remove the inherent method and use the trait default.
 
-### P4-02: Free-tier limits gated behind experimental + Groq only
+### P4-02: Free-tier limits gated behind experimental + Groq only — ✅ Solved
 
 - Location: christina/src/generate.rs lines 96-118
 - Problem: Free-tier rate limiting only applies when `use_experimental && usage_tier == Free && provider == Groq`. This is undocumented and surprising. Other providers have free tiers too.
 - Approach: Either apply free-tier limits to all providers when `usage_tier == Free` (remove the Groq check), or document clearly in config.example.toml that free-tier limits are Groq-only. If keeping Groq-only, remove the `use_experimental` gate since it serves no purpose if the feature is provider-specific.
 
-### P4-03: HashMap non-deterministic serialization for profiles
+### P4-03: HashMap non-deterministic serialization for profiles — ✅ Solved
 
 - Location: christina-core/src/profile.rs line 145
 - Problem: `Profiles` uses `HashMap<String, ProviderProfile<S>>`. TOML serialization order is non-deterministic, causing unnecessary config file diffs.
 - Approach: Replace `HashMap` with `BTreeMap` for deterministic key ordering. This also makes `list_names()` trivial (no sort needed).
 
-### P4-04: Commit workflow clones diff string per regeneration loop
+### P4-04: Commit workflow clones diff string per regeneration loop — ✅ Solved
 
 - Location: christina/src/cli/commit.rs (the regeneration loop)
 - Problem: `diff.clone()` is called on every loop iteration when the user requests regeneration. For large diffs this is wasteful.
 - Approach: Use `Arc<str>` for the diff string so clones are cheap reference count increments. Or pass `&str` into the generation function if ownership is not required.
 
-### P4-05: Binary detection uses contains(&0) for small files
+### P4-05: Binary detection uses contains(&0) for small files — ✅ Solved
 
 - Location: christina/src/git/diff_processor.rs lines 73-81
 - Problem: For files <8KB, `content_bytes.contains(&0)` iterates byte-by-byte. `memchr::memchr(0, content_bytes)` is faster even for small inputs due to SIMD.
 - Approach: Use `memchr::memchr(0, content_bytes).is_some()` for both small and large files. Remove the branching on file size.
 
-### P4-06: Global allocator cap is effectively disabled
+### P4-06: Global allocator cap is effectively disabled — ✅ Solved
 
 - Location: christina/src/main.rs or lib.rs (mimalloc + cap allocator setup)
 - Problem: The memory cap is set to `usize::MAX`, which on 64-bit systems is 18 exabytes. This provides no actual protection.

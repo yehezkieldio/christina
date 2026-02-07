@@ -23,6 +23,76 @@ fn get_delta_path(delta: &git2::DiffDelta) -> Option<String> {
     .map(|p| p.to_string_lossy().to_string())
 }
 
+fn collect_files_from_diff(diff: &git2::Diff) -> Result<Vec<GitFile>> {
+    // Collect file metadata first
+    let mut files = Vec::new();
+    diff.foreach(
+        &mut |delta, _| {
+            if let Some(path) = get_delta_path(&delta) {
+                let status = match delta.status() {
+                    git2::Delta::Added => "A",
+                    git2::Delta::Deleted => "D",
+                    git2::Delta::Modified => "M",
+                    git2::Delta::Renamed => "R",
+                    git2::Delta::Copied => "C",
+                    _ => "?",
+                };
+                files.push((path, status.to_string()));
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )?;
+
+    // Capture diff content per file
+    use std::collections::HashMap;
+    let mut diff_map: HashMap<String, String> = HashMap::new();
+    let mut current_path = String::new();
+    let mut current_diff = String::new();
+
+    diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
+        let path = get_delta_path(&delta).unwrap_or_default();
+
+        // If we've moved to a new file, save the previous one
+        if !current_path.is_empty() && path != current_path {
+            diff_map.insert(current_path.clone(), current_diff.clone());
+            current_diff.clear();
+        }
+
+        current_path = path;
+
+        // Include origin character for context/add/delete lines
+        let origin = line.origin();
+        if matches!(origin, '+' | '-' | ' ') {
+            current_diff.push(origin);
+        }
+        // Use lossy UTF-8 conversion to include content with replacement characters
+        // rather than silently dropping non-UTF8 lines
+        let content = String::from_utf8_lossy(line.content());
+        current_diff.push_str(&content);
+
+        true
+    })?;
+
+    // Save the last file's diff
+    if !current_path.is_empty() {
+        diff_map.insert(current_path, current_diff);
+    }
+
+    // Create GitFile objects with diff content
+    let result = files
+        .into_iter()
+        .map(|(path, status)| {
+            let diff_content = diff_map.get(&path).cloned().unwrap_or_default();
+            GitFile::new(path, status, diff_content)
+        })
+        .collect();
+
+    Ok(result)
+}
+
 const DEFAULT_GIT_TIMEOUT_SECS: u64 = 30;
 
 fn git_timeout() -> Duration {
@@ -118,73 +188,7 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
         .copy_threshold(40);
     diff.find_similar(Some(&mut find_opts))?;
 
-    // Collect file metadata first
-    let mut files = Vec::new();
-    diff.foreach(
-        &mut |delta, _| {
-            if let Some(path) = get_delta_path(&delta) {
-                let status = match delta.status() {
-                    git2::Delta::Added => "A",
-                    git2::Delta::Deleted => "D",
-                    git2::Delta::Modified => "M",
-                    git2::Delta::Renamed => "R",
-                    git2::Delta::Copied => "C",
-                    _ => "?",
-                };
-                files.push((path, status.to_string()));
-            }
-            true
-        },
-        None,
-        None,
-        None,
-    )?;
-
-    // Capture diff content per file
-    use std::collections::HashMap;
-    let mut diff_map: HashMap<String, String> = HashMap::new();
-    let mut current_path = String::new();
-    let mut current_diff = String::new();
-
-    diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
-        let path = get_delta_path(&delta).unwrap_or_default();
-
-        // If we've moved to a new file, save the previous one
-        if !current_path.is_empty() && path != current_path {
-            diff_map.insert(current_path.clone(), current_diff.clone());
-            current_diff.clear();
-        }
-
-        current_path = path;
-
-        // Include origin character for context/add/delete lines
-        let origin = line.origin();
-        if matches!(origin, '+' | '-' | ' ') {
-            current_diff.push(origin);
-        }
-        // Use lossy UTF-8 conversion to include content with replacement characters
-        // rather than silently dropping non-UTF8 lines
-        let content = String::from_utf8_lossy(line.content());
-        current_diff.push_str(&content);
-
-        true
-    })?;
-
-    // Save the last file's diff
-    if !current_path.is_empty() {
-        diff_map.insert(current_path, current_diff);
-    }
-
-    // Create GitFile objects with diff content
-    let result = files
-        .into_iter()
-        .map(|(path, status)| {
-            let diff_content = diff_map.get(&path).cloned().unwrap_or_default();
-            GitFile::new(path, status, diff_content)
-        })
-        .collect();
-
-    Ok(result)
+    collect_files_from_diff(&diff)
 }
 
 #[cfg(test)]
@@ -207,73 +211,7 @@ pub fn get_unstaged_files(repo: &Repository) -> Result<Vec<GitFile>> {
         .renames_from_rewrites(true);
     diff.find_similar(Some(&mut find_opts))?;
 
-    // Collect file metadata first
-    let mut files = Vec::new();
-    diff.foreach(
-        &mut |delta, _| {
-            if let Some(path) = get_delta_path(&delta) {
-                let status = match delta.status() {
-                    git2::Delta::Added => "A",
-                    git2::Delta::Deleted => "D",
-                    git2::Delta::Modified => "M",
-                    git2::Delta::Renamed => "R",
-                    git2::Delta::Copied => "C",
-                    _ => "?",
-                };
-                files.push((path, status.to_string()));
-            }
-            true
-        },
-        None,
-        None,
-        None,
-    )?;
-
-    // Capture diff content per file
-    use std::collections::HashMap;
-    let mut diff_map: HashMap<String, String> = HashMap::new();
-    let mut current_path = String::new();
-    let mut current_diff = String::new();
-
-    diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
-        let path = get_delta_path(&delta).unwrap_or_default();
-
-        // If we've moved to a new file, save the previous one
-        if !current_path.is_empty() && path != current_path {
-            diff_map.insert(current_path.clone(), current_diff.clone());
-            current_diff.clear();
-        }
-
-        current_path = path;
-
-        // Include origin character for context/add/delete lines
-        let origin = line.origin();
-        if matches!(origin, '+' | '-' | ' ') {
-            current_diff.push(origin);
-        }
-        // Use lossy UTF-8 conversion to include content with replacement characters
-        // rather than silently dropping non-UTF8 lines
-        let content = String::from_utf8_lossy(line.content());
-        current_diff.push_str(&content);
-
-        true
-    })?;
-
-    // Save the last file's diff
-    if !current_path.is_empty() {
-        diff_map.insert(current_path, current_diff);
-    }
-
-    // Create GitFile objects with diff content
-    let result = files
-        .into_iter()
-        .map(|(path, status)| {
-            let diff_content = diff_map.get(&path).cloned().unwrap_or_default();
-            GitFile::new(path, status, diff_content)
-        })
-        .collect();
-
-    Ok(result)
+    collect_files_from_diff(&diff)
 }
 
 /// Stage files by path

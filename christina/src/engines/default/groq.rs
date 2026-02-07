@@ -5,10 +5,10 @@
 use std::sync::Arc;
 
 use christina_core::error::CompletionError;
-use christina_core::llm::{LlmRequest, LlmResponse, Role};
+use christina_core::llm::{LlmRequest, LlmResponse};
 use llm::builder::{LLMBackend, LLMBuilder};
-use llm::chat::ChatMessage as LLMChatMessage;
 
+use super::{convert_messages, extract_system_prompt};
 use crate::orchestrator::retry::{RetryPolicy, retry_with_backoff};
 
 /// Execute a Groq request with retry logic and exponential backoff.
@@ -110,29 +110,11 @@ async fn execute_groq_request_inner(
     })
 }
 
-fn convert_messages(messages: &[christina_core::llm::ChatMessage]) -> Vec<LLMChatMessage> {
-    messages
-        .iter()
-        .filter_map(|msg| match msg.role {
-            Role::User => Some(LLMChatMessage::user().content(&msg.content).build()),
-            Role::Assistant => Some(LLMChatMessage::assistant().content(&msg.content).build()),
-            Role::System => None,
-        })
-        .collect()
-}
-
-fn extract_system_prompt(messages: &[christina_core::llm::ChatMessage]) -> Option<&str> {
-    messages
-        .iter()
-        .find(|m| m.role == Role::System)
-        .map(|m| m.content.as_str())
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use christina_core::llm::ChatMessage;
+    use christina_core::llm::{ChatMessage, Role};
 
     #[test]
     fn convert_messages_filters_system() {

@@ -40,6 +40,7 @@ impl PipelineState {
     /// # Panics
     ///
     /// Panics if not in the Analyzing state (invariant violation).
+    #[allow(clippy::panic)]
     pub fn advance_chunk(&mut self) {
         match self {
             Self::Analyzing {
@@ -52,7 +53,7 @@ impl PipelineState {
                 );
                 *completed_chunks += 1;
             }
-            _ => unreachable!("advance_chunk called on non-Analyzing state"),
+            _ => panic!("advance_chunk called on non-Analyzing state: {:?}", self),
         }
     }
 

@@ -18,11 +18,12 @@ use crate::config::profiles::ProviderProfile;
 
 use christina_core::{
     error::{CompletionError, ProviderError},
-    llm::{ChatMessage, LlmRequest},
+    llm::{ChatMessage, LlmRequest, Role},
     types::backend_id::GenerationId,
     types::tokens::TokenCount,
     types::{ModelName, ProviderKind, Temperature},
 };
+use llm::chat::ChatMessage as LLMChatMessage;
 
 // NOTE: AtomicU64::fetch_add wraps on overflow. Wraparound is acceptable here
 // because IDs are used for logging/correlation, not long-term uniqueness.
@@ -404,6 +405,24 @@ fn request_from_messages(
         temperature,
         system_prompt: None,
     }
+}
+
+fn convert_messages(messages: &[ChatMessage]) -> Vec<LLMChatMessage> {
+    messages
+        .iter()
+        .filter_map(|msg| match msg.role {
+            Role::User => Some(LLMChatMessage::user().content(&msg.content).build()),
+            Role::Assistant => Some(LLMChatMessage::assistant().content(&msg.content).build()),
+            Role::System => None,
+        })
+        .collect()
+}
+
+fn extract_system_prompt(messages: &[ChatMessage]) -> Option<&str> {
+    messages
+        .iter()
+        .find(|m| m.role == Role::System)
+        .map(|m| m.content.as_str())
 }
 
 #[cfg(test)]

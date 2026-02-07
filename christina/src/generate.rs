@@ -22,8 +22,8 @@ use christina_core::processing::{
     fit_history_to_budget, fit_user_context_to_budget, normalize_user_context,
 };
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
+use christina_core::types::TokenCount;
 use christina_core::types::UsageTier;
-use christina_core::types::{ProviderKind, TokenCount};
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -69,7 +69,7 @@ fn config_to_profile(config: &Config, api_key: &str) -> ProviderProfile {
 
 pub async fn generate_commit_message_with_progress(
     config: Config,
-    diff: String,
+    diff: Arc<str>,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
     user_context: Option<String>,
@@ -87,16 +87,13 @@ pub async fn generate_commit_message_with_progress(
 
 async fn generate_commit_message_with_progress_impl(
     mut config: Config,
-    diff: String,
+    diff: Arc<str>,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
 ) -> Result<GenerationResult> {
-    if config.use_experimental
-        && config.usage_tier == UsageTier::Free
-        && config.model_provider == ProviderKind::Groq
-    {
+    if config.use_experimental && config.usage_tier == UsageTier::Free {
         // Free-tier limits are intentionally gated behind experimental to avoid
         // surprising existing users unless explicitly enabled.
         let warnings = apply_free_tier_limits(&mut config);
@@ -104,11 +101,6 @@ async fn generate_commit_message_with_progress_impl(
             warn!("{}", warning);
             eprintln!("Warning: {}", warning);
         }
-    } else if config.use_experimental && config.usage_tier == UsageTier::Free {
-        warn!(
-            "usage_tier=free is configured but provider is {}, free-tier limits not applied",
-            config.model_provider
-        );
     } else if !config.use_experimental && config.usage_tier == UsageTier::Free {
         warn!("usage_tier=free configured but experimental settings are disabled");
         eprintln!(
@@ -259,10 +251,10 @@ async fn generate_commit_message_with_progress_impl(
         .with_ignore_files(config.ignore_files.clone())
         .with_lockfile_token_limit(config.lockfile_token_limit);
 
-    let chunks = processor.process_safe(&diff);
+    let chunks = processor.process_safe(diff.as_ref());
 
     if chunks.is_empty() {
-        let file_paths = parsing::extract_file_paths(&diff);
+        let file_paths = parsing::extract_file_paths(diff.as_ref());
         if !file_paths.is_empty()
             && file_paths
                 .iter()
@@ -679,7 +671,7 @@ mod tests {
         };
 
         let (tx, _rx) = mpsc::channel(10);
-        let diff = "diff --git a/test.txt b/test.txt\n+new line\n".to_string();
+        let diff = Arc::<str>::from("diff --git a/test.txt b/test.txt\n+new line\n");
         let repo_path = PathBuf::from("/fake/repo");
 
         let result = generate_commit_message_with_progress_impl(
@@ -707,7 +699,7 @@ mod tests {
         };
 
         let (tx, _rx) = mpsc::channel(10);
-        let diff = "diff --git a/test.txt b/test.txt\n+new line\n".to_string();
+        let diff = Arc::<str>::from("diff --git a/test.txt b/test.txt\n+new line\n");
         let repo_path = PathBuf::from("/fake/repo");
 
         let result = generate_commit_message_with_progress_impl(
@@ -737,7 +729,7 @@ mod tests {
         };
 
         let (tx, _rx) = mpsc::channel(10);
-        let diff = String::new();
+        let diff = Arc::<str>::from("");
         let repo_path = PathBuf::from("/fake/repo");
 
         let result = generate_commit_message_with_progress_impl(
@@ -771,7 +763,7 @@ mod tests {
         let (tx, rx) = mpsc::channel(1);
         drop(rx);
 
-        let diff = "diff --git a/test.txt b/test.txt\n+new line\n".to_string();
+        let diff = Arc::<str>::from("diff --git a/test.txt b/test.txt\n+new line\n");
         let repo_path = PathBuf::from("/fake/repo");
 
         let result = generate_commit_message_with_progress_impl(

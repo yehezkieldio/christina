@@ -26,7 +26,7 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
-pub static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, usize::MAX);
+pub static GLOBAL: Cap<MiMalloc> = Cap::new(MiMalloc, 1024 * 1024 * 1024);
 
 use anyhow::Result;
 use clap::Parser;

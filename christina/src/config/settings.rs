@@ -49,19 +49,6 @@ fn default_lockfile_token_limit() -> TokenCount {
 fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {
     let mut warnings = Vec::new();
 
-    if (value - 0.0).abs() < f64::EPSILON {
-        warnings.push(
-            "max_partial_failure_rate set to 0.0 causes any chunk failure to abort processing"
-                .to_string(),
-        );
-    }
-
-    if (value - 1.0).abs() < f64::EPSILON {
-        warnings.push(
-            "max_partial_failure_rate set to 1.0 allows all chunk failures to pass".to_string(),
-        );
-    }
-
     let clamped = value.clamp(MIN_PARTIAL_FAILURE_RATE, MAX_PARTIAL_FAILURE_RATE);
     if (clamped - value).abs() > f64::EPSILON {
         warnings.push(format!(

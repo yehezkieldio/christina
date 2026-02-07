@@ -52,12 +52,10 @@ impl DiffProcessor {
     ///
     /// Detection strategy (applied in order):
     /// 1. Check for git's binary markers ("Binary files" or "GIT binary patch")
-    /// 2. For small files (<8KB): scan all bytes for NUL
-    /// 3. For larger files: scan content for NUL bytes using a fast memchr search
-    /// 4. Check file extension against known binary types
+    /// 2. Scan content for NUL bytes using a fast memchr search
+    /// 3. Check file extension against known binary types
     ///
-    /// **NUL byte detection**: Small files are fully scanned for accuracy.
-    /// Larger files use a fast byte search to avoid false negatives from sampling.
+    /// **NUL byte detection**: Uses a fast byte search for all sizes.
     fn is_binary_content(&self, content: &str) -> bool {
         if content.is_empty() {
             return false;
@@ -67,16 +65,8 @@ impl DiffProcessor {
             return true;
         }
 
-        // For small files, do a full scan for accuracy
-        // For larger files, use fast memchr scanning
         let content_bytes = content.as_bytes();
-        let use_full_scan = content_bytes.len() < 8192;
-
-        if use_full_scan {
-            if content_bytes.contains(&0) {
-                return true;
-            }
-        } else if has_nul_bytes(content_bytes) {
+        if has_nul_bytes(content_bytes) {
             return true;
         }
 

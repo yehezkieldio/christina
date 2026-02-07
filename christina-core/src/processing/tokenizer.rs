@@ -164,60 +164,6 @@ impl TokenizerService {
             .decode(tokens.to_vec())
             .map_err(|e| TokenizerError::Tokenizer(format!("Failed to decode tokens: {}", e)))
     }
-
-    /// Slice a string to fit within a token limit.
-    ///
-    /// This method ensures that the returned slice:
-    /// 1. Does not exceed the specified token limit
-    /// 2. Ends at a valid UTF-8 boundary
-    /// 3. Preferably ends at a line boundary for readability
-    pub fn slice_to_token_limit<'a>(&self, text: &'a str, limit: TokenCount) -> &'a str {
-        let tokens = self.bpe.encode_ordinary(text);
-        if tokens.len() <= limit.get() as usize {
-            return text;
-        }
-
-        // Binary search for the right slice point
-        let mut low = 0;
-        let mut high = text.len();
-        let mut best = 0;
-
-        while low < high {
-            let mid = (low + high).div_ceil(2);
-
-            // Find a valid UTF-8 boundary at or before mid
-            let boundary = text
-                .char_indices()
-                .take_while(|(i, _)| *i <= mid)
-                .last()
-                .map(|(i, c)| i + c.len_utf8())
-                .unwrap_or(0);
-
-            let slice = &text[..boundary];
-            let token_count = self.bpe.encode_ordinary(slice).len();
-
-            if token_count <= limit.get() as usize {
-                best = boundary;
-                low = mid;
-            } else {
-                high = mid - 1;
-            }
-        }
-
-        // Try to end at a line boundary for cleaner output
-        let result = &text[..best];
-        if let Some(last_newline) = result.rfind('\n') {
-            // Only use line boundary if it doesn't lose too much content
-            let line_slice = &result[..=last_newline];
-            let line_tokens = self.bpe.encode_ordinary(line_slice).len();
-            // Keep line boundary if we retain at least 80% of tokens
-            if line_tokens >= (limit.get() as usize * 4) / 5 {
-                return line_slice;
-            }
-        }
-
-        result
-    }
 }
 
 /// Token budget management for AI model context windows.
@@ -378,7 +324,49 @@ impl Tokenizer for TokenizerService {
     }
 
     fn slice_to_token_limit<'a>(&self, text: &'a str, limit: TokenCount) -> &'a str {
-        self.slice_to_token_limit(text, limit)
+        let tokens = self.bpe.encode_ordinary(text);
+        if tokens.len() <= limit.get() as usize {
+            return text;
+        }
+
+        // Binary search for the right slice point
+        let mut low = 0;
+        let mut high = text.len();
+        let mut best = 0;
+
+        while low < high {
+            let mid = (low + high).div_ceil(2);
+
+            // Find a valid UTF-8 boundary at or before mid
+            let boundary = text
+                .char_indices()
+                .take_while(|(i, _)| *i <= mid)
+                .last()
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0);
+
+            let slice = &text[..boundary];
+            let token_count = self.bpe.encode_ordinary(slice).len();
+
+            if token_count <= limit.get() as usize {
+                best = boundary;
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        // Prefer ending at a line boundary for readability when it preserves most content.
+        let result = &text[..best];
+        if let Some(last_newline) = result.rfind('\n') {
+            let line_slice = &result[..=last_newline];
+            let line_tokens = self.bpe.encode_ordinary(line_slice).len();
+            if line_tokens >= (limit.get() as usize * 4) / 5 {
+                return line_slice;
+            }
+        }
+
+        result
     }
 }
 

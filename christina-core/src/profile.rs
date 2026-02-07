@@ -49,7 +49,7 @@
 //! // Cannot directly serialize - must convert back to SecretRef representation
 //! ```
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
@@ -147,14 +147,14 @@ impl ProviderProfile<String> {
 pub struct Profiles<S = String> {
     pub active: Option<String>,
     #[serde(flatten)]
-    pub definitions: HashMap<String, ProviderProfile<S>>,
+    pub definitions: BTreeMap<String, ProviderProfile<S>>,
 }
 
 impl<S> Profiles<S> {
     pub fn new() -> Self {
         Self {
             active: None,
-            definitions: HashMap::new(),
+            definitions: BTreeMap::new(),
         }
     }
 
@@ -212,9 +212,7 @@ impl<S> Profiles<S> {
     }
 
     pub fn list_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.definitions.keys().cloned().collect();
-        names.sort();
-        names
+        self.definitions.keys().cloned().collect()
     }
 
     pub fn exists(&self, name: &str) -> bool {
@@ -245,7 +243,7 @@ impl<S> Default for Profiles<S> {
     fn default() -> Self {
         Self {
             active: None,
-            definitions: HashMap::new(),
+            definitions: BTreeMap::new(),
         }
     }
 }
