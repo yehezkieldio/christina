@@ -9,7 +9,7 @@
 ///
 /// Internal modules for the christina CLI application.
 /// These are exposed primarily for integration tests and benchmarks.
-pub mod io;
+pub mod git;
 
 // Placeholder uses for dependencies used in main.rs but not lib.rs
 // This satisfies clippy's unused-crate-dependencies lint

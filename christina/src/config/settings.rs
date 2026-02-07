@@ -7,13 +7,14 @@ use tracing;
 
 use christina_core::{
     ConfigFile,
-    profile::{Profiles, ProviderProfile},
     types::{
         FreeTierLimits, ModelName, ProviderKind, UsageTier,
         commit::ValidationMode,
         tokens::{TokenCount, MAX_INPUT, MAX_OUTPUT},
     },
 };
+use crate::config::profiles::{Profiles, ProviderProfile};
+use crate::config::secrets::{resolve_secret, Secret};
 use url::Url;
 
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
@@ -613,7 +614,7 @@ impl Config {
                     "azure_api_version" => profile.azure_api_version = Some(v.to_string()),
                     "azure_deployment_id" => profile.azure_deployment_id = Some(v.to_string()),
                     "api_key" | "model_api_key" => {
-                        profile.api_key = christina_core::config::Secret::Value(v.to_string())
+                        profile.api_key = Secret::Value(v.to_string())
                     }
                     "model_temperature" => {
                         profile.temperature = Some(v.parse().map_err(anyhow::Error::msg)?)
@@ -811,15 +812,12 @@ impl Config {
         self.model_api_url = profile.api_url.clone();
         self.azure_api_version = profile.azure_api_version.clone();
         self.azure_deployment_id = profile.azure_deployment_id.clone();
-        self.api_key = match &profile.api_key {
-            christina_core::config::Secret::Value(key) => Some(key.clone()),
-            christina_core::config::Secret::EnvVar(name) => std::env::var(name).ok(),
-            #[cfg(feature = "keyring-support")]
-            christina_core::config::Secret::Keyring(key) => keyring::Entry::new("christina", key)
-                .and_then(|e| e.get_password())
-                .ok(),
-            #[cfg(not(feature = "keyring-support"))]
-            christina_core::config::Secret::Keyring(_) => None,
+        self.api_key = match resolve_secret(&profile.api_key) {
+            Ok(secret) => Some(secret.expose_secret().to_string()),
+            Err(err) => {
+                tracing::warn!("Failed to resolve profile secret: {}", err);
+                None
+            }
         };
     }
 
@@ -866,9 +864,9 @@ impl Config {
             api_key: self
                 .api_key
                 .as_ref()
-                .map(|k| christina_core::config::Secret::Value(k.clone()))
+                .map(|k| Secret::Value(k.clone()))
                 .unwrap_or_else(|| {
-                    christina_core::config::Secret::EnvVar(
+                    Secret::EnvVar(
                         self.model_provider.default_api_key_env_var().to_string(),
                     )
                 }),
@@ -1081,15 +1079,15 @@ fn toml_value<T: serde::Serialize>(value: &T) -> Result<String> {
     Ok(rendered.to_string())
 }
 
-fn render_secret_inline(secret: &christina_core::config::Secret<String>) -> String {
+fn render_secret_inline(secret: &Secret<String>) -> String {
     match secret {
-        christina_core::config::Secret::Value(value) => {
+        Secret::Value(value) => {
             format!("{{ value = {} }}", toml_string(value))
         }
-        christina_core::config::Secret::EnvVar(name) => {
+        Secret::EnvVar(name) => {
             format!("{{ env = {} }}", toml_string(name))
         }
-        christina_core::config::Secret::Keyring(name) => {
+        Secret::Keyring(name) => {
             format!("{{ keyring = {} }}", toml_string(name))
         }
     }
@@ -1621,7 +1619,7 @@ mod tests {
             provider: ProviderKind::Azure,
             model: ModelName::from("gpt-4.1-mini"),
             api_url: Some(Url::parse("https://api.azure.com").unwrap()),
-            api_key: christina_core::config::Secret::Value("sk-azure-test".to_string()),
+            api_key: Secret::Value("sk-azure-test".to_string()),
             max_input_tokens: TokenCount::new_at_least_one(8192),
             max_output_tokens: TokenCount::new_at_least_one(4096),
             azure_api_version: Some("test-version".to_string()),
@@ -1663,7 +1661,7 @@ mod tests {
         assert_eq!(profile.model, ModelName::from("gpt-5.2"));
         assert_eq!(
             profile.api_key,
-            christina_core::config::Secret::Value("sk-openai-test".to_string())
+            Secret::Value("sk-openai-test".to_string())
         );
         assert_eq!(profile.max_input_tokens.get(), 16384);
         assert_eq!(profile.max_output_tokens.get(), 2048);

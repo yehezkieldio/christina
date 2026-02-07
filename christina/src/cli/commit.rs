@@ -10,7 +10,7 @@ use crate::ui;
 use crate::config::Config;
 use crate::ui::events::Event;
 use crate::generate::generate_commit_message_with_progress;
-use crate::io::git::adapter;
+use crate::git::adapter;
 use christina_core::GitFile;
 
 pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -> Result<()> {

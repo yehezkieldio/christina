@@ -417,14 +417,14 @@ mod tests {
     #[test]
     fn extract_file_paths_from_git_diff() {
         let diff = "\
-diff --git a/src/main.rs b/src/main.rs
-index 1234567..abcdefg 100644
-diff --git \"a/path with space.txt\" \"b/path with space.txt\"
-diff --cc src/combined.rs
-diff --git c/noindex.txt i/noindex.txt
- context diff --git a/fake.txt b/fake.txt
-diff --git file.txt file.txt
-";
+ diff --git a/src/main.rs b/src/main.rs
+ index 1234567..abcdefg 100644
+ diff --git \"a/path with space.txt\" \"b/path with space.txt\"
+ diff --cc src/combined.rs
+ diff --git c/noindex.txt i/noindex.txt
+  context diff --git a/fake.txt b/fake.txt
+ diff --git file.txt file.txt
+ ";
 
         let paths = extract_file_paths(diff);
         assert_eq!(
@@ -532,21 +532,21 @@ diff --git file.txt file.txt
     #[test]
     fn split_diff_by_individual_files() {
         let diff = "\
-diff --git a/file1.txt b/file1.txt
-index 1234567..abcdefg 100644
---- a/file1.txt
-+++ b/file1.txt
-@@ -1 +1 @@
--old
-+new
-diff --git a/file2.txt b/file2.txt
-index 2345678..bcdefgh 100644
---- a/file2.txt
-+++ b/file2.txt
-@@ -1 +1 @@
--old2
-+new2
-";
+ diff --git a/file1.txt b/file1.txt
+ index 1234567..abcdefg 100644
+ --- a/file1.txt
+ +++ b/file1.txt
+ @@ -1 +1 @@
+ -old
+ +new
+ diff --git a/file2.txt b/file2.txt
+ index 2345678..bcdefgh 100644
+ --- a/file2.txt
+ +++ b/file2.txt
+ @@ -1 +1 @@
+ -old2
+ +new2
+ ";
 
         let tokenizer = MockTokenizer;
         let files = split_by_files(diff, &tokenizer);
@@ -563,10 +563,10 @@ index 2345678..bcdefgh 100644
     #[test]
     fn split_by_files_ignores_inline_headers() {
         let diff = "\
-diff --git a/real.txt b/real.txt
-+Some content with diff --git a/fake.txt b/fake.txt embedded
-More content
-";
+ diff --git a/real.txt b/real.txt
+ +Some content with diff --git a/fake.txt b/fake.txt embedded
+ More content
+ ";
 
         let tokenizer = MockTokenizer;
         let files = split_by_files(diff, &tokenizer);
@@ -594,32 +594,32 @@ More content
     #[test]
     fn is_deletion_only_correctly_identifies_pure_deletions() {
         let deletion_diff = "\
-diff --git a/file.txt b/file.txt
---- a/file.txt
-+++ b/file.txt
-@@ -1,3 +0,0 @@
--line 1
--line 2
--line 3";
+ diff --git a/file.txt b/file.txt
+ --- a/file.txt
+ +++ b/file.txt
+ @@ -1,3 +0,0 @@
+ -line 1
+ -line 2
+ -line 3";
         assert!(is_deletion_only(deletion_diff));
 
         let mixed_diff = "\
-diff --git a/file.txt b/file.txt
---- a/file.txt
-+++ b/file.txt
-@@ -1,3 +1,3 @@
--old line
-+new line
- context line";
+ diff --git a/file.txt b/file.txt
+ --- a/file.txt
+ +++ b/file.txt
+ @@ -1,3 +1,3 @@
+ -old line
+ +new line
+  context line";
         assert!(!is_deletion_only(mixed_diff));
 
         let addition_diff = "\
-diff --git a/file.txt b/file.txt
---- a/file.txt
-+++ b/file.txt
-@@ -0,0 +1,2 @@
-+new line 1
-+new line 2";
+ diff --git a/file.txt b/file.txt
+ --- a/file.txt
+ +++ b/file.txt
+ @@ -0,0 +1,2 @@
+ +new line 1
+ +new line 2";
         assert!(!is_deletion_only(addition_diff));
 
         let empty_diff = "diff --git a/file.txt b/file.txt";
@@ -629,50 +629,50 @@ diff --git a/file.txt b/file.txt
     #[test]
     fn is_all_file_deletions_verifies_multiple_file_states() {
         let single_deletion = "\
-diff --git a/file.txt b/file.txt
-deleted file mode 100644
-index abcdef..0000000";
+ diff --git a/file.txt b/file.txt
+ deleted file mode 100644
+ index abcdef..0000000";
         assert!(is_all_file_deletions(single_deletion));
 
         let multi_deletion = "\
-diff --git a/file1.txt b/file1.txt
-deleted file mode 100644
-diff --git a/file2.txt b/file2.txt
-deleted file mode 100644";
+ diff --git a/file1.txt b/file1.txt
+ deleted file mode 100644
+ diff --git a/file2.txt b/file2.txt
+ deleted file mode 100644";
         assert!(is_all_file_deletions(multi_deletion));
 
         let mixed = "\
-diff --git a/deleted.txt b/deleted.txt
-deleted file mode 100644
-diff --git a/modified.txt b/modified.txt
---- a/modified.txt
-+++ b/modified.txt";
+ diff --git a/deleted.txt b/deleted.txt
+ deleted file mode 100644
+ diff --git a/modified.txt b/modified.txt
+ --- a/modified.txt
+ +++ b/modified.txt";
         assert!(!is_all_file_deletions(mixed));
 
         let no_deletions = "\
-diff --git a/file.txt b/file.txt
---- a/file.txt
-+++ b/file.txt";
+ diff --git a/file.txt b/file.txt
+ --- a/file.txt
+ +++ b/file.txt";
         assert!(!is_all_file_deletions(no_deletions));
     }
 
     #[test]
     fn truncate_deletion_diff_respects_line_limit_per_hunk() {
         let deletion_diff = "\
-diff --git a/file.txt b/file.txt
-deleted file mode 100644
-index abcdef..0000000
---- a/file.txt
-+++ /dev/null
-@@ -1,4 +0,0 @@
--line 1
--line 2
--line 3
--line 4
-@@ -10,3 +0,0 @@
--line 5
--line 6
--line 7";
+ diff --git a/file.txt b/file.txt
+ deleted file mode 100644
+ index abcdef..0000000
+ --- a/file.txt
+ +++ /dev/null
+ @@ -1,4 +0,0 @@
+ -line 1
+ -line 2
+ -line 3
+ -line 4
+ @@ -10,3 +0,0 @@
+ -line 5
+ -line 6
+ -line 7";
 
         let truncated = truncate_deletion_diff(deletion_diff, 2);
 
@@ -698,14 +698,14 @@ index abcdef..0000000
     #[test]
     fn truncate_deletion_diff_without_truncation_keeps_content() {
         let deletion_diff = "\
-diff --git a/file.txt b/file.txt
-deleted file mode 100644
-index abcdef..0000000
---- a/file.txt
-+++ /dev/null
-@@ -1,2 +0,0 @@
--line 1
--line 2";
+ diff --git a/file.txt b/file.txt
+ deleted file mode 100644
+ index abcdef..0000000
+ --- a/file.txt
+ +++ /dev/null
+ @@ -1,2 +0,0 @@
+ -line 1
+ -line 2";
 
         let truncated = truncate_deletion_diff(deletion_diff, 5);
         assert!(!truncated.contains("deleted content truncated"));

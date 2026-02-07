@@ -11,7 +11,7 @@ use christina_core::{
 use christina_core::git::stage::BINARY_EXTENSIONS;
 use memchr::memchr;
 
-use crate::io::git::parsing::{self, safe_truncate};
+use crate::git::parsing::{self, safe_truncate};
 
 /// Processor for splitting large diffs into manageable chunks.
 pub struct DiffProcessor {
@@ -537,7 +537,7 @@ mod tests {
         let processor = create_processor(1000);
         let diff = "diff --git a/test.txt b/test.txt\nindex 1234567..abcdefg\n--- a/test.txt\n+++ b/test.txt\n@@ -0,0 +1 @@\n+text content\ndiff --git a/test.bin b/test.bin\nindex 1234567..abcdefg\n--- a/test.bin\n+++ b/test.bin\n@@ -0,0 +1 @@\n\0binary content";
         let chunks = processor.process_safe(diff);
-        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
+        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:]")));
     }
 
     #[test]
@@ -546,7 +546,7 @@ mod tests {
         let diff = "diff --git a/test.bin b/test.bin\n\0binary\n";
         let chunks = processor.process_safe(diff);
         assert!(!chunks.is_empty());
-        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
+        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:]")));
     }
 
     #[test]
@@ -572,7 +572,7 @@ mod tests {
         let processor = create_processor(1000);
         let diff = "diff --git a/readme.txt b/readme.txt\nindex 1234567..abcdefg\n--- a/readme.txt\n+++ b/readme.txt\n@@ -0,0 +1 @@\n+text\ndiff --git a/logo.png b/logo.png\nindex 1234567..abcdefg\n--- a/logo.png\n+++ b/logo.png\n@@ -0,0 +1 @@\n";
         let chunks = processor.process_safe(diff);
-        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:")));
+        assert!(chunks.iter().any(|c| c.content.contains("[Binary file:]")));
     }
 
     #[test]
@@ -700,10 +700,10 @@ mod tests {
         let processor = create_processor(10_000);
         let mut diff = String::from(
             "diff --git a/file.txt b/file.txt\n\
-deleted file mode 100644\n\
---- a/file.txt\n\
-+++ /dev/null\n\
-@@ -1,120 +0,0 @@\n",
+ deleted file mode 100644\n\
+ --- a/file.txt\n\
+ +++ /dev/null\n\
+ @@ -1,120 +0,0 @@\n",
         );
         diff.push_str(&"-line\n".repeat(120));
         let chunks = processor.process(&diff);
@@ -716,10 +716,10 @@ deleted file mode 100644\n\
         let processor = create_processor(10_000);
         let mut diff = String::from(
             "diff --git a/file.txt b/file.txt\n\
-deleted file mode 100644\n\
---- a/file.txt\n\
-+++ /dev/null\n\
-@@ -1,8000 +0,0 @@\n",
+ deleted file mode 100644\n\
+ --- a/file.txt\n\
+ +++ /dev/null\n\
+ @@ -1,8000 +0,0 @@\n",
         );
         diff.push_str(&"-line\n".repeat(200_000));
         assert!(diff.len() >= 500 * 1024);

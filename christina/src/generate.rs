@@ -7,7 +7,7 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::ui::events::Event;
-use crate::io::git::{diff_processor::DiffProcessor, parsing};
+use crate::git::{diff_processor::DiffProcessor, parsing};
 use crate::engines::Provider;
 use christina_core::processing::{get_tokenizer, should_limit_file, TokenBudget};
 use christina_core::processing::{normalize_user_context, fit_user_context_to_budget, fit_history_to_budget};

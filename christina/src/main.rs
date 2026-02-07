@@ -35,7 +35,7 @@ mod cli;
 mod config;
 mod engines;
 mod generate;
-mod io;
+mod git;
 mod orchestrator;
 mod telemetry;
 mod ui;

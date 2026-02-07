@@ -3,27 +3,10 @@ use std::io::{self, BufRead, Write};
 
 use crate::cli::ProfileCommands;
 use crate::config::Config;
-use christina_core::config::{Secret, SecretRef};
-use christina_core::profile::ProviderProfile;
+use crate::config::profiles::ProviderProfile;
+use crate::config::secrets::{Secret, SecretRef};
 use christina_core::types::{ModelName, ProviderKind};
 use christina_core::types::tokens::TokenCount;
-
-trait ConfigStore {
-    fn load(&mut self) -> Result<Config>;
-    fn save(&mut self, config: &Config) -> Result<()>;
-}
-
-struct GlobalConfigStore;
-
-impl ConfigStore for GlobalConfigStore {
-    fn load(&mut self) -> Result<Config> {
-        Config::load()
-    }
-
-    fn save(&mut self, config: &Config) -> Result<()> {
-        config.save_to_global()
-    }
-}
 
 fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>> {
     match SecretRef::parse(key).map_err(anyhow::Error::msg)? {
@@ -45,21 +28,31 @@ fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>
 
 /// Handle profile commands - routes between CLI and TUI based on subcommand.
 pub fn handle_profile_command(command: ProfileCommands) -> Result<()> {
-    let mut store = GlobalConfigStore;
+    let mut config = Config::load()?;
     let mut input = io::BufReader::new(io::stdin());
     let mut output = io::stdout();
-    handle_profile_command_with_deps(command, &mut store, &mut input, &mut output)
+    let changed = handle_profile_command_with_io(command, &mut config, &mut input, &mut output)?;
+    if changed {
+        config.save_to_global()?;
+    }
+    Ok(())
 }
 
-fn handle_profile_command_with_deps(
+fn handle_profile_command_with_io(
     command: ProfileCommands,
-    store: &mut dyn ConfigStore,
+    config: &mut Config,
     input: &mut dyn BufRead,
     output: &mut dyn Write,
-) -> Result<()> {
+) -> Result<bool> {
     match command {
-        ProfileCommands::List => handle_list(store, output),
-        ProfileCommands::Show { name } => handle_show(store, output, &name),
+        ProfileCommands::List => {
+            handle_list(config, output)?;
+            Ok(false)
+        }
+        ProfileCommands::Show { name } => {
+            handle_show(config, output, &name)?;
+            Ok(false)
+        }
         ProfileCommands::Create {
             name,
             provider,
@@ -71,20 +64,23 @@ fn handle_profile_command_with_deps(
             max_output_tokens,
             azure_api_version,
             azure_deployment_id,
-        } => handle_create(
-            store,
-            output,
-            &name,
-            provider,
-            model,
-            api_key,
-            allow_plaintext,
-            api_url,
-            max_input_tokens,
-            max_output_tokens,
-            azure_api_version,
-            azure_deployment_id,
-        ),
+        } => {
+            handle_create(
+                config,
+                output,
+                &name,
+                provider,
+                model,
+                api_key,
+                allow_plaintext,
+                api_url,
+                max_input_tokens,
+                max_output_tokens,
+                azure_api_version,
+                azure_deployment_id,
+            )?;
+            Ok(true)
+        }
         ProfileCommands::Edit {
             name,
             provider,
@@ -96,32 +92,39 @@ fn handle_profile_command_with_deps(
             max_output_tokens,
             azure_api_version,
             azure_deployment_id,
-        } => handle_edit(
-            store,
-            output,
-            &name,
-            provider,
-            model,
-            api_key,
-            allow_plaintext,
-            api_url,
-            max_input_tokens,
-            max_output_tokens,
-            azure_api_version,
-            azure_deployment_id,
-        ),
-        ProfileCommands::Delete { name, force } => {
-            handle_delete(store, input, output, &name, force)
+        } => {
+            handle_edit(
+                config,
+                output,
+                &name,
+                provider,
+                model,
+                api_key,
+                allow_plaintext,
+                api_url,
+                max_input_tokens,
+                max_output_tokens,
+                azure_api_version,
+                azure_deployment_id,
+            )?;
+            Ok(true)
         }
-        ProfileCommands::Switch { name } => handle_switch(store, output, &name),
+        ProfileCommands::Delete { name, force } => {
+            handle_delete(config, input, output, &name, force)?;
+            Ok(true)
+        }
+        ProfileCommands::Switch { name } => {
+            handle_switch(config, output, &name)?;
+            Ok(true)
+        }
         ProfileCommands::Duplicate { source, new_name } => {
-            handle_duplicate(store, output, &source, &new_name)
+            handle_duplicate(config, output, &source, &new_name)?;
+            Ok(true)
         }
     }
 }
 
-fn handle_list(store: &mut dyn ConfigStore, output: &mut dyn Write) -> Result<()> {
-    let config = store.load()?;
+fn handle_list(config: &Config, output: &mut dyn Write) -> Result<()> {
 
     let profiles = config.profiles.list_names();
 
@@ -149,8 +152,7 @@ fn handle_list(store: &mut dyn ConfigStore, output: &mut dyn Write) -> Result<()
     Ok(())
 }
 
-fn handle_show(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str) -> Result<()> {
-    let config = store.load()?;
+fn handle_show(config: &Config, output: &mut dyn Write, name: &str) -> Result<()> {
 
     match config.profiles.get(name) {
         Some(profile) => {
@@ -215,7 +217,7 @@ fn handle_show(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str) 
 
 #[allow(clippy::too_many_arguments)]
 fn handle_create(
-    store: &mut dyn ConfigStore,
+    config: &mut Config,
     output: &mut dyn Write,
     name: &str,
     provider: Option<String>,
@@ -228,7 +230,6 @@ fn handle_create(
     azure_api_version: Option<String>,
     azure_deployment_id: Option<String>,
 ) -> Result<()> {
-    let mut config = store.load()?;
 
     if config.profiles.exists(name) {
         anyhow::bail!("Profile '{}' already exists", name);
@@ -277,7 +278,7 @@ fn handle_create(
     // Validate and add
     profile.validate().context("Profile validation failed")?;
     config.profiles.add(profile)?;
-    store.save(&config)?;
+
 
     writeln!(output, "Created profile: {}", name)?;
 
@@ -286,7 +287,7 @@ fn handle_create(
 
 #[allow(clippy::too_many_arguments)]
 fn handle_edit(
-    store: &mut dyn ConfigStore,
+    config: &mut Config,
     output: &mut dyn Write,
     name: &str,
     provider: Option<String>,
@@ -299,7 +300,6 @@ fn handle_edit(
     azure_api_version: Option<String>,
     azure_deployment_id: Option<String>,
 ) -> Result<()> {
-    let mut config = store.load()?;
 
     let mut profile = config
         .profiles
@@ -343,7 +343,7 @@ fn handle_edit(
     // Validate and update
     profile.validate().context("Profile validation failed")?;
     config.profiles.update(name, profile)?;
-    store.save(&config)?;
+
 
     writeln!(output, "Updated profile: {}", name)?;
 
@@ -351,13 +351,12 @@ fn handle_edit(
 }
 
 fn handle_delete(
-    store: &mut dyn ConfigStore,
+    config: &mut Config,
     input: &mut dyn BufRead,
     output: &mut dyn Write,
     name: &str,
     force: bool,
 ) -> Result<()> {
-    let mut config = store.load()?;
 
     if !config.profiles.exists(name) {
         anyhow::bail!("Profile '{}' not found", name);
@@ -378,15 +377,14 @@ fn handle_delete(
     }
 
     config.profiles.remove(name)?;
-    store.save(&config)?;
+
 
     writeln!(output, "Deleted profile: {}", name)?;
 
     Ok(())
 }
 
-fn handle_switch(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str) -> Result<()> {
-    let mut config = store.load()?;
+fn handle_switch(config: &mut Config, output: &mut dyn Write, name: &str) -> Result<()> {
 
     config.profiles.set_active(name)?;
 
@@ -395,7 +393,7 @@ fn handle_switch(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str
         config.apply_profile(&profile);
     }
 
-    store.save(&config)?;
+
 
     writeln!(output, "Switched to profile: {}", name)?;
 
@@ -403,12 +401,11 @@ fn handle_switch(store: &mut dyn ConfigStore, output: &mut dyn Write, name: &str
 }
 
 fn handle_duplicate(
-    store: &mut dyn ConfigStore,
+    config: &mut Config,
     output: &mut dyn Write,
     source: &str,
     new_name: &str,
 ) -> Result<()> {
-    let mut config = store.load()?;
 
     if !config.profiles.exists(source) {
         anyhow::bail!("Source profile '{}' not found", source);
@@ -427,7 +424,7 @@ fn handle_duplicate(
     new_profile.name = new_name.to_string();
 
     config.profiles.add(new_profile)?;
-    store.save(&config)?;
+
 
     writeln!(output, "Duplicated '{}' to '{}'", source, new_name)?;
 
