@@ -26,7 +26,7 @@
 //! The generic pattern enforces a clean separation:
 //! 1. Config files NEVER contain literal secrets (type system prevents serialization)
 //! 2. Runtime secrets NEVER leak into config files (no Serialize impl)
-//! 3. Secret references flow: Disk → SecretRef → resolve() → SecretString → use
+//! 3. Secret references flow: Disk → SecretRef → resolve (in christina) → SecretString → use
 //!
 //! ### Common Pitfalls
 //!

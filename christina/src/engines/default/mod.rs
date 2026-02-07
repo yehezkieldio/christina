@@ -9,10 +9,11 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use tracing::Instrument;
 
+use crate::config::profiles::ProviderProfile;
+
 use christina_core::{
     error::{CompletionError, ProviderError},
     llm::{ChatMessage, LlmRequest},
-    profile::ProviderProfile,
     types::{ModelName, ProviderKind, Temperature},
     types::backend_id::GenerationId,
     types::tokens::TokenCount,

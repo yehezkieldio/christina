@@ -8,4 +8,4 @@ pub use config_file::{
     AdvancedConfig, ConfigFile, ExperimentalConfig, StandardConfig,
 };
 pub use resolved::ResolvedConfig;
-pub use secret::{Secret, SecretError, SecretRef, SecretString};
+pub use secret::{Secret, SecretRef, SecretString};

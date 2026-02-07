@@ -20,7 +20,7 @@ pub mod types;
 
 pub use config::{
     AdvancedConfig, AzureEndpoint, AzureEndpointError, ConfigFile, ExperimentalConfig,
-    ResolvedConfig, Secret, SecretError, SecretRef, SecretString, StandardConfig,
+    ResolvedConfig, Secret, SecretRef, SecretString, StandardConfig,
 };
 pub use error::{
     AppError, CompletionError, DiffError, DiffResult, ErrorCategory, GitError, GitResult,

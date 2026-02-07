@@ -477,7 +477,7 @@ impl Config {
             );
         }
 
-        // Warn if provider is unknown (but don't fail - let factory handle it)
+        // Warn if provider is unknown (but don't fail - let provider selection handle it)
         warnings
     }
 

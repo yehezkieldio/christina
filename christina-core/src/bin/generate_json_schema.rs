@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 // Suppress unused crate dependency warnings inherited from the library
 use compact_str as _;
-use keyring as _;
 use regex as _;
 use serde as _;
 use thiserror as _;

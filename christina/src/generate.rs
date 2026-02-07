@@ -12,7 +12,7 @@ use crate::engines::Provider;
 use christina_core::processing::{get_tokenizer, should_limit_file, TokenBudget};
 use christina_core::processing::{normalize_user_context, fit_user_context_to_budget, fit_history_to_budget};
 use crate::orchestrator::{AIOrchestrator, GenerationResult};
-use christina_core::ProviderProfile;
+use crate::config::profiles::ProviderProfile;
 use christina_core::prompt::{
     DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT,
 };

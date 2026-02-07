@@ -9,7 +9,7 @@ use christina_core::types::{ModelName, ProviderKind};
 use christina_core::types::tokens::TokenCount;
 
 fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>> {
-    match SecretRef::parse(key).map_err(anyhow::Error::msg)? {
+    match SecretRef::parse(key) {
         SecretRef::EnvVar(name) => Ok(Secret::EnvVar(name)),
         SecretRef::Keyring(key_name) => Ok(Secret::Keyring(key_name)),
         SecretRef::Literal(value) => {
@@ -422,60 +422,34 @@ fn handle_duplicate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use christina_core::profile::{Profiles, ProviderProfile};
+    use crate::config::profiles::Profiles;
     use christina_core::types::{ModelName, ProviderKind};
     use std::io::{BufReader, Cursor};
 
-    struct MockConfigStore {
-        config: Config,
-        save_called: bool,
-    }
-
-    impl MockConfigStore {
-        fn new() -> Self {
-            Self {
-                config: Config {
-                    profiles: Profiles::new(),
-                    ..Default::default()
-                },
-                save_called: false,
-            }
-        }
-
-        fn with_profile(mut self, name: &str) -> Self {
-            let profile = ProviderProfile::new(
-                name.to_string(),
-                ProviderKind::OpenAI,
-                ModelName::from("gpt-4"),
-            );
-            self.config.profiles.add(profile).unwrap();
-            self
-        }
-
-        fn with_active(mut self, name: &str) -> Self {
-            self.config.profiles.set_active(name).unwrap();
-            self
+    fn base_config() -> Config {
+        Config {
+            profiles: Profiles::new(),
+            ..Default::default()
         }
     }
 
-    impl ConfigStore for MockConfigStore {
-        fn load(&mut self) -> Result<Config> {
-            Ok(self.config.clone())
-        }
-
-        fn save(&mut self, config: &Config) -> Result<()> {
-            self.config = config.clone();
-            self.save_called = true;
-            Ok(())
-        }
+    fn config_with_profile(name: &str) -> Config {
+        let mut config = base_config();
+        let profile = ProviderProfile::new(
+            name.to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4"),
+        );
+        config.profiles.add(profile).unwrap();
+        config
     }
 
     #[test]
     fn test_list_empty() {
-        let mut store = MockConfigStore::new();
+        let config = base_config();
         let mut output = Vec::new();
 
-        handle_list(&mut store, &mut output).unwrap();
+        handle_list(&config, &mut output).unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("No profiles configured"));
@@ -483,13 +457,17 @@ mod tests {
 
     #[test]
     fn test_list_with_profiles() {
-        let mut store = MockConfigStore::new()
-            .with_profile("dev")
-            .with_profile("prod")
-            .with_active("dev");
+        let mut config = config_with_profile("dev");
+        let profile = ProviderProfile::new(
+            "prod".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4"),
+        );
+        config.profiles.add(profile).unwrap();
+        config.profiles.set_active("dev").unwrap();
         let mut output = Vec::new();
 
-        handle_list(&mut store, &mut output).unwrap();
+        handle_list(&config, &mut output).unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("dev *"));
@@ -498,10 +476,10 @@ mod tests {
 
     #[test]
     fn test_show_existing_profile() {
-        let mut store = MockConfigStore::new().with_profile("test");
+        let config = config_with_profile("test");
         let mut output = Vec::new();
 
-        handle_show(&mut store, &mut output, "test").unwrap();
+        handle_show(&config, &mut output, "test").unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Profile: test"));
@@ -510,21 +488,21 @@ mod tests {
 
     #[test]
     fn test_show_nonexistent_profile() {
-        let mut store = MockConfigStore::new();
+        let config = base_config();
         let mut output = Vec::new();
 
-        let result = handle_show(&mut store, &mut output, "nonexistent");
+        let result = handle_show(&config, &mut output, "nonexistent");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
 
     #[test]
     fn test_create_basic_profile() {
-        let mut store = MockConfigStore::new();
+        let mut config = base_config();
         let mut output = Vec::new();
 
         handle_create(
-            &mut store,
+            &mut config,
             &mut output,
             "new",
             Some("openai".to_string()),
@@ -539,19 +517,18 @@ mod tests {
         )
         .unwrap();
 
-        assert!(store.save_called);
-        assert!(store.config.profiles.exists("new"));
-        let profile = store.config.profiles.get("new").unwrap();
+        assert!(config.profiles.exists("new"));
+        let profile = config.profiles.get("new").unwrap();
         assert_eq!(profile.provider, ProviderKind::OpenAI);
     }
 
     #[test]
     fn test_create_duplicate_profile() {
-        let mut store = MockConfigStore::new().with_profile("existing");
+        let mut config = config_with_profile("existing");
         let mut output = Vec::new();
 
         let result = handle_create(
-            &mut store,
+            &mut config,
             &mut output,
             "existing",
             Some("openai".to_string()),
@@ -571,11 +548,11 @@ mod tests {
 
     #[test]
     fn test_create_with_all_options() {
-        let mut store = MockConfigStore::new();
+        let mut config = base_config();
         let mut output = Vec::new();
 
         handle_create(
-            &mut store,
+            &mut config,
             &mut output,
             "azure",
             Some("azure".to_string()),
@@ -590,7 +567,7 @@ mod tests {
         )
         .unwrap();
 
-        let profile = store.config.profiles.get("azure").unwrap();
+        let profile = config.profiles.get("azure").unwrap();
         assert_eq!(profile.provider, ProviderKind::Azure);
         assert_eq!(profile.max_input_tokens.get(), 100000);
         assert_eq!(
@@ -601,11 +578,11 @@ mod tests {
 
     #[test]
     fn test_edit_existing_profile() {
-        let mut store = MockConfigStore::new().with_profile("test");
+        let mut config = config_with_profile("test");
         let mut output = Vec::new();
 
         handle_edit(
-            &mut store,
+            &mut config,
             &mut output,
             "test",
             None,
@@ -620,18 +597,18 @@ mod tests {
         )
         .unwrap();
 
-        let profile = store.config.profiles.get("test").unwrap();
+        let profile = config.profiles.get("test").unwrap();
         assert_eq!(profile.model, ModelName::from("gpt-4-turbo"));
         assert_eq!(profile.max_input_tokens.get(), 200000);
     }
 
     #[test]
     fn test_edit_nonexistent_profile() {
-        let mut store = MockConfigStore::new();
+        let mut config = base_config();
         let mut output = Vec::new();
 
         let result = handle_edit(
-            &mut store,
+            &mut config,
             &mut output,
             "nonexistent",
             None,
@@ -651,102 +628,107 @@ mod tests {
 
     #[test]
     fn test_delete_with_force() {
-        let mut store = MockConfigStore::new().with_profile("test");
+        let mut config = config_with_profile("test");
         let mut input = BufReader::new(Cursor::new(b""));
         let mut output = Vec::new();
 
-        handle_delete(&mut store, &mut input, &mut output, "test", true).unwrap();
+        handle_delete(&mut config, &mut input, &mut output, "test", true).unwrap();
 
-        assert!(!store.config.profiles.exists("test"));
-        assert!(store.save_called);
+        assert!(!config.profiles.exists("test"));
     }
 
     #[test]
     fn test_delete_with_confirmation_yes() {
-        let mut store = MockConfigStore::new().with_profile("test");
+        let mut config = config_with_profile("test");
         let mut input = BufReader::new(Cursor::new(b"y\n"));
         let mut output = Vec::new();
 
-        handle_delete(&mut store, &mut input, &mut output, "test", false).unwrap();
+        handle_delete(&mut config, &mut input, &mut output, "test", false).unwrap();
 
-        assert!(!store.config.profiles.exists("test"));
+        assert!(!config.profiles.exists("test"));
     }
 
     #[test]
     fn test_delete_with_confirmation_no() {
-        let mut store = MockConfigStore::new().with_profile("test");
+        let mut config = config_with_profile("test");
         let mut input = BufReader::new(Cursor::new(b"n\n"));
         let mut output = Vec::new();
 
-        handle_delete(&mut store, &mut input, &mut output, "test", false).unwrap();
+        handle_delete(&mut config, &mut input, &mut output, "test", false).unwrap();
 
-        assert!(store.config.profiles.exists("test"));
-        assert!(!store.save_called);
+        assert!(config.profiles.exists("test"));
     }
 
     #[test]
     fn test_delete_nonexistent_profile() {
-        let mut store = MockConfigStore::new();
+        let mut config = base_config();
         let mut input = BufReader::new(Cursor::new(b""));
         let mut output = Vec::new();
 
-        let result = handle_delete(&mut store, &mut input, &mut output, "nonexistent", true);
+        let result = handle_delete(&mut config, &mut input, &mut output, "nonexistent", true);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_switch_profile() {
-        let mut store = MockConfigStore::new()
-            .with_profile("dev")
-            .with_profile("prod");
+        let mut config = config_with_profile("dev");
+        let profile = ProviderProfile::new(
+            "prod".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4"),
+        );
+        config.profiles.add(profile).unwrap();
         let mut output = Vec::new();
 
-        handle_switch(&mut store, &mut output, "prod").unwrap();
+        handle_switch(&mut config, &mut output, "prod").unwrap();
 
-        assert_eq!(store.config.profiles.active, Some("prod".to_string()));
-        assert!(store.save_called);
+        assert_eq!(config.profiles.active, Some("prod".to_string()));
     }
 
     #[test]
     fn test_switch_nonexistent_profile() {
-        let mut store = MockConfigStore::new();
+        let mut config = base_config();
         let mut output = Vec::new();
 
-        let result = handle_switch(&mut store, &mut output, "nonexistent");
+        let result = handle_switch(&mut config, &mut output, "nonexistent");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_duplicate_profile() {
-        let mut store = MockConfigStore::new().with_profile("original");
+        let mut config = config_with_profile("original");
         let mut output = Vec::new();
 
-        handle_duplicate(&mut store, &mut output, "original", "copy").unwrap();
+        handle_duplicate(&mut config, &mut output, "original", "copy").unwrap();
 
-        assert!(store.config.profiles.exists("original"));
-        assert!(store.config.profiles.exists("copy"));
-        let copy = store.config.profiles.get("copy").unwrap();
+        assert!(config.profiles.exists("original"));
+        assert!(config.profiles.exists("copy"));
+        let copy = config.profiles.get("copy").unwrap();
         assert_eq!(copy.name, "copy");
     }
 
     #[test]
     fn test_duplicate_nonexistent_source() {
-        let mut store = MockConfigStore::new();
+        let mut config = base_config();
         let mut output = Vec::new();
 
-        let result = handle_duplicate(&mut store, &mut output, "nonexistent", "copy");
+        let result = handle_duplicate(&mut config, &mut output, "nonexistent", "copy");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
 
     #[test]
     fn test_duplicate_to_existing_name() {
-        let mut store = MockConfigStore::new()
-            .with_profile("source")
-            .with_profile("target");
+        let mut config = config_with_profile("source");
+        let profile = ProviderProfile::new(
+            "target".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4"),
+        );
+        config.profiles.add(profile).unwrap();
         let mut output = Vec::new();
 
-        let result = handle_duplicate(&mut store, &mut output, "source", "target");
+        let result = handle_duplicate(&mut config, &mut output, "source", "target");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
