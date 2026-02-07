@@ -1217,7 +1217,7 @@ fn try_extract_valid_commit(
 #[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use christina_core::git::DiffChunk;
+    use christina_core::types::DiffChunk;
     use christina_core::types::tokens::TokenCount;
 
     fn sample_chunk() -> DiffChunk {

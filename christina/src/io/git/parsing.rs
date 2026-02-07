@@ -358,6 +358,7 @@ pub fn truncate_deletion_diff(content: &str, max_deletion_lines: usize) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use christina_core::types::TokenCount;
 
     struct MockTokenizer;
 

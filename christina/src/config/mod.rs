@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub mod diff_tool;
 pub mod settings;
 
