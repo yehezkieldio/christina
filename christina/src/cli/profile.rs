@@ -10,8 +10,8 @@ use crate::cli::ProfileCommands;
 use crate::config::Config;
 use crate::config::profiles::ProviderProfile;
 use crate::config::secrets::{Secret, SecretRef};
-use christina_core::types::{ModelName, ProviderKind};
 use christina_core::types::tokens::TokenCount;
+use christina_core::types::{ModelName, ProviderKind};
 
 fn parse_secret_input(key: &str, allow_plaintext: bool) -> Secret<String> {
     // SecretRef parsing is infallible; unknown prefixes are treated as literals.
@@ -131,7 +131,6 @@ fn handle_profile_command_with_io(
 }
 
 fn handle_list(config: &Config, output: &mut dyn Write) -> Result<()> {
-
     let profiles = config.profiles.list_names();
 
     if profiles.is_empty() {

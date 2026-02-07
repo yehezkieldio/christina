@@ -3,8 +3,6 @@
 //! Centralizes tracing subscriber configuration, log filtering,
 //! and privacy-aware log sanitization.
 
-pub mod filters;
-
 use tracing_appender::rolling;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 

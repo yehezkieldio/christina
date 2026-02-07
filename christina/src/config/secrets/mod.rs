@@ -139,8 +139,8 @@ fn resolve_keyring_secret(key: &str) -> Result<SecretString, SecretResolveError>
 
     policy.retry_blocking(
         || {
-            let entry = keyring::Entry::new("christina", &key_clone)
-                .map_err(|e: keyring::Error| {
+            let entry =
+                keyring::Entry::new("christina", &key_clone).map_err(|e: keyring::Error| {
                     SecretResolveError::KeyringFailed(key_clone.clone(), e.to_string())
                 })?;
 
@@ -199,9 +199,11 @@ mod tests {
         let secret = Secret::Keyring("test".to_string());
         let result = resolve_secret(&secret);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Keyring support not compiled"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Keyring support not compiled")
+        );
     }
 }

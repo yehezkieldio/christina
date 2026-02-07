@@ -21,7 +21,11 @@ use std::sync::Arc;
 
 use crate::{
     tokenizer::Tokenizer,
-    types::{diff::{DiffChunk, FileDiff}, path::FilePath, tokens::TokenCount},
+    types::{
+        diff::{DiffChunk, FileDiff},
+        path::FilePath,
+        tokens::TokenCount,
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -972,7 +976,8 @@ mod tests {
         // Test 1: Multiple lines with varying lengths
         let content = "line 1\nthis is a longer line with more content\nshort\nanother medium length line here\nfinal";
         for limit in [5, 10, 20, 50] {
-            let truncated = truncate_to_token_limit(content, TokenCount::new_at_least_one(limit), &tokenizer);
+            let truncated =
+                truncate_to_token_limit(content, TokenCount::new_at_least_one(limit), &tokenizer);
             let actual_tokens = tokenizer.count_tokens(&truncated);
             assert!(
                 actual_tokens.get() <= limit,
@@ -985,13 +990,15 @@ mod tests {
         // Test 2: Content with very long lines
         let long_line = "x".repeat(200);
         let content_long = format!("{}\n{}\n{}", long_line, long_line, long_line);
-        let truncated = truncate_to_token_limit(&content_long, TokenCount::new_at_least_one(30), &tokenizer);
+        let truncated =
+            truncate_to_token_limit(&content_long, TokenCount::new_at_least_one(30), &tokenizer);
         let actual_tokens = tokenizer.count_tokens(&truncated);
         assert!(actual_tokens.get() <= 30);
 
         // Test 3: Edge case with limit = 1
         let content_small = "a\nb\nc\nd";
-        let truncated = truncate_to_token_limit(content_small, TokenCount::new_at_least_one(1), &tokenizer);
+        let truncated =
+            truncate_to_token_limit(content_small, TokenCount::new_at_least_one(1), &tokenizer);
         let actual_tokens = tokenizer.count_tokens(&truncated);
         assert!(actual_tokens.get() <= 1);
     }

@@ -9,12 +9,12 @@ use std::sync::{Arc, OnceLock};
 #[cfg(test)]
 use std::cell::RefCell;
 
-use ahash::RandomState;
 use crate::{
-    tokenizer::Tokenizer,
     error::{TokenizerError, TokenizerResult},
+    tokenizer::Tokenizer,
     types::tokens::TokenCount,
 };
+use ahash::RandomState;
 use moka::sync::Cache;
 use tiktoken_rs::CoreBPE;
 use tracing::warn;
@@ -533,9 +533,8 @@ mod tests {
 
                 let handle = tokio::spawn(async move {
                     // Count tokens multiple times
-                    let counts: Vec<TokenCount> = (0..5)
-                        .map(|_| tokenizer.count_tokens(&text))
-                        .collect();
+                    let counts: Vec<TokenCount> =
+                        (0..5).map(|_| tokenizer.count_tokens(&text)).collect();
 
                     // All counts for the same text should be consistent
                     let first = counts[0];
@@ -569,9 +568,7 @@ mod tests {
             let tokenizer = Arc::clone(&tokenizer);
             let text = test_text.clone();
 
-            let handle = tokio::spawn(async move {
-                tokenizer.count_tokens(&text)
-            });
+            let handle = tokio::spawn(async move { tokenizer.count_tokens(&text) });
 
             handles.push(handle);
         }
@@ -620,7 +617,10 @@ mod tests {
             results.push((sliced, count));
 
             // Verify the token count doesn't exceed limit
-            assert!(count.get() <= limit.get(), "Sliced text exceeds token limit");
+            assert!(
+                count.get() <= limit.get(),
+                "Sliced text exceeds token limit"
+            );
         }
 
         // All slices should be identical for the same input
@@ -637,9 +637,7 @@ mod tests {
 
         // Spawn many tasks that all call get_tokenizer()
         for _ in 0..20 {
-            let handle = tokio::spawn(async {
-                get_tokenizer()
-            });
+            let handle = tokio::spawn(async { get_tokenizer() });
 
             handles.push(handle);
         }
@@ -656,7 +654,10 @@ mod tests {
         let first_ptr = Arc::as_ptr(&tokenizers[0]);
         for tokenizer in &tokenizers[1..] {
             let ptr = Arc::as_ptr(tokenizer);
-            assert_eq!(first_ptr, ptr, "get_tokenizer() returned different instances");
+            assert_eq!(
+                first_ptr, ptr,
+                "get_tokenizer() returned different instances"
+            );
         }
     }
 

@@ -6,8 +6,12 @@
 use anyhow::{Context, Result};
 use git2::{DiffOptions, Repository};
 use std::io::{IsTerminal, Write};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tokio::time;
 
 use christina_core::git::GitFile;
+use christina_core::types::MAX_DIFF_SIZE;
 
 /// Get the appropriate path from a delta based on its status.
 /// For deletions, use old_file path; otherwise use new_file path.
@@ -17,6 +21,72 @@ fn get_delta_path(delta: &git2::DiffDelta) -> Option<String> {
         _ => delta.new_file().path(),
     }
     .map(|p| p.to_string_lossy().to_string())
+}
+
+const DEFAULT_GIT_TIMEOUT_SECS: u64 = 30;
+
+fn git_timeout() -> Duration {
+    let timeout = std::env::var("CHRISTINA_GIT_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|val| val.parse::<u64>().ok())
+        .filter(|&secs| secs > 0)
+        .unwrap_or(DEFAULT_GIT_TIMEOUT_SECS);
+    Duration::from_secs(timeout)
+}
+
+async fn run_with_git_timeout<T, F>(repo_path: PathBuf, action: &'static str, f: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&Repository) -> Result<T> + Send + 'static,
+{
+    let timeout = git_timeout();
+    let handle = tokio::task::spawn_blocking(move || {
+        let repo = Repository::open(&repo_path).map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to open git repository at {}: {}",
+                repo_path.display(),
+                err
+            )
+        })?;
+        f(&repo)
+    });
+
+    match time::timeout(timeout, handle).await {
+        Ok(join_result) => join_result
+            .map_err(|err| anyhow::anyhow!("Git operation '{}' failed to join: {}", action, err))?,
+        Err(_) => Err(anyhow::anyhow!(
+            "Git operation '{}' timed out after {}s",
+            action,
+            timeout.as_secs()
+        )),
+    }
+}
+
+pub async fn get_staged_files_with_timeout(repo_path: impl AsRef<Path>) -> Result<Vec<GitFile>> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    run_with_git_timeout(repo_path, "get staged files", get_staged_files).await
+}
+
+pub async fn has_staged_changes_with_timeout(repo_path: impl AsRef<Path>) -> Result<bool> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    run_with_git_timeout(repo_path, "check staged changes", has_staged_changes).await
+}
+
+pub async fn build_staged_diff_with_timeout(repo_path: impl AsRef<Path>) -> Result<String> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    run_with_git_timeout(repo_path, "build staged diff", build_staged_diff).await
+}
+
+pub async fn create_commit_with_timeout(
+    repo_path: impl AsRef<Path>,
+    message: &str,
+) -> Result<git2::Oid> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    let message = message.to_string();
+    run_with_git_timeout(repo_path, "create commit", move |repo| {
+        create_commit(repo, &message)
+    })
+    .await
 }
 
 /// Get staged files (changes between HEAD and index)
@@ -472,18 +542,31 @@ pub fn build_staged_diff(repo: &Repository) -> Result<String> {
         .context("Failed to create diff")?;
 
     let mut diff_string = String::new();
+    let notice = "\n[diff truncated: max size reached]";
+    let max_without_notice = MAX_DIFF_SIZE.saturating_sub(notice.len());
+    let mut truncated = false;
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
         use std::fmt::Write;
+        if truncated {
+            return false;
+        }
         // Include origin character for context/add/delete lines
         let origin = line.origin();
+        let content = String::from_utf8_lossy(line.content());
+        let mut line_len = content.len();
+        if matches!(origin, '+' | '-' | ' ') {
+            line_len += 1;
+        }
+        if diff_string.len().saturating_add(line_len) > max_without_notice {
+            diff_string.truncate(max_without_notice);
+            diff_string.push_str(notice);
+            truncated = true;
+            return false;
+        }
         if matches!(origin, '+' | '-' | ' ') {
             let _ = write!(&mut diff_string, "{}", origin);
         }
-        let _ = write!(
-            &mut diff_string,
-            "{}",
-            String::from_utf8_lossy(line.content())
-        );
+        let _ = write!(&mut diff_string, "{}", content);
         true
     })
     .context("Failed to format diff")?;

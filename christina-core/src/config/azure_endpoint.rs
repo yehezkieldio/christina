@@ -24,7 +24,9 @@ pub enum AzureEndpointError {
     NotAzureEndpoint,
     #[error("Missing deployment ID in URL path")]
     MissingDeploymentId,
-    #[error("Non-standard Azure URL path: {0}. Expected /openai/deployments/{{id}}/chat/completions")]
+    #[error(
+        "Non-standard Azure URL path: {0}. Expected /openai/deployments/{{id}}/chat/completions"
+    )]
     NonStandardPath(String),
 }
 
@@ -208,7 +210,8 @@ mod tests {
 
     #[test]
     fn test_parse_azure_url_non_standard_path() {
-        let url = "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4/wrong/path";
+        let url =
+            "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4/wrong/path";
         let result: Result<AzureEndpoint, _> = url.try_into();
 
         assert!(result.is_err());
@@ -233,7 +236,9 @@ mod tests {
     #[test]
     fn test_parse_azure_url_deployment_only() {
         let url = "https://myresource.cognitiveservices.azure.com/openai/deployments/gpt-4";
-        let endpoint: AzureEndpoint = url.try_into().expect("Valid minimal Azure URL should parse");
+        let endpoint: AzureEndpoint = url
+            .try_into()
+            .expect("Valid minimal Azure URL should parse");
 
         assert_eq!(endpoint.deployment_id, "gpt-4");
     }

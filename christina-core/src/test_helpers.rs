@@ -308,10 +308,7 @@ mod tests {
         assert_eq!(tokenizer.count_tokens("one"), TokenCount::new(1).unwrap());
         assert_eq!(tokenizer.count_tokens_exact(""), 0);
         assert_eq!(tokenizer.count_tokens(""), TokenCount::new_at_least_one(0));
-        assert_eq!(
-            tokenizer.count_tokens_exact("   \t  \n  "),
-            0
-        );
+        assert_eq!(tokenizer.count_tokens_exact("   \t  \n  "), 0);
         assert_eq!(
             tokenizer.count_tokens("   \t  \n  "),
             TokenCount::new_at_least_one(0)
@@ -771,14 +768,8 @@ mod builder_tests {
     #[test]
     fn mock_tokenizer_by_length() {
         let tokenizer = MockTokenizer::by_character_length();
-        assert_eq!(
-            tokenizer.count_tokens("hello"),
-            TokenCount::new(5).unwrap()
-        );
-        assert_eq!(
-            tokenizer.count_tokens("hi"),
-            TokenCount::new(2).unwrap()
-        );
+        assert_eq!(tokenizer.count_tokens("hello"), TokenCount::new(5).unwrap());
+        assert_eq!(tokenizer.count_tokens("hi"), TokenCount::new(2).unwrap());
     }
 
     #[test]

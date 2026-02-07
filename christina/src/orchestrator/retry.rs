@@ -126,9 +126,9 @@ where
                 }
 
                 let backoff = policy.calculate_delay(attempt as u32);
-                let delay = err.retry_after().map_or(backoff, |retry_after| {
-                    std::cmp::min(retry_after, backoff)
-                });
+                let delay = err
+                    .retry_after()
+                    .map_or(backoff, |retry_after| std::cmp::min(retry_after, backoff));
                 sleep(delay).await;
                 attempt += 1;
             }

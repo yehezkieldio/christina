@@ -105,6 +105,11 @@ impl<S> ProviderProfile<S> {
 
 impl ProviderProfile<String> {
     pub fn new(name: String, provider: ProviderKind, model: ModelName) -> Self {
+        let azure_api_version = if provider == ProviderKind::Azure {
+            Some("2024-12-01-preview".to_string())
+        } else {
+            None
+        };
         Self {
             name,
             provider,
@@ -113,7 +118,7 @@ impl ProviderProfile<String> {
             api_key: Secret::EnvVar(provider.default_api_key_env_var().to_string()),
             max_input_tokens: TokenCount::new_at_least_one(128000),
             max_output_tokens: TokenCount::new_at_least_one(2048),
-            azure_api_version: Some("2024-12-01-preview".to_string()),
+            azure_api_version,
             azure_deployment_id: None,
             temperature: None,
         }
@@ -320,5 +325,25 @@ mod tests {
         assert!(manager.remove("test").is_ok());
         assert!(!manager.exists("test"));
         assert!(manager.get_active().is_none());
+    }
+
+    #[test]
+    fn provider_profile_new_sets_azure_version_only_for_azure() {
+        let openai = ProviderProfile::new(
+            "openai".to_string(),
+            ProviderKind::OpenAI,
+            ModelName::from("gpt-4.1-mini"),
+        );
+        assert!(openai.azure_api_version.is_none());
+
+        let azure = ProviderProfile::new(
+            "azure".to_string(),
+            ProviderKind::Azure,
+            ModelName::from("gpt-4.1-mini"),
+        );
+        assert_eq!(
+            azure.azure_api_version,
+            Some("2024-12-01-preview".to_string())
+        );
     }
 }

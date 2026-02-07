@@ -177,7 +177,10 @@ impl TokenBucket {
         if self.refill_rate_milli > 0 && self.refill_rate_milli != u64::MAX {
             let elapsed_ms = now.duration_since(self.last_refill).as_millis() as u64;
             let tokens_to_add = elapsed_ms.saturating_mul(self.refill_rate_milli);
-            self.tokens_milli = self.tokens_milli.saturating_add(tokens_to_add).min(self.capacity_milli);
+            self.tokens_milli = self
+                .tokens_milli
+                .saturating_add(tokens_to_add)
+                .min(self.capacity_milli);
         } else if self.refill_rate_milli == u64::MAX {
             self.tokens_milli = self.capacity_milli;
         }

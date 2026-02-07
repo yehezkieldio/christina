@@ -56,43 +56,43 @@ Each finding is a self-contained unit. Findings within the same priority tier ar
 
 ## P1 — Hardening (Production Safety)
 
-### P1-01: No timeout on git2 operations
+### P1-01: No timeout on git2 operations — ✅ Solved
 
 - Location: christina/src/git/adapter.rs (all public functions)
 - Problem: git2 calls (`diff_tree_to_index`, `find_similar`, `diff.print`, `create_commit`) have no timeout. A locked repository or NFS stall hangs the process indefinitely.
 - Approach: Wrap git2 operations in `tokio::task::spawn_blocking` with `tokio::time::timeout`. Use a configurable timeout (default 30s). Return a descriptive error on timeout.
 
-### P1-02: No MAX_DIFF_SIZE enforcement at git adapter level
+### P1-02: No MAX_DIFF_SIZE enforcement at git adapter level — ✅ Solved
 
 - Location: christina/src/git/adapter.rs `build_staged_diff()`
 - Problem: `build_staged_diff()` accumulates the entire diff string without size limits. A repository with a 500MB binary accidentally staged will OOM before `DiffProcessor` checks.
 - Approach: Add a size check inside the `diff.print` callback. When accumulated bytes exceed `MAX_DIFF_SIZE`, stop accumulating and append a truncation notice. Alternatively, check total diff stat size before calling `diff.print`.
 
-### P1-03: azure.rs reqwest Client has no timeout
+### P1-03: azure.rs reqwest Client has no timeout — ✅ Solved
 
 - Location: christina/src/engines/default/azure.rs line 175-182
 - Problem: Even after fixing P0-06, the Client needs explicit timeouts. Without them, a hung Azure endpoint blocks the tokio runtime thread pool.
 - Approach: Configure the Client with `.timeout(Duration::from_secs(120))` and `.connect_timeout(Duration::from_secs(10))`.
 
-### P1-04: Config file writes lack atomic protection
+### P1-04: Config file writes lack atomic protection — ✅ Solved
 
 - Location: christina/src/config/settings.rs (config save paths, profile persistence)
 - Problem: Config writes use `std::fs::write()` directly. A crash mid-write produces a truncated config file that fails to parse on next startup, effectively bricking the CLI until manually fixed.
 - Approach: Write to a temporary file in the same directory, then `std::fs::rename()` into place. This is atomic on POSIX filesystems. On Windows, use `std::fs::rename` which is also atomic for same-volume renames.
 
-### P1-05: ProviderProfile::new sets azure_api_version for all providers
+### P1-05: ProviderProfile::new sets azure_api_version for all providers — ✅ Solved
 
 - Location: christina-core/src/profile.rs lines 107-120
 - Problem: `ProviderProfile::new()` unconditionally sets `azure_api_version: Some("2024-12-01-preview")` even for OpenAI and Groq providers. This leaks Azure-specific defaults into non-Azure profiles.
 - Approach: Set `azure_api_version` to `None` in `new()`. Only set it when the provider is `ProviderKind::Azure`, or let the Azure provider constructor handle the default.
 
-### P1-06: No validation that max_input_tokens > max_output_tokens at config load
+### P1-06: No validation that max_input_tokens > max_output_tokens at config load — ✅ Solved
 
 - Location: christina/src/config/settings.rs `Config::validate()`
 - Problem: A user can set max_input_tokens=500 and max_output_tokens=4000. This passes config validation but fails later with a confusing arithmetic underflow error in generate.rs budget calculation.
 - Approach: Add a check in `Config::validate()` that `max_input_tokens > max_output_tokens` and emit a clear warning/error.
 
-### P1-07: std::sync::Mutex used in async context
+### P1-07: std::sync::Mutex used in async context — ✅ Solved
 
 - Location: christina/src/orchestrator/mod.rs (TraceStats or similar shared state inside async blocks)
 - Problem: `std::sync::Mutex` blocks the tokio worker thread while held. If contention occurs during concurrent map-phase tasks, this degrades async throughput.
@@ -102,25 +102,25 @@ Each finding is a self-contained unit. Findings within the same priority tier ar
 
 ## P2 — Dead Code and Stubs
 
-### P2-01: telemetry/filters.rs is empty
+### P2-01: telemetry/filters.rs is empty — ✅ Solved
 
 - Location: christina/src/telemetry/filters.rs
 - Problem: Module declared, doc comment present, zero implementation. Privacy-sensitive data (API keys) can appear in log output.
 - Approach: Delete the module and its declaration in mod.rs.
 
-### P2-02: ui/components/mod.rs is empty
+### P2-02: ui/components/mod.rs is empty — ✅ Solved
 
 - Location: christina/src/ui/components/mod.rs
 - Problem: Empty module stub. Adds dead weight to the module tree.
 - Approach: Delete the file and remove `pub mod components;` from ui/mod.rs.
 
-### P2-03: Five Event variants are never emitted
+### P2-03: Five Event variants are never emitted — ✅ Solved
 
 - Location: christina/src/ui/events.rs lines 34-83
 - Problem: `ChunkProcessed`, `RetryAttempt`, `CommitCreated`, `DiffProcessed`, `ProviderConnecting` are all `#[allow(dead_code)]`. They are never constructed anywhere in the codebase.
 - Approach: Delete the unused variants. They can be re-added when actually needed. Suppressing dead_code warnings masks real issues.
 
-### P2-04: git/diff_gen.rs is an empty module
+### P2-04: git/diff_gen.rs is an empty module — ✅ Solved
 
 - Location: christina-core/src/git/diff_gen.rs
 - Problem: Contains only a doc comment, no code. The module is declared in git/mod.rs.

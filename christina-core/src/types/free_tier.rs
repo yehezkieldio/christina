@@ -3,8 +3,8 @@
 //! WHY in core: these constants shape prompt budgeting and concurrency, so they
 //! must be shared across CLI config parsing and runtime enforcement.
 
-use serde::{Deserialize, Serialize};
 use super::TokenCount;
+use serde::{Deserialize, Serialize};
 
 const FREE_TIER_MAX_INPUT_TOKENS: u32 = 16_000;
 const FREE_TIER_MAX_OUTPUT_TOKENS: u32 = 512;

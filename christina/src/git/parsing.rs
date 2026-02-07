@@ -5,7 +5,10 @@
 
 use std::sync::Arc;
 
-use christina_core::{Tokenizer, types::{FileDiff, FilePath}};
+use christina_core::{
+    Tokenizer,
+    types::{FileDiff, FilePath},
+};
 
 const FILE_HEADER: &str = "diff --git ";
 // Per-file cap keeps a single pathological diff from dominating memory.
@@ -506,7 +509,9 @@ mod tests {
     #[test]
     fn parse_git_diff_header_escaped_quotes() {
         assert_eq!(
-            parse_git_diff_header("diff --git \"a/path\\\"with\\\"quote.txt\" \"b/path\\\"with\\\"quote.txt\""),
+            parse_git_diff_header(
+                "diff --git \"a/path\\\"with\\\"quote.txt\" \"b/path\\\"with\\\"quote.txt\""
+            ),
             Some(FilePath::from("path\"with\"quote.txt"))
         );
     }

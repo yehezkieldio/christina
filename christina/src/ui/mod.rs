@@ -3,7 +3,6 @@
 //! WHY lightweight: keep UI rendering simple to avoid coupling to heavy TUI
 //! frameworks while still offering a polished CLI experience.
 
-pub mod components;
 pub mod events;
 
 use console::{Style, Term, style};
@@ -164,9 +163,9 @@ pub fn edit_in_editor(initial_content: &str) -> Result<String, std::io::Error> {
     let status = std::process::Command::new(&editor)
         .arg(&path)
         .status()
-        .map_err(|e| std::io::Error::other(
-            format!("Failed to launch editor '{}': {}", editor, e),
-        ))?;
+        .map_err(|e| {
+            std::io::Error::other(format!("Failed to launch editor '{}': {}", editor, e))
+        })?;
 
     if !status.success() {
         let _ = std::fs::remove_file(&path);

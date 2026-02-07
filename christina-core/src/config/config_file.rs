@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     profile::Profiles,
-    types::{
-        FreeTierLimits, TokenCount, UsageTier,
-        commit::ValidationMode,
-    },
+    types::{FreeTierLimits, TokenCount, UsageTier, commit::ValidationMode},
 };
 
 /// Standard (common) configuration settings.

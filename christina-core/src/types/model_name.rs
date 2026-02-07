@@ -21,7 +21,9 @@ impl schemars::JsonSchema for ModelName {
         schemars::schema::SchemaObject {
             instance_type: Some(schemars::schema::InstanceType::String.into()),
             metadata: Some(Box::new(schemars::schema::Metadata {
-                description: Some("LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')".to_string()),
+                description: Some(
+                    "LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')".to_string(),
+                ),
                 ..Default::default()
             })),
             ..Default::default()

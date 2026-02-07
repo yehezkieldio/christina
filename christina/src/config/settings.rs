@@ -10,16 +10,16 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use tracing;
 
+use crate::config::profiles::{Profiles, ProviderProfile};
+use crate::config::secrets::{Secret, resolve_secret};
 use christina_core::{
     ConfigFile,
     types::{
         FreeTierLimits, ModelName, ProviderKind, UsageTier,
         commit::ValidationMode,
-        tokens::{TokenCount, MAX_INPUT, MAX_OUTPUT},
+        tokens::{MAX_INPUT, MAX_OUTPUT, TokenCount},
     },
 };
-use crate::config::profiles::{Profiles, ProviderProfile};
-use crate::config::secrets::{resolve_secret, Secret};
 use url::Url;
 
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
@@ -58,8 +58,7 @@ fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {
 
     if (value - 1.0).abs() < f64::EPSILON {
         warnings.push(
-            "max_partial_failure_rate set to 1.0 allows all chunk failures to pass"
-                .to_string(),
+            "max_partial_failure_rate set to 1.0 allows all chunk failures to pass".to_string(),
         );
     }
 
@@ -271,10 +270,7 @@ impl Config {
                 }
                 Err(err) => {
                     tracing::warn!("Failed to add default profile: {}", err);
-                    eprintln!(
-                        "Warning: failed to add default profile. {}",
-                        err
-                    );
+                    eprintln!("Warning: failed to add default profile. {}", err);
                 }
             }
         }
@@ -431,6 +427,24 @@ impl Config {
             self.max_output_tokens = max_output;
         }
 
+        if self.max_input_tokens <= self.max_output_tokens {
+            let original_output = self.max_output_tokens;
+            let adjusted_output =
+                TokenCount::new_at_least_one(self.max_input_tokens.get().saturating_sub(1));
+            self.max_output_tokens = adjusted_output;
+            warnings.push(format!(
+                "max_output_tokens must be less than max_input_tokens; adjusted from {} to {}",
+                original_output.get(),
+                self.max_output_tokens.get()
+            ));
+            if self.max_input_tokens.get() <= 1 {
+                warnings.push(
+                    "max_input_tokens is too low to leave output budget; consider increasing it"
+                        .to_string(),
+                );
+            }
+        }
+
         // Clamp temperature to valid range (0.0 to 2.0)
         let original_temperature = self.model_temperature;
         self.model_temperature = self.model_temperature.clamp(0.0, 2.0);
@@ -470,8 +484,7 @@ impl Config {
         }
 
         let original_free_history = self.free_tier.commit_history_depth;
-        self.free_tier.commit_history_depth =
-            self.free_tier.commit_history_depth.clamp(0, 50);
+        self.free_tier.commit_history_depth = self.free_tier.commit_history_depth.clamp(0, 50);
         if self.free_tier.commit_history_depth != original_free_history {
             warnings.push(format!(
                 "free_tier.commit_history_depth clamped from {} to {}",
@@ -580,7 +593,9 @@ impl Config {
             }),
             "use_experimental" => Some(self.use_experimental.to_string()),
             "free_tier_max_input_tokens" => Some(self.free_tier.max_input_tokens.get().to_string()),
-            "free_tier_max_output_tokens" => Some(self.free_tier.max_output_tokens.get().to_string()),
+            "free_tier_max_output_tokens" => {
+                Some(self.free_tier.max_output_tokens.get().to_string())
+            }
             "free_tier_max_concurrent_requests" => {
                 Some(self.free_tier.max_concurrent_requests.to_string())
             }
@@ -631,9 +646,7 @@ impl Config {
                     "model_api_url" => profile.api_url = Some(Url::parse(v)?),
                     "azure_api_version" => profile.azure_api_version = Some(v.to_string()),
                     "azure_deployment_id" => profile.azure_deployment_id = Some(v.to_string()),
-                    "api_key" | "model_api_key" => {
-                        profile.api_key = Secret::Value(v.to_string())
-                    }
+                    "api_key" | "model_api_key" => profile.api_key = Secret::Value(v.to_string()),
                     "model_temperature" => {
                         profile.temperature = Some(v.parse().map_err(anyhow::Error::msg)?)
                     }
@@ -884,9 +897,7 @@ impl Config {
                 .as_ref()
                 .map(|k| Secret::Value(k.clone()))
                 .unwrap_or_else(|| {
-                    Secret::EnvVar(
-                        self.model_provider.default_api_key_env_var().to_string(),
-                    )
+                    Secret::EnvVar(self.model_provider.default_api_key_env_var().to_string())
                 }),
             max_input_tokens: self.max_input_tokens,
             max_output_tokens: self.max_output_tokens,
@@ -903,10 +914,7 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     let mut out = String::new();
 
     writeln!(out, "# Christina Configuration")?;
-    writeln!(
-        out,
-        "# Generated by Christina. Edit values as needed."
-    )?;
+    writeln!(out, "# Generated by Christina. Edit values as needed.")?;
     writeln!(out)?;
 
     writeln!(out, "# Schema version for config migrations")?;
@@ -921,10 +929,7 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     } else {
         writeln!(out, "# active_profile = \"default\"")?;
     }
-    writeln!(
-        out,
-        "# Maximum length for commit messages (default: 72)"
-    )?;
+    writeln!(out, "# Maximum length for commit messages (default: 72)")?;
     match config.standard.commit_message_max_length {
         Some(max_len) => writeln!(out, "commit_message_max_length = {}", max_len)?,
         None => writeln!(out, "# commit_message_max_length = 72")?,
@@ -1006,7 +1011,11 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
     writeln!(out, "# Experimental settings (opt-in)")?;
     writeln!(out, "[experimental]")?;
     writeln!(out, "# Enable experimental settings")?;
-    writeln!(out, "use_experimental = {}", config.experimental.use_experimental)?;
+    writeln!(
+        out,
+        "use_experimental = {}",
+        config.experimental.use_experimental
+    )?;
     writeln!(
         out,
         "# Usage tier for rate-limit-aware defaults: standard | free"
@@ -1019,7 +1028,11 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
 
     writeln!(out)?;
     writeln!(out, "[experimental.free_tier]")?;
-    writeln!(out, "max_input_tokens = {}", config.experimental.free_tier.max_input_tokens.get())?;
+    writeln!(
+        out,
+        "max_input_tokens = {}",
+        config.experimental.free_tier.max_input_tokens.get()
+    )?;
     writeln!(
         out,
         "max_output_tokens = {}",
@@ -1060,11 +1073,7 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
         )?;
         writeln!(out, "model = {}", toml_string(profile.model.as_ref()))?;
         writeln!(out, "api_key = {}", render_secret_inline(&profile.api_key))?;
-        writeln!(
-            out,
-            "max_input_tokens = {}",
-            profile.max_input_tokens.get()
-        )?;
+        writeln!(out, "max_input_tokens = {}", profile.max_input_tokens.get())?;
         writeln!(
             out,
             "max_output_tokens = {}",
@@ -1594,6 +1603,22 @@ mod tests {
     }
 
     #[test]
+    fn validate_adjusts_output_when_exceeds_input() {
+        let mut config = Config::default();
+        config.max_input_tokens = TokenCount::new_at_least_one(1000);
+        config.max_output_tokens = TokenCount::new_at_least_one(2000);
+
+        let warnings = config.validate();
+
+        assert!(config.max_output_tokens < config.max_input_tokens);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("max_output_tokens must be less than max_input_tokens"))
+        );
+    }
+
+    #[test]
     fn config_serialize_deserialize() {
         let config = Config::default();
         let toml_str = toml::to_string(&config.to_config_file()).expect("should serialize to TOML");
@@ -1621,8 +1646,7 @@ mod tests {
         [standard]
         ignore_files = ["test.lock"]
         "#;
-        let config_file: ConfigFile =
-            toml::from_str(minimal_toml).expect("should use defaults");
+        let config_file: ConfigFile = toml::from_str(minimal_toml).expect("should use defaults");
         let mut config = Config::default();
         config.apply_config_file(config_file);
         assert_eq!(config.ignore_files, vec!["test.lock"]);
@@ -1677,10 +1701,7 @@ mod tests {
         assert_eq!(profile.name, "openai-profile");
         assert_eq!(profile.provider, ProviderKind::OpenAI);
         assert_eq!(profile.model, ModelName::from("gpt-5.2"));
-        assert_eq!(
-            profile.api_key,
-            Secret::Value("sk-openai-test".to_string())
-        );
+        assert_eq!(profile.api_key, Secret::Value("sk-openai-test".to_string()));
         assert_eq!(profile.max_input_tokens.get(), 16384);
         assert_eq!(profile.max_output_tokens.get(), 2048);
     }

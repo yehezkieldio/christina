@@ -4,6 +4,7 @@
 //! which the shared llm crate does not yet expose for Azure.
 
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role};
@@ -14,7 +15,19 @@ use crate::orchestrator::retry::{RetryPolicy, retry_with_backoff};
 
 fn azure_client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(Client::new)
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(120))
+            .build()
+            .unwrap_or_else(|err| {
+                tracing::warn!(
+                    "Failed to build Azure HTTP client with timeouts: {}. Falling back to defaults.",
+                    err
+                );
+                Client::new()
+            })
+    })
 }
 
 /// Execute an Azure OpenAI request with retry logic and exponential backoff.
@@ -81,10 +94,7 @@ pub async fn execute_azure_request_with_retry(
 fn is_reasoning_model(model: &str) -> bool {
     // Heuristic: reasoning model families need max_completion_tokens semantics.
     let m = model.to_ascii_lowercase();
-    m.starts_with("o1")
-        || m.starts_with("o3")
-        || m.starts_with("o4")
-        || m.starts_with("gpt-5")
+    m.starts_with("o1") || m.starts_with("o3") || m.starts_with("o4") || m.starts_with("gpt-5")
 }
 
 #[derive(Serialize, Debug)]
@@ -160,9 +170,21 @@ async fn execute_azure_request_inner(
     let body = AzureChatRequest {
         model,
         messages,
-        max_tokens: if reasoning { None } else { Some(max_tokens_value) },
-        max_completion_tokens: if reasoning { Some(max_tokens_value) } else { None },
-        temperature: if reasoning { None } else { Some(request.temperature.value()) },
+        max_tokens: if reasoning {
+            None
+        } else {
+            Some(max_tokens_value)
+        },
+        max_completion_tokens: if reasoning {
+            Some(max_tokens_value)
+        } else {
+            None
+        },
+        temperature: if reasoning {
+            None
+        } else {
+            Some(request.temperature.value())
+        },
         stream: false,
     };
 
@@ -319,7 +341,11 @@ mod tests {
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["max_tokens"], 512);
         assert!(json.get("max_completion_tokens").is_none());
-        assert!(json["temperature"].as_f64().is_some_and(|t| (t - 0.3).abs() < 0.001));
+        assert!(
+            json["temperature"]
+                .as_f64()
+                .is_some_and(|t| (t - 0.3).abs() < 0.001)
+        );
     }
 
     #[test]

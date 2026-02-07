@@ -8,8 +8,8 @@ pub mod context;
 pub mod tokenizer;
 
 pub use chunking::{
-    should_limit_file, split_by_hunks, split_by_lines, split_recursive,
-    truncate_to_token_limit, LOCKFILE_TOKEN_LIMIT,
+    LOCKFILE_TOKEN_LIMIT, should_limit_file, split_by_hunks, split_by_lines, split_recursive,
+    truncate_to_token_limit,
 };
 pub use context::{fit_history_to_budget, fit_user_context_to_budget, normalize_user_context};
 pub use tokenizer::{ByteTokenizer, TokenBudget, TokenizerService, get_tokenizer};

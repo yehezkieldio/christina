@@ -112,10 +112,7 @@ mod tests {
             ProviderKind::Azure.default_api_key_env_var(),
             "AZURE_OPENAI_API_KEY"
         );
-        assert_eq!(
-            ProviderKind::Groq.default_api_key_env_var(),
-            "GROQ_API_KEY"
-        );
+        assert_eq!(ProviderKind::Groq.default_api_key_env_var(), "GROQ_API_KEY");
     }
 
     #[test]

@@ -73,8 +73,6 @@ impl PipelineState {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,10 +123,12 @@ mod tests {
         assert!(!PipelineState::analyzing(1).is_terminal());
         assert!(!PipelineState::Synthesizing.is_terminal());
         assert!(PipelineState::Complete.is_terminal());
-        assert!(PipelineState::Failed {
-            reason: "test".to_string()
-        }
-        .is_terminal());
+        assert!(
+            PipelineState::Failed {
+                reason: "test".to_string()
+            }
+            .is_terminal()
+        );
     }
 
     #[test]

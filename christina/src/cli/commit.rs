@@ -11,15 +11,16 @@ use anyhow::Result;
 use git2::Repository;
 use tokio::sync::mpsc;
 
-use crate::ui;
 use crate::config::Config;
-use crate::ui::events::Event;
 use crate::generate::generate_commit_message_with_progress;
 use crate::git::adapter;
+use crate::ui;
+use crate::ui::events::Event;
 use christina_core::GitFile;
 
 pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -> Result<()> {
     // Only allocate trace stats when explicitly enabled.
+    // std::sync::Mutex is fine here: locks are short-lived and never held across .await.
     let trace_stats = trace.then(|| Arc::new(Mutex::new(TraceStats::new(dry_run))));
     ui::print_header();
     ui::print_divider();
@@ -27,12 +28,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     if trace {
         ui::print_trace("validating repository state");
     }
-    let (repo, diff) = validate_repository()?;
-
-    let repo_path = repo
-        .workdir()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| repo.path().to_path_buf());
+    let (repo_path, diff) = validate_repository().await?;
 
     if let Some(stats) = trace_stats.as_ref() {
         let mut stats = match stats.lock() {
@@ -45,7 +41,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     if trace {
         ui::print_trace("collecting staged files");
     }
-    let files = adapter::get_staged_files(&repo)?;
+    let files = adapter::get_staged_files_with_timeout(&repo_path).await?;
 
     if let Some(stats) = trace_stats.as_ref() {
         let mut stats = match stats.lock() {
@@ -69,10 +65,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
             stats.diff_additions = diff_stats.additions;
             stats.diff_deletions = diff_stats.deletions;
         }
-        ui::print_trace(&format!(
-            "repository: {}",
-            repo_path.to_string_lossy()
-        ));
+        ui::print_trace(&format!("repository: {}", repo_path.to_string_lossy()));
         ui::print_trace(&format!("staged files: {}", files.len()));
         ui::print_trace(&format!("diff bytes: {}", diff.len()));
     }
@@ -101,15 +94,13 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
 
         match action {
             CommitAction::Accept => break message,
-            CommitAction::Edit => {
-                match ui::edit_in_editor(&message) {
-                    Ok(edited) => break edited,
-                    Err(err) => {
-                        ui::print_warning(&format!("Editor failed: {err}"));
-                        continue;
-                    }
+            CommitAction::Edit => match ui::edit_in_editor(&message) {
+                Ok(edited) => break edited,
+                Err(err) => {
+                    ui::print_warning(&format!("Editor failed: {err}"));
+                    continue;
                 }
-            }
+            },
             CommitAction::Regenerate => continue,
             CommitAction::Decline => {
                 ui::print_info("Commit cancelled.");
@@ -133,7 +124,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     if trace {
         ui::print_trace("creating commit");
     }
-    if let Err(err) = execute_commit(&repo, &message) {
+    if let Err(err) = execute_commit(&repo_path, &message).await {
         if is_gpg_signing_failure(&err) {
             ui::print_warning(
                 "GPG signing failed. Configure your GPG key/agent or disable signing with: git config commit.gpgsign false",
@@ -157,7 +148,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     Ok(())
 }
 
-fn validate_repository() -> Result<(Repository, String)> {
+async fn validate_repository() -> Result<(PathBuf, String)> {
     let repo = Repository::open(".").map_err(|err| {
         if err.code() == git2::ErrorCode::NotFound {
             anyhow::anyhow!(
@@ -168,12 +159,17 @@ fn validate_repository() -> Result<(Repository, String)> {
         }
     })?;
 
-    if !adapter::has_staged_changes(&repo)? {
+    let repo_path = repo
+        .workdir()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo.path().to_path_buf());
+
+    if !adapter::has_staged_changes_with_timeout(&repo_path).await? {
         anyhow::bail!("No staged changes to commit. Stage your changes and try again.");
     }
 
-    let diff = adapter::build_staged_diff(&repo)?;
-    Ok((repo, diff))
+    let diff = adapter::build_staged_diff_with_timeout(&repo_path).await?;
+    Ok((repo_path, diff))
 }
 
 fn display_changes(files: &[GitFile]) {
@@ -254,9 +250,6 @@ async fn generate_commit(
                         ));
                     }
                 }
-                _ => {
-                    // Ignore other events for now
-                }
             }
         }
     });
@@ -293,7 +286,9 @@ async fn generate_commit(
 
 fn is_gpg_signing_failure(err: &anyhow::Error) -> bool {
     // git2 surfaces signing failures as text; match defensively for UX hints.
-    err.to_string().to_lowercase().contains("gpg signing failed")
+    err.to_string()
+        .to_lowercase()
+        .contains("gpg signing failed")
 }
 
 enum CommitAction {
@@ -325,8 +320,8 @@ fn confirm_commit(message: &str, yes: bool) -> Result<CommitAction> {
     Ok(action)
 }
 
-fn execute_commit(repo: &Repository, message: &str) -> Result<()> {
-    let oid = adapter::create_commit(repo, message)?;
+async fn execute_commit(repo_path: &PathBuf, message: &str) -> Result<()> {
+    let oid = adapter::create_commit_with_timeout(repo_path, message).await?;
     let oid_str = oid.to_string();
     let short = oid_str.get(..7).unwrap_or(oid_str.as_str());
     ui::print_success(&format!("Created commit {}", short));

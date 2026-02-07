@@ -11,19 +11,19 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::config::Config;
-use crate::config::secrets::Secret;
-use crate::ui::events::Event;
-use crate::git::{diff_processor::DiffProcessor, parsing};
-use crate::engines::Provider;
-use christina_core::processing::{get_tokenizer, should_limit_file, TokenBudget};
-use christina_core::processing::{normalize_user_context, fit_user_context_to_budget, fit_history_to_budget};
-use crate::orchestrator::{AIOrchestrator, GenerationResult};
 use crate::config::profiles::ProviderProfile;
-use christina_core::prompt::{
-    DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT,
+use crate::config::secrets::Secret;
+use crate::engines::Provider;
+use crate::git::{diff_processor::DiffProcessor, parsing};
+use crate::orchestrator::{AIOrchestrator, GenerationResult};
+use crate::ui::events::Event;
+use christina_core::processing::{TokenBudget, get_tokenizer, should_limit_file};
+use christina_core::processing::{
+    fit_history_to_budget, fit_user_context_to_budget, normalize_user_context,
 };
-use christina_core::types::{ProviderKind, TokenCount};
+use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
 use christina_core::types::UsageTier;
+use christina_core::types::{ProviderKind, TokenCount};
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -347,9 +347,9 @@ async fn generate_commit_message_with_progress_impl(
     }
 
     if binary_only {
-        result.validation_warnings.push(
-            "Only binary files detected; commit message may be generic.".to_string(),
-        );
+        result
+            .validation_warnings
+            .push("Only binary files detected; commit message may be generic.".to_string());
     }
 
     if progress_tx

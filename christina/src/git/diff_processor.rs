@@ -7,13 +7,13 @@ use std::sync::Arc;
 
 use tracing::info;
 
+use christina_core::git::stage::BINARY_EXTENSIONS;
 use christina_core::{
     Tokenizer,
     processing::chunking,
-    types::{DiffChunk, MAX_DIFF_SIZE},
     types::tokens::TokenCount,
+    types::{DiffChunk, MAX_DIFF_SIZE},
 };
-use christina_core::git::stage::BINARY_EXTENSIONS;
 use memchr::memchr;
 
 use crate::git::parsing::{self, safe_truncate};
@@ -568,9 +568,11 @@ mod tests {
         let processor = create_processor(1000);
         let huge_diff = "a".repeat(MAX_DIFF_SIZE + 1000);
         let chunks = processor.process_safe(&huge_diff);
-        assert!(chunks
-            .iter()
-            .any(|chunk| chunk.content.contains("Diff truncated")));
+        assert!(
+            chunks
+                .iter()
+                .any(|chunk| chunk.content.contains("Diff truncated"))
+        );
     }
 
     #[test]

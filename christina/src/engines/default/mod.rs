@@ -19,9 +19,9 @@ use crate::config::profiles::ProviderProfile;
 use christina_core::{
     error::{CompletionError, ProviderError},
     llm::{ChatMessage, LlmRequest},
-    types::{ModelName, ProviderKind, Temperature},
     types::backend_id::GenerationId,
     types::tokens::TokenCount,
+    types::{ModelName, ProviderKind, Temperature},
 };
 
 // NOTE: AtomicU64::fetch_add wraps on overflow. Wraparound is acceptable here
@@ -223,13 +223,22 @@ impl Provider {
     pub async fn generate(&self, messages: &[ChatMessage]) -> Result<String, CompletionError> {
         let request = match self {
             Provider::OpenAI {
-                model, max_tokens, temperature, ..
+                model,
+                max_tokens,
+                temperature,
+                ..
             }
             | Provider::Groq {
-                model, max_tokens, temperature, ..
+                model,
+                max_tokens,
+                temperature,
+                ..
             }
             | Provider::Azure {
-                model, max_tokens, temperature, ..
+                model,
+                max_tokens,
+                temperature,
+                ..
             } => {
                 let req = request_from_messages(messages, *max_tokens, *temperature);
                 let gen_id = req.id;
@@ -525,12 +534,8 @@ mod tests {
             ProviderKind::Azure,
             ModelName::from("gpt-4"),
         );
-        profile.api_url = Some(
-            url::Url::parse(
-                "https://test.openai.azure.com/?api-version=2024-02-15"
-            )
-            .unwrap(),
-        );
+        profile.api_url =
+            Some(url::Url::parse("https://test.openai.azure.com/?api-version=2024-02-15").unwrap());
         profile.azure_api_version = Some("2024-02-15".to_string());
         profile.azure_deployment_id = Some("gpt-4".to_string());
 
@@ -622,10 +627,12 @@ mod tests {
 
         let result = Provider::from_profile(&profile, "sk-test");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("azure_deployment_id"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("azure_deployment_id")
+        );
     }
 
     #[test]
@@ -655,11 +662,8 @@ mod tests {
         ];
         let max_tokens = TokenCount::new_at_least_one(100);
 
-        let request = request_from_messages(
-            &messages,
-            max_tokens,
-            Temperature::try_new(0.7).unwrap(),
-        );
+        let request =
+            request_from_messages(&messages, max_tokens, Temperature::try_new(0.7).unwrap());
 
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.max_tokens, max_tokens);
