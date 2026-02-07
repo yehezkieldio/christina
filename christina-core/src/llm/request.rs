@@ -74,12 +74,6 @@ impl LlmRequest {
             ));
         }
 
-        if self.max_tokens.get() == 0 {
-            return Err(ProviderError::InvalidConfig(
-                "max_tokens must be greater than 0".to_string(),
-            ));
-        }
-
         Ok(())
     }
 }

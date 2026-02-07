@@ -244,26 +244,36 @@ impl Config {
             // and guards against future refactoring that might change to_profile() behavior.
             default_profile.max_input_tokens = config.max_input_tokens;
             default_profile.max_output_tokens = config.max_output_tokens;
-            config.profiles.add(default_profile)?;
-            config.profiles.active = Some("default".to_string());
+            match config.profiles.add(default_profile) {
+                Ok(()) => {
+                    config.profiles.active = Some("default".to_string());
 
-            // Persist the default profile to global config to prevent recreation on next run
-            // This ensures user's API key and settings are not lost
-            if let Err(e) = config.save_to_global() {
-                tracing::warn!(
-                    "Failed to persist default profile (read-only config?): {}",
-                    e
-                );
-                if let Some(path) = Self::global_config_path() {
+                    // Persist the default profile to global config to prevent recreation on next run
+                    // This ensures user's API key and settings are not lost
+                    if let Err(e) = config.save_to_global() {
+                        tracing::warn!(
+                            "Failed to persist default profile (read-only config?): {}",
+                            e
+                        );
+                        if let Some(path) = Self::global_config_path() {
+                            eprintln!(
+                                "Warning: unable to persist default profile to {}. {}. Check permissions or update the config path.",
+                                path.display(),
+                                e
+                            );
+                        } else {
+                            eprintln!(
+                                "Warning: unable to persist default profile. {}. Check permissions or update the config path.",
+                                e
+                            );
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!("Failed to add default profile: {}", err);
                     eprintln!(
-                        "Warning: unable to persist default profile to {}. {}. Check permissions or update the config path.",
-                        path.display(),
-                        e
-                    );
-                } else {
-                    eprintln!(
-                        "Warning: unable to persist default profile. {}. Check permissions or update the config path.",
-                        e
+                        "Warning: failed to add default profile. {}",
+                        err
                     );
                 }
             }

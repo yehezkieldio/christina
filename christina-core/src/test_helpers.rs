@@ -506,7 +506,7 @@ pub struct TestProfile {
 /// assert!(diff.contains("src/main.rs"));
 /// ```
 pub struct DiffBuilder {
-    files: Vec<FileDiffBuilder>,
+    files: Vec<FileDiff>,
 }
 
 impl DiffBuilder {
@@ -517,14 +517,14 @@ impl DiffBuilder {
 
     /// Start building a new file diff.
     pub fn file(self, path: impl Into<String>) -> FileDiffBuilder {
-        FileDiffBuilder::new(path.into())
+        FileDiffBuilder::new(path.into(), self.files)
     }
 
     /// Build the complete diff string.
     pub fn build(self) -> String {
         self.files
             .into_iter()
-            .map(|f| f.build_inner())
+            .map(|f| f.build())
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -537,49 +537,20 @@ impl Default for DiffBuilder {
 }
 
 /// Builder for a single file's diff.
-pub struct FileDiffBuilder {
+struct FileDiff {
     path: String,
     added_lines: Vec<String>,
     removed_lines: Vec<String>,
 }
 
-impl FileDiffBuilder {
-    fn new(path: String) -> Self {
-        Self {
-            path,
-            added_lines: Vec::new(),
-            removed_lines: Vec::new(),
-        }
-    }
-
-    /// Add a line to the diff.
-    pub fn add_line(mut self, line: impl Into<String>) -> Self {
-        self.added_lines.push(line.into());
-        self
-    }
-
-    /// Remove a line from the diff.
-    pub fn remove_line(mut self, line: impl Into<String>) -> Self {
-        self.removed_lines.push(line.into());
-        self
-    }
-
-    /// Build the file diff and continue with the parent DiffBuilder.
-    pub fn and_file(self, path: impl Into<String>) -> FileDiffBuilder {
-        FileDiffBuilder::new(path.into())
-    }
-
-    /// Build the complete diff string for this file.
-    pub fn build(self) -> String {
+impl FileDiff {
+    fn build(self) -> String {
+        let hunks = self.build_hunks();
         format!(
             "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}",
             path = self.path,
-            hunks = self.build_hunks()
+            hunks = hunks
         )
-    }
-
-    fn build_inner(self) -> String {
-        self.build()
     }
 
     fn build_hunks(&self) -> String {
@@ -602,6 +573,63 @@ impl FileDiffBuilder {
         }
 
         hunks
+    }
+}
+
+pub struct FileDiffBuilder {
+    completed: Vec<FileDiff>,
+    path: String,
+    added_lines: Vec<String>,
+    removed_lines: Vec<String>,
+}
+
+impl FileDiffBuilder {
+    fn new(path: String, completed: Vec<FileDiff>) -> Self {
+        Self {
+            completed,
+            path,
+            added_lines: Vec::new(),
+            removed_lines: Vec::new(),
+        }
+    }
+
+    /// Add a line to the diff.
+    pub fn add_line(mut self, line: impl Into<String>) -> Self {
+        self.added_lines.push(line.into());
+        self
+    }
+
+    /// Remove a line from the diff.
+    pub fn remove_line(mut self, line: impl Into<String>) -> Self {
+        self.removed_lines.push(line.into());
+        self
+    }
+
+    /// Build the file diff and continue with the parent DiffBuilder.
+    pub fn and_file(self, path: impl Into<String>) -> FileDiffBuilder {
+        let mut completed = self.completed;
+        completed.push(FileDiff {
+            path: self.path,
+            added_lines: self.added_lines,
+            removed_lines: self.removed_lines,
+        });
+        FileDiffBuilder::new(path.into(), completed)
+    }
+
+    /// Build the complete diff string for this file.
+    pub fn build(self) -> String {
+        let mut files = self.completed;
+        files.push(FileDiff {
+            path: self.path,
+            added_lines: self.added_lines,
+            removed_lines: self.removed_lines,
+        });
+
+        files
+            .into_iter()
+            .map(|file| file.build())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 

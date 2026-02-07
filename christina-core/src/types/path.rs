@@ -40,17 +40,14 @@ impl schemars::JsonSchema for FilePath {
 impl FilePath {
     pub fn new(path: impl Into<CompactString>) -> Self {
         let compact = path.into();
-        assert!(
-            !compact.starts_with('/'),
-            "FilePath must be relative, got: {}",
-            compact
-        );
+        let is_absolute = Path::new(compact.as_str()).is_absolute();
+        assert!(!is_absolute, "FilePath must be relative, got: {}", compact);
         Self(compact)
     }
 
     pub fn try_new(path: impl Into<CompactString>) -> Result<Self, FilePathError> {
         let compact = path.into();
-        if compact.starts_with('/') {
+        if Path::new(compact.as_str()).is_absolute() {
             return Err(FilePathError::AbsolutePath(compact.to_string()));
         }
         Ok(Self(compact))
@@ -86,13 +83,33 @@ impl std::fmt::Display for FilePath {
 
 impl From<String> for FilePath {
     fn from(s: String) -> Self {
-        Self::new(s)
+        match Self::try_new(s) {
+            Ok(path) => path,
+            Err(FilePathError::AbsolutePath(path)) => {
+                debug_assert!(
+                    false,
+                    "FilePath must be relative, got absolute path: {}",
+                    path
+                );
+                Self(CompactString::from(path))
+            }
+        }
     }
 }
 
 impl From<&str> for FilePath {
     fn from(s: &str) -> Self {
-        Self::new(s)
+        match Self::try_new(s) {
+            Ok(path) => path,
+            Err(FilePathError::AbsolutePath(path)) => {
+                debug_assert!(
+                    false,
+                    "FilePath must be relative, got absolute path: {}",
+                    path
+                );
+                Self(CompactString::from(path))
+            }
+        }
     }
 }
 

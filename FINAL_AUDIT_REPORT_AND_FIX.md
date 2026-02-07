@@ -9,44 +9,44 @@ Each finding is a self-contained unit. Findings within the same priority tier ar
 
 ## P0 — Bugs and Correctness
 
-### P0-01: FilePath::From impls panic on absolute paths
+### P0-01: FilePath::From impls panic on absolute paths — ✅ Solved
 
 - Location: christina-core/src/types/path.rs lines 87-97
 - Problem: `From<String>` and `From<&str>` call `FilePath::new()` which uses `assert!()`. Any git output with an absolute path (symlink targets, submodule paths, malformed git status) causes a panic in production.
 - Assumption: `GitFile::new()` in christina-core/src/git/mod.rs and `get_delta_path()` in christina/src/git/adapter.rs pass git2 paths directly into `FilePath::from()`.
 - Approach: Change both `From` impls to call `try_new()` and panic only with a debug_assert. Alternatively, make `From` impls use `try_new().expect()` with a descriptive message, or remove `From` impls entirely and force callers to use `try_new()` returning Result. The safest option: remove `From<String>` and `From<&str>` impls, keep only `new()` (panicking, for trusted inputs) and `try_new()` (fallible, for external inputs). Update all call sites in adapter.rs to use `try_new()` with `?` propagation.
 
-### P0-02: LlmRequest::validate checks impossible condition
+### P0-02: LlmRequest::validate checks impossible condition — ✅ Solved
 
 - Location: christina-core/src/llm/request.rs lines 77-81
 - Problem: `max_tokens` is `TokenCount` which wraps `NonZeroU32`. The check `self.max_tokens.get() == 0` can never be true. This is dead validation code that gives false safety assurance.
 - Approach: Remove the `max_tokens.get() == 0` check entirely. The type system already prevents this state.
 
-### P0-03: Config::load default profile creation can crash CLI on startup
+### P0-03: Config::load default profile creation can crash CLI on startup — ✅ Solved
 
 - Location: christina/src/config/settings.rs lines 240-248
 - Problem: `config.profiles.add(default_profile)?` propagates error with `?`. If a profile named "default" somehow fails validation (e.g., future validation changes), the entire CLI crashes on startup with an opaque error.
 - Approach: Replace `?` with a match that logs a warning and continues without the default profile, or use `add_or_update` semantics that cannot fail for valid profiles.
 
-### P0-04: DiffBuilder loses parent state on file()
+### P0-04: DiffBuilder loses parent state on file() — ✅ Solved
 
 - Location: christina-core/src/test_helpers.rs lines 519-521, 568-569
 - Problem: `DiffBuilder::file()` consumes `self` but `FileDiffBuilder` has no reference back to the `DiffBuilder`. `and_file()` creates an orphaned `FileDiffBuilder` that discards the previous file's data. Multi-file diffs cannot be constructed via the builder.
 - Approach: Store accumulated files in `FileDiffBuilder` by passing `Vec<FileDiffBuilder>` through the chain, or change `file()` to take `&mut self` and return a sub-builder that borrows the parent. The simplest fix: `FileDiffBuilder::and_file()` should consume self, push self into an internal Vec, and return a new `FileDiffBuilder` that carries the Vec. `build()` on the final `FileDiffBuilder` produces the complete multi-file diff. This is test-only code.
 
-### P0-05: CompletionError::from_api_error substring false positives
+### P0-05: CompletionError::from_api_error substring false positives — ✅ Solved
 
 - Location: christina-core/src/error.rs lines 162-229
 - Problem: Matching "400", "500", "404" as substrings will false-positive on messages like "processed 400 items" or "batch size 500". This misclassifies permanent errors as transient (ServerError) or transient errors as permanent (InvalidResponse).
 - Approach: Match against HTTP status code patterns more precisely: check for "400 " (with space/punctuation after) or "HTTP 400" or "status: 400" patterns. Alternatively, prefix-match status codes at word boundaries. Use patterns like `" 400"`, `"400 "`, or regex `\b400\b` via a simple helper function that checks word boundaries without pulling in the regex crate.
 
-### P0-06: azure.rs creates new reqwest::Client per request
+### P0-06: azure.rs creates new reqwest::Client per request — ✅ Solved
 
 - Location: christina/src/engines/default/azure.rs line 175
 - Problem: `Client::new()` is called inside `execute_azure_request_inner()` on every request. This discards HTTP/2 connection pools, TLS sessions, and DNS cache. Each request pays full TCP+TLS handshake cost.
 - Approach: Create a module-level `OnceLock<Client>` or pass `Client` through the function chain. A `OnceLock<Client>` with sensible defaults (timeout, pool idle timeout) is simplest. The client should be configured with a reasonable timeout (e.g., 30s connect, 120s total) since the orchestrator provides its own timeout wrapper.
 
-### P0-07: groq.rs retry clones Strings instead of using Arc
+### P0-07: groq.rs retry clones Strings instead of using Arc — ✅ Solved
 
 - Location: christina/src/engines/default/groq.rs lines 31-47
 - Problem: `execute_groq_request_with_retry` clones `request`, `api_key`, `base_url`, and `model` as owned Strings per retry attempt. The OpenAI equivalent uses `Arc<str>` for the same purpose.
@@ -106,13 +106,13 @@ Each finding is a self-contained unit. Findings within the same priority tier ar
 
 - Location: christina/src/telemetry/filters.rs
 - Problem: Module declared, doc comment present, zero implementation. Privacy-sensitive data (API keys) can appear in log output.
-- Approach: Either implement a basic `tracing_subscriber::Layer` that redacts patterns matching API key formats (sk-*, gsk_*, key patterns) from log records, or delete the module and its declaration in mod.rs. If deleting, add a comment in the telemetry mod.rs noting that log filtering is deferred.
+- Approach: Delete the module and its declaration in mod.rs.
 
 ### P2-02: ui/components/mod.rs is empty
 
 - Location: christina/src/ui/components/mod.rs
 - Problem: Empty module stub. Adds dead weight to the module tree.
-- Approach: Delete the file and remove `pub mod components;` from ui/mod.rs. If future components are planned, leave a comment in ui/mod.rs instead of an empty module.
+- Approach: Delete the file and remove `pub mod components;` from ui/mod.rs.
 
 ### P2-03: Five Event variants are never emitted
 

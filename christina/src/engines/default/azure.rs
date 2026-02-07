@@ -3,7 +3,7 @@
 //! WHY custom HTTP: Azure's newer reasoning models require `max_completion_tokens`,
 //! which the shared llm crate does not yet expose for Azure.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role};
@@ -11,6 +11,11 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::orchestrator::retry::{RetryPolicy, retry_with_backoff};
+
+fn azure_client() -> &'static Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    CLIENT.get_or_init(Client::new)
+}
 
 /// Execute an Azure OpenAI request with retry logic and exponential backoff.
 pub async fn execute_azure_request(
@@ -172,7 +177,7 @@ async fn execute_azure_request_inner(
         "{endpoint}/openai/deployments/{deployment_id}/chat/completions?api-version={api_version}"
     );
 
-    let client = Client::new();
+    let client = azure_client();
     let response = client
         .post(&url)
         .header("api-key", api_key)

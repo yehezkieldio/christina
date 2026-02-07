@@ -203,14 +203,14 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
 pub fn split_by_files(diff: &str, tokenizer: &dyn Tokenizer) -> Vec<FileDiff> {
     let mut positions = Vec::new();
 
-    if diff.starts_with(FILE_HEADER) {
+    if diff.trim_start().starts_with(FILE_HEADER) {
         positions.push(0);
     }
 
     for (idx, byte) in diff.bytes().enumerate() {
         if byte == b'\n' {
             let start = idx + 1;
-            if start < diff.len() && diff[start..].starts_with(FILE_HEADER) {
+            if start < diff.len() && diff[start..].trim_start().starts_with(FILE_HEADER) {
                 positions.push(start);
             }
         }
@@ -261,6 +261,7 @@ pub fn is_deletion_only(content: &str) -> bool {
     let mut has_deletion = false;
 
     for line in content.lines() {
+        let line = line.trim_start();
         if line.starts_with('+') && !line.starts_with("+++") {
             return false;
         }
@@ -279,7 +280,7 @@ pub fn is_deletion_only(content: &str) -> bool {
 pub fn is_all_file_deletions(content: &str) -> bool {
     let file_count = content
         .lines()
-        .filter(|line| line.starts_with(FILE_HEADER))
+        .filter(|line| line.trim_start().starts_with(FILE_HEADER))
         .count();
 
     if file_count == 0 {
@@ -288,7 +289,7 @@ pub fn is_all_file_deletions(content: &str) -> bool {
 
     let deletion_count = content
         .lines()
-        .filter(|line| line.starts_with("deleted file mode"))
+        .filter(|line| line.trim_start().starts_with("deleted file mode"))
         .count();
 
     file_count == deletion_count
@@ -308,31 +309,32 @@ pub fn truncate_deletion_diff(content: &str, max_deletion_lines: usize) -> Strin
     let mut total_deletions_skipped = 0usize;
 
     for line in content.lines() {
-        let is_metadata = line.starts_with(FILE_HEADER)
-            || line.starts_with("index ")
-            || line.starts_with("---")
-            || line.starts_with("+++")
-            || line.starts_with("@@")
-            || line.starts_with("deleted file mode")
-            || line.starts_with("new file mode")
-            || line.starts_with("similarity index")
-            || line.starts_with("rename from")
-            || line.starts_with("rename to")
-            || line.starts_with("copy from")
-            || line.starts_with("copy to");
+        let trimmed = line.trim_start();
+        let is_metadata = trimmed.starts_with(FILE_HEADER)
+            || trimmed.starts_with("index ")
+            || trimmed.starts_with("---")
+            || trimmed.starts_with("+++")
+            || trimmed.starts_with("@@")
+            || trimmed.starts_with("deleted file mode")
+            || trimmed.starts_with("new file mode")
+            || trimmed.starts_with("similarity index")
+            || trimmed.starts_with("rename from")
+            || trimmed.starts_with("rename to")
+            || trimmed.starts_with("copy from")
+            || trimmed.starts_with("copy to");
 
         if is_metadata {
             result.push_str(line);
             result.push('\n');
 
-            if line.starts_with("@@") {
+            if trimmed.starts_with("@@") {
                 deletion_lines_shown = 0;
                 truncation_notice_emitted = false;
             }
             continue;
         }
 
-        if line.starts_with('-') && !line.starts_with("---") {
+        if trimmed.starts_with('-') && !trimmed.starts_with("---") {
             if deletion_lines_shown < max_deletion_lines {
                 result.push_str(line);
                 result.push('\n');

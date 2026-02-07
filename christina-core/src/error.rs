@@ -163,14 +163,14 @@ impl CompletionError {
         let msg_lower = msg.to_lowercase();
 
         // Authentication and authorization errors (permanent)
-        if msg_lower.contains("401")
+        if contains_status_code(&msg_lower, "401")
             || msg_lower.contains("unauthorized")
             || msg_lower.contains("invalid api key")
         {
             CompletionError::Unauthorized(msg.to_string())
         }
         // Rate limiting (transient)
-        else if msg_lower.contains("429")
+        else if contains_status_code(&msg_lower, "429")
             || msg_lower.contains("rate limit")
             || msg_lower.contains("quota")
         {
@@ -178,8 +178,8 @@ impl CompletionError {
             CompletionError::RateLimited { retry_after }
         }
         // Request validation and resource not found errors (permanent)
-        else if msg_lower.contains("400")
-            || msg_lower.contains("404")
+        else if contains_status_code(&msg_lower, "400")
+            || contains_status_code(&msg_lower, "404")
             || msg_lower.contains("bad request")
             || msg_lower.contains("invalid request")
             || msg_lower.contains("malformed")
@@ -201,10 +201,10 @@ impl CompletionError {
             CompletionError::Timeout
         }
         // Server errors (transient)
-        else if msg_lower.contains("500")
-            || msg_lower.contains("502")
-            || msg_lower.contains("503")
-            || msg_lower.contains("504")
+        else if contains_status_code(&msg_lower, "500")
+            || contains_status_code(&msg_lower, "502")
+            || contains_status_code(&msg_lower, "503")
+            || contains_status_code(&msg_lower, "504")
             || msg_lower.contains("server error")
             || msg_lower.contains("overloaded")
             || msg_lower.contains("internal error")
@@ -239,6 +239,39 @@ impl IsTransient for CompletionError {
                 | CompletionError::NetworkError(_)
         )
     }
+}
+
+fn contains_status_code(msg_lower: &str, code: &str) -> bool {
+    if starts_with_status_code(msg_lower, code) {
+        return true;
+    }
+
+    let patterns = [
+        format!("http {code}"),
+        format!("http/1.1 {code}"),
+        format!("http/2 {code}"),
+        format!("status {code}"),
+        format!("status: {code}"),
+        format!("status={code}"),
+        format!("status code {code}"),
+        format!("code {code}"),
+        format!("error {code}"),
+        format!("response {code}"),
+        format!("response: {code}"),
+    ];
+
+    patterns.iter().any(|pattern| msg_lower.contains(pattern))
+}
+
+fn starts_with_status_code(msg_lower: &str, code: &str) -> bool {
+    if !msg_lower.starts_with(code) {
+        return false;
+    }
+
+    msg_lower[code.len()..]
+        .chars()
+        .next()
+        .is_none_or(|c| !c.is_ascii_digit())
 }
 
 fn parse_retry_after_seconds(msg: &str) -> Option<Duration> {

@@ -270,7 +270,7 @@ impl DiffProcessor {
 
         for file_diff in file_diffs {
             if self.is_binary_content(&file_diff.content) {
-                let binary_notice = format!("[Binary file: {}]", file_diff.path);
+                let binary_notice = format!("[Binary file:] {}", file_diff.path);
                 let token_count = self.tokenizer.count_tokens(&binary_notice);
                 chunks.push(DiffChunk::new(
                     Arc::from(binary_notice),
