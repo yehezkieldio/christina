@@ -153,7 +153,6 @@ fn handle_list(config: &Config, output: &mut dyn Write) -> Result<()> {
 }
 
 fn handle_show(config: &Config, output: &mut dyn Write, name: &str) -> Result<()> {
-
     match config.profiles.get(name) {
         Some(profile) => {
             writeln!(output, "Profile: {}", profile.name)?;
@@ -230,7 +229,6 @@ fn handle_create(
     azure_api_version: Option<String>,
     azure_deployment_id: Option<String>,
 ) -> Result<()> {
-
     if config.profiles.exists(name) {
         anyhow::bail!("Profile '{}' already exists", name);
     }
@@ -279,7 +277,6 @@ fn handle_create(
     profile.validate().context("Profile validation failed")?;
     config.profiles.add(profile)?;
 
-
     writeln!(output, "Created profile: {}", name)?;
 
     Ok(())
@@ -300,7 +297,6 @@ fn handle_edit(
     azure_api_version: Option<String>,
     azure_deployment_id: Option<String>,
 ) -> Result<()> {
-
     let mut profile = config
         .profiles
         .get(name)
@@ -344,7 +340,6 @@ fn handle_edit(
     profile.validate().context("Profile validation failed")?;
     config.profiles.update(name, profile)?;
 
-
     writeln!(output, "Updated profile: {}", name)?;
 
     Ok(())
@@ -357,7 +352,6 @@ fn handle_delete(
     name: &str,
     force: bool,
 ) -> Result<()> {
-
     if !config.profiles.exists(name) {
         anyhow::bail!("Profile '{}' not found", name);
     }
@@ -378,22 +372,18 @@ fn handle_delete(
 
     config.profiles.remove(name)?;
 
-
     writeln!(output, "Deleted profile: {}", name)?;
 
     Ok(())
 }
 
 fn handle_switch(config: &mut Config, output: &mut dyn Write, name: &str) -> Result<()> {
-
     config.profiles.set_active(name)?;
 
     // Apply the profile to current config
     if let Some(profile) = config.profiles.get(name).cloned() {
         config.apply_profile(&profile);
     }
-
-
 
     writeln!(output, "Switched to profile: {}", name)?;
 
@@ -406,7 +396,6 @@ fn handle_duplicate(
     source: &str,
     new_name: &str,
 ) -> Result<()> {
-
     if !config.profiles.exists(source) {
         anyhow::bail!("Source profile '{}' not found", source);
     }
@@ -424,7 +413,6 @@ fn handle_duplicate(
     new_profile.name = new_name.to_string();
 
     config.profiles.add(new_profile)?;
-
 
     writeln!(output, "Duplicated '{}' to '{}'", source, new_name)?;
 
