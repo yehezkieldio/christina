@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::config::Config;
+use crate::config::secrets::Secret;
 use crate::ui::events::Event;
 use crate::git::{diff_processor::DiffProcessor, parsing};
 use crate::engines::Provider;
@@ -51,7 +52,7 @@ fn config_to_profile(config: &Config, api_key: &str) -> ProviderProfile {
         provider: config.model_provider,
         model: config.model.clone(),
         api_url: config.model_api_url.clone(),
-        api_key: christina_core::config::Secret::Value(api_key.to_string()),
+        api_key: Secret::Value(api_key.to_string()),
         max_input_tokens: config.max_input_tokens,
         max_output_tokens: config.max_output_tokens,
         azure_api_version: config.azure_api_version.clone(),

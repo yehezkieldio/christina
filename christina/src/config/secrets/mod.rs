@@ -126,22 +126,6 @@ pub fn resolve_secret(secret: &Secret<String>) -> Result<SecretString, SecretRes
     }
 }
 
-pub fn resolve_secret_ref(secret: &SecretRef) -> Result<SecretString, SecretResolveError> {
-    match secret {
-        SecretRef::EnvVar(name) => std::env::var(name)
-            .map(SecretString::new)
-            .map_err(|_| SecretResolveError::EnvVarNotFound(name.clone())),
-        #[cfg(feature = "keyring-support")]
-        SecretRef::Keyring(key) => resolve_keyring_secret(key),
-        #[cfg(not(feature = "keyring-support"))]
-        SecretRef::Keyring(key) => Err(SecretResolveError::KeyringFailed(
-            key.clone(),
-            "Keyring support not compiled in. Enable the 'keyring-support' feature".to_string(),
-        )),
-        SecretRef::Literal(value) => Ok(SecretString::new(value.clone())),
-    }
-}
-
 #[cfg(feature = "keyring-support")]
 fn resolve_keyring_secret(key: &str) -> Result<SecretString, SecretResolveError> {
     let policy = BlockingRetryPolicy::default();
@@ -187,13 +171,6 @@ mod tests {
         let secret = Secret::Value("test_value".to_string());
         let resolved = resolve_secret(&secret).unwrap();
         assert_eq!(resolved.expose_secret(), "test_value");
-    }
-
-    #[test]
-    fn resolve_literal_ref() {
-        let secret = SecretRef::Literal("ref_value".to_string());
-        let resolved = resolve_secret_ref(&secret).unwrap();
-        assert_eq!(resolved.expose_secret(), "ref_value");
     }
 
     #[test]
