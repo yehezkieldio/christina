@@ -1,3 +1,8 @@
+//! LLM request/response shapes shared across providers.
+//!
+//! WHY keep provider-agnostic: lets orchestration and tests construct requests
+//! without importing any client SDKs or transport-specific types.
+
 use crate::error::ProviderError;
 use crate::types::backend_id::GenerationId;
 use crate::types::{Temperature, tokens::TokenCount};
@@ -55,6 +60,9 @@ pub struct LlmRequest {
     /// Temperature for sampling (0.0 to 2.0, typically)
     pub temperature: Temperature,
     /// Optional system prompt to prepend to messages
+    ///
+    /// Kept separate so providers that already embed a system message can
+    /// inject it without mutating the original message list.
     pub system_prompt: Option<String>,
 }
 

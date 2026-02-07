@@ -1,3 +1,8 @@
+//! Commit message generation pipeline with progress reporting.
+//!
+//! WHY lives in CLI crate: orchestration depends on IO (git, LLM provider) and
+//! user-facing progress events, which are intentionally outside `christina-core`.
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -36,6 +41,7 @@ impl CommitHistoryProvider for GitCommitHistoryProvider {
 }
 
 fn require_api_key(config: &Config) -> Result<&str> {
+    // Centralized check keeps user-facing error messages consistent across flows.
     match config.api_key.as_deref().filter(|key| !key.is_empty()) {
         Some(key) => Ok(key),
         None => anyhow::bail!(
@@ -91,6 +97,8 @@ async fn generate_commit_message_with_progress_impl(
         && config.usage_tier == UsageTier::Free
         && config.model_provider == ProviderKind::Groq
     {
+        // Free-tier limits are intentionally gated behind experimental to avoid
+        // surprising existing users unless explicitly enabled.
         let warnings = apply_free_tier_limits(&mut config);
         for warning in warnings {
             warn!("{}", warning);
@@ -137,6 +145,7 @@ async fn generate_commit_message_with_progress_impl(
     let tokenizer: Arc<dyn christina_core::Tokenizer> = get_tokenizer();
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
+    // Reserve worst-case prompt size so later budgeting cannot undercount.
     let reserved_for_prompt = system_prompt_tokens.max(direct_prompt_tokens);
 
     let orchestrator = AIOrchestrator::with_config(
@@ -437,6 +446,7 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
         let oid = oid_result?;
         let commit = repo.find_commit(oid)?;
 
+        // Skip merge commits to keep history focused on linear summaries.
         if commit.parent_count() > 1 {
             continue;
         }
@@ -449,6 +459,7 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
             .unwrap_or("")
             .to_string();
 
+        // Skip work-in-progress helper commits; they add noise to style inference.
         if subject.starts_with("fixup!")
             || subject.starts_with("squash!")
             || subject.starts_with("amend!")

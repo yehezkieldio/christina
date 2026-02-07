@@ -1,3 +1,8 @@
+//! Secret resolution (env/keyring) for runtime use.
+//!
+//! WHY here: keyring/env access is IO-bound and platform-specific, so it lives
+//! in the CLI crate rather than `christina-core`.
+
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::thread;
@@ -111,6 +116,7 @@ fn rand_jitter(max: u64) -> u64 {
 }
 
 pub fn resolve_secret(secret: &Secret<String>) -> Result<SecretString, SecretResolveError> {
+    // Keep resolution centralized to avoid leaking plaintext secrets into config layers.
     match secret {
         Secret::Value(s) => Ok(SecretString::new(s.clone())),
         Secret::EnvVar(name) => std::env::var(name)

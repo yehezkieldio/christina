@@ -1,3 +1,9 @@
+//! On-disk configuration schema and defaults.
+//!
+//! WHY explicit defaults: keep the config file optional for first-run while
+//! guaranteeing stable operational limits (token caps, concurrency) that keep
+//! latency predictable and protect providers from accidental overload.
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -89,6 +95,7 @@ pub struct ConfigFile {
 impl Default for ConfigFile {
     fn default() -> Self {
         Self {
+            // Version pins config migrations; bump only with a deliberate upgrade path.
             schema_version: 2,
             standard: StandardConfig::default(),
             advanced: AdvancedConfig::default(),
@@ -101,10 +108,12 @@ impl Default for ConfigFile {
 impl Default for AdvancedConfig {
     fn default() -> Self {
         Self {
+            // Conservative defaults balance throughput with provider limits.
             lockfile_token_limit: TokenCount::new_at_least_one(100),
             use_commit_history: true,
             commit_history_depth: 5,
             max_concurrent_requests: 4,
+            // Low failure rates reduce silent degradation in map-phase fan-out.
             max_partial_failure_rate: 0.1,
             prompt_failure_rate_threshold: 0.05,
         }

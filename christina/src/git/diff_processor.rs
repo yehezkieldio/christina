@@ -1,3 +1,8 @@
+//! High-level diff processing that bridges git output to core chunking.
+//!
+//! WHY here: combines IO-derived diff text with core chunking rules and adds
+//! user-facing notices for truncation and binary files.
+
 use std::sync::Arc;
 
 use tracing::info;
@@ -259,6 +264,7 @@ impl DiffProcessor {
 
         if let Some(notice) = truncation_notice {
             let token_count = self.tokenizer.count_tokens(&notice);
+            // Put truncation notice first so the model knows context is partial.
             chunks.push(DiffChunk::new(Arc::from(notice), Vec::new(), token_count));
         }
 

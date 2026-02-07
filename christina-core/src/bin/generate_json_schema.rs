@@ -1,3 +1,8 @@
+//! JSON schema generator for config files.
+//!
+//! WHY standalone binary: keeps schema generation out of runtime code paths and
+//! allows CI or contributors to refresh schema deterministically.
+
 #![allow(unused_crate_dependencies)]
 use anyhow::{Context, Result};
 use christina_core::ConfigFile;
@@ -6,7 +11,8 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-// Suppress unused crate dependency warnings inherited from the library
+// Suppress unused crate dependency warnings inherited from the library; the schema
+// macro expands to types that may not be referenced directly in this binary.
 use compact_str as _;
 use regex as _;
 use serde as _;

@@ -1,3 +1,8 @@
+//! Terminal UI helpers for consistent formatting and prompts.
+//!
+//! WHY lightweight: keep UI rendering simple to avoid coupling to heavy TUI
+//! frameworks while still offering a polished CLI experience.
+
 pub mod components;
 pub mod events;
 
@@ -55,6 +60,7 @@ pub fn print_header() {
 pub fn create_spinner(msg: &str) -> ProgressBar {
     let term = Term::stdout();
     if !term.is_term() {
+        // Non-TTY output (e.g., pipes) should avoid spinner control codes.
         let pb = ProgressBar::hidden();
         pb.set_message(msg.to_string());
         return pb;
@@ -149,6 +155,7 @@ pub fn edit_in_editor(initial_content: &str) -> Result<String, std::io::Error> {
             }
         });
 
+    // Use a temp file to interop with any editor, then read back the result.
     let dir = std::env::temp_dir();
     let path = dir.join(format!("christina-commit-{}.txt", std::process::id()));
 

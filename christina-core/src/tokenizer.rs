@@ -1,3 +1,8 @@
+//! Tokenization interface shared across providers and tests.
+//!
+//! WHY trait-based: enables swapping concrete tokenizers (tiktoken, mocks,
+//! fallbacks) while keeping chunking and prompt logic generic.
+
 /// Trait for token counting and encoding operations.
 pub trait Tokenizer: Send + Sync {
     /// Count the number of tokens in the given text.
@@ -43,6 +48,7 @@ pub trait Tokenizer: Send + Sync {
             let prefix_tokens = &tokens[..limit_usize];
             if let Some(decoded) = self.decode(prefix_tokens) {
                 let end = decoded.len();
+                // Fast path: decoded prefix matches original input and preserves boundaries.
                 if !decoded.is_empty() && text.starts_with(&decoded) && text.is_char_boundary(end) {
                     let prefix_count = self.count_tokens(&text[..end]);
                     if prefix_count == limit {

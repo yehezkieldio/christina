@@ -1,3 +1,8 @@
+//! CLI entrypoint for the christina application.
+//!
+//! WHY allocator switching: use dhat when profiling heap usage; otherwise cap
+//! mimalloc to guard against pathological allocations.
+
 // Allow unwrap(), expect(), and panic!() in test code
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 // Allow unused dev-dependencies in binary tests
@@ -48,6 +53,7 @@ use cli::{Cli, Commands};
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     #[cfg(feature = "dhat-heap")]
+    // Alloc profiler is opt-in to avoid overhead in normal runs.
     let _profiler = dhat::Profiler::new_heap();
 
     let cli = Cli::parse();

@@ -1,3 +1,8 @@
+//! Interactive commit workflow: diff validation, generation, and confirmation.
+//!
+//! WHY tracing: provides optional telemetry for debugging generation latency and
+//! token usage without changing the core pipeline.
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +19,7 @@ use crate::git::adapter;
 use christina_core::GitFile;
 
 pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -> Result<()> {
+    // Only allocate trace stats when explicitly enabled.
     let trace_stats = trace.then(|| Arc::new(Mutex::new(TraceStats::new(dry_run))));
     ui::print_header();
     ui::print_divider();
@@ -286,6 +292,7 @@ async fn generate_commit(
 }
 
 fn is_gpg_signing_failure(err: &anyhow::Error) -> bool {
+    // git2 surfaces signing failures as text; match defensively for UX hints.
     err.to_string().to_lowercase().contains("gpg signing failed")
 }
 
@@ -336,6 +343,7 @@ struct DiffStats {
 fn compute_diff_stats(diff: &str) -> DiffStats {
     let mut stats = DiffStats::default();
     for line in diff.lines() {
+        // Skip diff headers so totals focus on content changes.
         if line.starts_with("+++") || line.starts_with("---") {
             stats.lines_total += 1;
             continue;

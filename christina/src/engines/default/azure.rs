@@ -1,3 +1,8 @@
+//! Azure OpenAI HTTP integration.
+//!
+//! WHY custom HTTP: Azure's newer reasoning models require `max_completion_tokens`,
+//! which the shared llm crate does not yet expose for Azure.
+
 use std::sync::Arc;
 
 use christina_core::error::CompletionError;
@@ -69,6 +74,7 @@ pub async fn execute_azure_request_with_retry(
 }
 
 fn is_reasoning_model(model: &str) -> bool {
+    // Heuristic: reasoning model families need max_completion_tokens semantics.
     let m = model.to_ascii_lowercase();
     m.starts_with("o1")
         || m.starts_with("o3")

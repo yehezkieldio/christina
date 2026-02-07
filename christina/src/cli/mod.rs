@@ -1,3 +1,8 @@
+//! CLI argument parsing for the christina binary.
+//!
+//! WHY centralized: all command shapes live here so help text stays consistent
+//! and subcommands can be tested without instantiating runtime dependencies.
+
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 
@@ -21,9 +26,11 @@ pub struct Cli {
     #[arg(long)]
     pub trace: bool,
 
+    /// Skip interactive confirmations (non-interactive mode)
     #[arg(long)]
     pub yes: bool,
 
+    /// Additional user-provided context appended to prompts
     #[arg(short, long)]
     pub context: Option<String>,
 

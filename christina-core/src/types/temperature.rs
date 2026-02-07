@@ -1,3 +1,7 @@
+//! Temperature newtype with validation for LLM sampling.
+//!
+//! WHY validate: providers reject out-of-range or NaN values; fail fast in config parsing.
+
 use serde::{Deserialize, Serialize};
 
 /// Validated temperature value for LLM sampling (0.0 - 2.0).
@@ -27,6 +31,7 @@ impl Temperature {
     /// Create a temperature by clamping into the valid range.
     /// NaN values are coerced to MIN.
     pub fn new_clamped(value: f32) -> Self {
+        // Clamping is used for user input that should not hard-fail.
         if value.is_nan() {
             return Self(Self::MIN);
         }

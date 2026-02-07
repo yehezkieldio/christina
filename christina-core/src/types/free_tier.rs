@@ -1,3 +1,8 @@
+//! Usage-tier limits for conservative defaults.
+//!
+//! WHY in core: these constants shape prompt budgeting and concurrency, so they
+//! must be shared across CLI config parsing and runtime enforcement.
+
 use serde::{Deserialize, Serialize};
 use super::TokenCount;
 
@@ -20,6 +25,7 @@ pub struct FreeTierLimits {
 impl Default for FreeTierLimits {
     fn default() -> Self {
         Self {
+            // Keep inputs modest to avoid saturating free-tier provider quotas.
             max_input_tokens: TokenCount::new_at_least_one(FREE_TIER_MAX_INPUT_TOKENS),
             max_output_tokens: TokenCount::new_at_least_one(FREE_TIER_MAX_OUTPUT_TOKENS),
             max_concurrent_requests: FREE_TIER_MAX_CONCURRENT_REQUESTS,

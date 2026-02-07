@@ -55,6 +55,7 @@ impl<'a> PromptBuilder<'a> {
     pub fn with_user_context(mut self, ctx: &'a str) -> Self {
         let ctx = ctx.trim();
         if !ctx.is_empty() {
+            // Keep user context bounded so prompts stay within token budgets.
             let truncated = if ctx.len() > USER_CONTEXT_MAX_LEN {
                 let mut end = USER_CONTEXT_MAX_LEN;
                 while end > 0 && !ctx.is_char_boundary(end) {
@@ -85,6 +86,7 @@ impl<'a> PromptBuilder<'a> {
 
     pub fn build_summary_prompt(&self) -> String {
         let diff = self.diff.unwrap_or("");
+        // Pre-allocate to avoid reallocation when large diffs are injected.
         let estimated_capacity = SUMMARY_PROMPT.len() + diff.len() + 20;
         let mut prompt = String::with_capacity(estimated_capacity);
 
@@ -102,6 +104,7 @@ impl<'a> PromptBuilder<'a> {
     }
 
     pub fn build_intent_prompt(&self) -> String {
+        // Estimate list size so we can build summaries without repeated growth.
         let estimated_summaries_size = self.summaries.len() * 80;
         let estimated_capacity = INTENT_EXTRACTION_PROMPT.len() + estimated_summaries_size;
         let mut summaries_text = String::with_capacity(estimated_summaries_size);

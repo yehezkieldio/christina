@@ -1,3 +1,8 @@
+//! CLI handlers for provider profile management.
+//!
+//! WHY handle secrets here: profiles are user-facing config; we parse secret
+//! references (env/keyring/plaintext) before handing them to core types.
+
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, Write};
 
@@ -8,10 +13,11 @@ use crate::config::secrets::{Secret, SecretRef};
 use christina_core::types::{ModelName, ProviderKind};
 use christina_core::types::tokens::TokenCount;
 
-fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>> {
+fn parse_secret_input(key: &str, allow_plaintext: bool) -> Secret<String> {
+    // SecretRef parsing is infallible; unknown prefixes are treated as literals.
     match SecretRef::parse(key) {
-        SecretRef::EnvVar(name) => Ok(Secret::EnvVar(name)),
-        SecretRef::Keyring(key_name) => Ok(Secret::Keyring(key_name)),
+        SecretRef::EnvVar(name) => Secret::EnvVar(name),
+        SecretRef::Keyring(key_name) => Secret::Keyring(key_name),
         SecretRef::Literal(value) => {
             if !allow_plaintext {
                 tracing::warn!(
@@ -21,7 +27,7 @@ fn parse_secret_input(key: &str, allow_plaintext: bool) -> Result<Secret<String>
                     "Warning: storing plaintext API key. Consider env:VAR_NAME or keyring:KEY_NAME."
                 );
             }
-            Ok(Secret::Value(value))
+            Secret::Value(value)
         }
     }
 }
@@ -250,7 +256,7 @@ fn handle_create(
 
     // Apply optional fields
     if let Some(key) = api_key {
-        profile.api_key = parse_secret_input(&key, allow_plaintext)?;
+        profile.api_key = parse_secret_input(&key, allow_plaintext);
     }
 
     if let Some(url) = api_url {
@@ -313,7 +319,7 @@ fn handle_edit(
     }
 
     if let Some(key) = api_key {
-        profile.api_key = parse_secret_input(&key, allow_plaintext)?;
+        profile.api_key = parse_secret_input(&key, allow_plaintext);
     }
 
     if let Some(url) = api_url {
@@ -382,6 +388,7 @@ fn handle_switch(config: &mut Config, output: &mut dyn Write, name: &str) -> Res
 
     // Apply the profile to current config
     if let Some(profile) = config.profiles.get(name).cloned() {
+        // Resolution happens here so the active config is fully hydrated for use.
         config.apply_profile(&profile);
     }
 
@@ -735,26 +742,25 @@ mod tests {
 
     #[test]
     fn test_parse_secret_input_env() {
-        let secret = parse_secret_input("env:MY_KEY", false).unwrap();
+        let secret = parse_secret_input("env:MY_KEY", false);
         assert!(matches!(secret, Secret::EnvVar(_)));
     }
 
     #[test]
     fn test_parse_secret_input_keyring() {
-        let secret = parse_secret_input("keyring:my-key", false).unwrap();
+        let secret = parse_secret_input("keyring:my-key", false);
         assert!(matches!(secret, Secret::Keyring(_)));
     }
 
     #[test]
     fn test_parse_secret_input_literal() {
-        let secret = parse_secret_input("sk-1234567890", true).unwrap();
+        let secret = parse_secret_input("sk-1234567890", true);
         assert!(matches!(secret, Secret::Value(_)));
     }
 
     #[test]
     fn test_parse_secret_input_literal_without_override_warns_but_succeeds() {
-        let result = parse_secret_input("sk-1234567890", false);
-        assert!(result.is_ok());
-        assert!(matches!(result.unwrap(), Secret::Value(_)));
+        let secret = parse_secret_input("sk-1234567890", false);
+        assert!(matches!(secret, Secret::Value(_)));
     }
 }

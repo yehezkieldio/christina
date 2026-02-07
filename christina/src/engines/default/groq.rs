@@ -1,3 +1,7 @@
+//! Groq integration via the shared llm crate.
+//!
+//! Mirrors the OpenAI flow but targets Groq's compatible API surface.
+
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role};
 use llm::builder::{LLMBackend, LLMBuilder};

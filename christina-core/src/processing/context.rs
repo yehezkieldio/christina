@@ -29,6 +29,7 @@ pub fn normalize_user_context(raw: Option<String>) -> Option<String> {
 }
 
 fn user_context_template_parts() -> (&'static str, &'static str) {
+    // Split once so we can count overhead tokens without allocating a new string.
     if let Some(pos) = USER_CONTEXT_TEMPLATE.find("{context}") {
         (
             &USER_CONTEXT_TEMPLATE[..pos],
@@ -58,6 +59,7 @@ pub fn fit_user_context_to_budget(
     let (prefix, suffix) = user_context_template_parts();
     let prefix_tokens = tokenizer.count_tokens_exact(prefix);
     let suffix_tokens = tokenizer.count_tokens_exact(suffix);
+    // Template overhead must be reserved before any user-provided text.
     let overhead = prefix_tokens.saturating_add(suffix_tokens);
 
     if budget_tokens <= overhead {

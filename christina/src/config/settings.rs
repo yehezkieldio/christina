@@ -1,3 +1,8 @@
+//! CLI-side configuration loader with layered precedence.
+//!
+//! WHY in CLI crate: loading touches filesystem, env vars, and secret resolution,
+//! which are intentionally out of `christina-core`.
+
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -20,6 +25,7 @@ use url::Url;
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
 
+/// Local config values allowed for per-repo overrides without secrets.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct LocalConfigSafe {
@@ -218,6 +224,7 @@ impl Config {
         // Fix profile names after deserialization (HashMap keys become names)
         config.profiles.fix_names();
 
+        // Local config is intentionally limited to non-sensitive fields.
         let local_path = std::path::Path::new("./christina.toml");
         if local_path.exists() {
             let local_content = std::fs::read_to_string(local_path)
@@ -527,6 +534,7 @@ impl Config {
             .lock_exclusive()
             .context("Failed to acquire exclusive lock on config file")?;
 
+        // Atomic replace avoids partially-written configs on crash.
         std::fs::rename(&temp_path, &config_path)
             .context("Failed to atomically replace config file")?;
 

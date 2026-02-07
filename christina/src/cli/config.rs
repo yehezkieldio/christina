@@ -1,3 +1,8 @@
+//! CLI handlers for config subcommands.
+//!
+//! WHY print-only here: keeps all config persistence in `Config` while CLI is
+//! responsible only for routing and user-facing output.
+
 use anyhow::Result;
 
 use crate::cli::ConfigCommands;
@@ -29,6 +34,7 @@ fn handle_get_with_config(config: &Config, key: &str) -> Result<()> {
     match config.get(key) {
         Some(value) => {
             if key.contains("api_key") || key.contains("key") {
+                // Redact secrets even for explicit `get` calls.
                 println!("{}: <hidden>", key);
             } else {
                 println!("{}: {}", key, value);

@@ -1,4 +1,8 @@
+//! Generation identifier used to correlate LLM requests and responses.
+
 /// Unique identifier for generation operations
+///
+/// WHY u64 newtype: cheap Copy, stable across threads, and explicit in APIs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GenerationId(pub u64);
 

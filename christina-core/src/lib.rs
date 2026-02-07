@@ -1,4 +1,11 @@
-// Allow unused dev-dependencies that are only used in benchmarks
+//! Core domain crate for Christina.
+//!
+//! This crate is intentionally **headless**: no CLI, no IO orchestration, and no
+//! runtime secret resolution. It provides the stable domain types, processing
+//! pipeline, and prompt construction primitives that the `christina` binary wires
+//! together. Public re-exports below form the supported API surface for the app.
+
+// Allow unused dev-dependencies that are only used in benchmarks.
 // The unused_crate_dependencies lint cannot distinguish between
 // dependencies used in benches vs lib.
 #![allow(unused_crate_dependencies)]

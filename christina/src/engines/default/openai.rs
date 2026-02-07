@@ -1,3 +1,8 @@
+//! OpenAI integration via the shared llm crate.
+//!
+//! WHY use llm crate here: standard OpenAI endpoints map directly and benefit
+//! from shared request formatting and error normalization.
+
 use std::sync::Arc;
 
 use christina_core::error::CompletionError;

@@ -1,3 +1,8 @@
+//! Runtime configuration after secret resolution.
+//!
+//! WHY separate from ConfigFile: runtime uses resolved secrets and concrete
+//! defaults so downstream code never handles `Option` or placeholder secrets.
+
 use std::collections::HashMap;
 
 use crate::{config::SecretString, profile::ProviderProfile};
@@ -26,6 +31,7 @@ impl Default for ResolvedConfig {
         Self {
             active_profile: None,
             profiles: HashMap::new(),
+            // Align with conventional commit summary width.
             commit_message_max_length: 72,
             ignore_files: Vec::new(),
             include_file_diffs: false,

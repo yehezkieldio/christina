@@ -1,3 +1,5 @@
+//! Usage tier influences conservative defaults and rate limits.
+
 use serde::{Deserialize, Serialize};
 
 /// Usage tier for rate-limit-aware defaults.
@@ -5,8 +7,10 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum UsageTier {
+    /// Default tier with standard limits.
     #[default]
     Standard,
+    /// Free tier with stricter limits.
     Free,
 }
 

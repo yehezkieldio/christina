@@ -1,9 +1,15 @@
+//! Git status and staging domain types.
+//!
+//! WHY keep heuristics here: binary detection and status parsing are part of the
+//! git snapshot model, letting higher layers stay agnostic about raw diff text.
+
 use std::fmt;
 
 use compact_str::CompactString;
 
 use crate::types::FilePath;
 
+// Coarse extension list to quickly skip obvious binaries without parsing diffs.
 pub const BINARY_EXTENSIONS: &[&str] = &[
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".pdf", ".zip", ".tar", ".gz", ".rar",
     ".7z", ".exe", ".dll", ".so", ".dylib", ".wasm", ".pyc", ".class", ".ttf", ".otf", ".woff",
@@ -91,6 +97,7 @@ pub struct GitFile {
 impl GitFile {
     pub fn new(path: String, status: String, diff_content: String) -> Self {
         let status_enum = GitFileStatus::parse(&status);
+        // Binary detection is intentionally conservative: any signal marks the file as binary.
         let is_binary = status_enum.might_be_binary(&path)
             || diff_content.contains("Binary files")
             || diff_content.bytes().any(|b| b == 0);

@@ -1,3 +1,8 @@
+//! Public surface for the CLI crate used by benches and integration tests.
+//!
+//! WHY keep small: production entrypoints live in `main.rs`; this module exists
+//! solely so benches can import internal components without duplicating logic.
+
 // Allow unused dev-dependencies that are only used in benchmarks
 // The unused_crate_dependencies lint cannot distinguish between
 // dependencies used in benches vs lib.
@@ -11,8 +16,8 @@
 /// These are exposed primarily for integration tests and benchmarks.
 pub mod git;
 
-// Placeholder uses for dependencies used in main.rs but not lib.rs
-// This satisfies clippy's unused-crate-dependencies lint
+// Placeholder uses for dependencies used in main.rs but not lib.rs.
+// This satisfies clippy's unused-crate-dependencies lint for this crate.
 use cap as _;
 use clap as _;
 use clap_complete as _;

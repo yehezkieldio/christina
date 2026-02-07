@@ -1,3 +1,8 @@
+//! Default provider implementations (OpenAI, Azure, Groq).
+//!
+//! WHY in one module: keeps provider-specific HTTP logic together while sharing
+//! request construction and validation rules.
+
 mod azure;
 mod groq;
 mod openai;
@@ -31,7 +36,7 @@ fn parse_azure_endpoint(url: &url::Url) -> (Option<String>, Option<String>) {
     let mut api_version = None;
     let mut deployment_id = None;
 
-    // Extract api-version from query parameters
+    // Extract api-version from query parameters (Azure often embeds it in the URL).
     for (key, value) in url.query_pairs() {
         if key == "api-version" {
             api_version = Some(value.to_string());
@@ -59,6 +64,7 @@ fn has_azure_deployment_path(url: &url::Url) -> bool {
 }
 
 fn normalize_azure_endpoint(url: &url::Url) -> String {
+    // Provider API expects the resource root, not the deployment path.
     let mut clean = url.clone();
     clean.set_path("");
     clean.set_query(None);
@@ -380,6 +386,7 @@ fn request_from_messages(
     }
 
     let id = REQUEST_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    // ID is for logging/correlation only; wraparound is acceptable.
 
     LlmRequest {
         id: GenerationId::new(id),

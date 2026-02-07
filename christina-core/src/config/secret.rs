@@ -1,3 +1,8 @@
+//! Data-only secret representations for config and runtime.
+//!
+//! WHY keep in core: lets downstream crates share a single schema without
+//! pulling in OS keyring or env resolution logic, which lives in `christina`.
+
 use std::fmt;
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -48,6 +53,7 @@ impl SecretRef {
     /// - `value:SECRET_VALUE`
     /// - Plain string (treated as literal)
     pub fn parse(s: &str) -> Self {
+        // Infallible parse keeps CLI/config parsing simple; invalid prefixes fall back to literal.
         if let Some(rest) = s.strip_prefix("env:") {
             SecretRef::EnvVar(rest.to_string())
         } else if let Some(rest) = s.strip_prefix("keyring:") {

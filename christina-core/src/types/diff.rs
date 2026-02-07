@@ -1,3 +1,8 @@
+//! Diff data structures used by chunking and prompt building.
+//!
+//! WHY Arc<str>: large diffs are shared across chunks; Arc avoids repeated
+//! allocations while keeping ownership explicit and clone-cheap.
+
 use super::{FilePath, TokenCount};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
@@ -16,6 +21,7 @@ where
     String::deserialize(deserializer).map(|s| Arc::from(s.as_str()))
 }
 
+// Guardrail to avoid loading pathological diffs into memory.
 pub const MAX_DIFF_SIZE: usize = 10 * 1024 * 1024; // 10MB
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

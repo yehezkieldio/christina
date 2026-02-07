@@ -1,3 +1,8 @@
+//! Tokenizer service and budget helpers.
+//!
+//! WHY centralized cache: tokenization dominates hot-path CPU time. A shared,
+//! thread-safe cache reduces repeated BPE work across chunking and prompt builds.
+
 use std::num::NonZeroUsize;
 use std::sync::{Arc, OnceLock};
 
@@ -16,6 +21,7 @@ use tracing::warn;
 
 pub type Result<T> = TokenizerResult<T>;
 
+// Single shared tokenizer instance; creation is expensive and thread-safe.
 static TOKENIZER: OnceLock<Arc<dyn Tokenizer>> = OnceLock::new();
 
 #[cfg(test)]

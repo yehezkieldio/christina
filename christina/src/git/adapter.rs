@@ -1,3 +1,8 @@
+//! Git2 adapter for staged diff extraction and commit creation.
+//!
+//! WHY in CLI crate: depends on git2 IO and user environment (GPG, config),
+//! which should not leak into core domain types.
+
 use anyhow::{Context, Result};
 use git2::{DiffOptions, Repository};
 use std::io::{IsTerminal, Write};
@@ -281,6 +286,7 @@ pub fn create_commit(repo: &Repository, message: &str) -> Result<git2::Oid> {
     let gpg_sign = config.get_bool("commit.gpgsign").unwrap_or(false);
 
     if gpg_sign {
+        // Use git's sign buffer flow so we can provide better diagnostics.
         let signing_key = config.get_string("user.signingkey").ok();
 
         let buffer = repo.commit_create_buffer(&signature, &signature, message, &tree, &parents)?;

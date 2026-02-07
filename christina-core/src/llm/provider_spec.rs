@@ -1,3 +1,8 @@
+//! Provider configuration shapes with validation rules.
+//!
+//! WHY validate here: keeps provider constraints close to the data model so
+//! CLI/config parsing can fail fast before any network calls.
+
 use crate::config::AzureEndpoint;
 use crate::error::ProviderError;
 use crate::types::{ModelName, ProviderKind, Temperature, TokenCount};
@@ -46,6 +51,7 @@ impl ProviderSpec {
             }
         };
 
+        // HTTPS-only avoids accidental credential leakage on insecure transport.
         if scheme != "https" {
             return Err(ProviderError::InvalidConfig(format!(
                 "URL scheme must be HTTPS for security, got {}",

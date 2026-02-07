@@ -1,8 +1,14 @@
+//! Parsing utilities for git diff text.
+//!
+//! WHY strict header parsing: prevents injection where diff content mimics
+//! headers, and keeps file path extraction deterministic.
+
 use std::sync::Arc;
 
 use christina_core::{Tokenizer, types::{FileDiff, FilePath}};
 
 const FILE_HEADER: &str = "diff --git ";
+// Per-file cap keeps a single pathological diff from dominating memory.
 const MAX_FILE_DIFF_SIZE: usize = 1024 * 1024; // 1MB
 
 pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
