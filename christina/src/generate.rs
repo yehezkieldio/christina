@@ -16,6 +16,7 @@ use crate::config::secrets::Secret;
 use crate::engines::Provider;
 use crate::git::{diff_processor::DiffProcessor, parsing};
 use crate::orchestrator::{AIOrchestrator, GenerationResult};
+use crate::ui;
 use crate::ui::events::Event;
 use christina_core::processing::{TokenBudget, get_tokenizer, should_limit_file};
 use christina_core::processing::{
@@ -65,13 +66,13 @@ fn config_to_profile(config: &Config, api_key: &str) -> ProviderProfile {
         temperature: Some(config.model_temperature),
     }
 }
-
-pub async fn generate_commit_message_with_progress(
+pub async fn generate_commit_message_with_progress_and_trace(
     config: Config,
     diff: Arc<str>,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
     user_context: Option<String>,
+    trace: bool,
 ) -> Result<GenerationResult> {
     generate_commit_message_with_progress_impl(
         config,
@@ -80,6 +81,7 @@ pub async fn generate_commit_message_with_progress(
         progress_tx,
         user_context,
         &GitCommitHistoryProvider,
+        trace,
     )
     .await
 }
@@ -91,10 +93,14 @@ async fn generate_commit_message_with_progress_impl(
     progress_tx: mpsc::Sender<Event>,
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
+    trace: bool,
 ) -> Result<GenerationResult> {
     // Validate configuration before starting progress events
     let api_key = require_api_key(&config)?;
 
+    if trace {
+        ui::print_trace("starting commit message generation");
+    }
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Connecting to AI provider...".to_string(),
@@ -108,6 +114,9 @@ async fn generate_commit_message_with_progress_impl(
     let provider = Provider::from_profile(&config_to_profile(&config, api_key), api_key)?;
     let provider = Arc::new(provider);
 
+    if trace {
+        ui::print_trace("created AI provider");
+    }
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Processing diff content...".to_string(),
@@ -119,6 +128,9 @@ async fn generate_commit_message_with_progress_impl(
     }
 
     let tokenizer: Arc<dyn christina_core::Tokenizer> = get_tokenizer();
+    if trace {
+        ui::print_trace("initialized tokenizer");
+    }
     let system_prompt_tokens = tokenizer.count_tokens(SYSTEM_PROMPT);
     let direct_prompt_tokens = tokenizer.count_tokens(DIRECT_COMMIT_PROMPT);
     // Reserve worst-case prompt size so later budgeting cannot undercount.
@@ -129,10 +141,19 @@ async fn generate_commit_message_with_progress_impl(
         config.max_concurrent_requests,
         config.max_partial_failure_rate,
     );
+    if trace {
+        ui::print_trace("initialized orchestrator");
+    }
 
     let history_context = if config.use_commit_history {
+        if trace {
+            ui::print_trace("retrieving commit history");
+        }
         match history_provider.get_commit_history(&repo_path, config.commit_history_depth) {
             Ok(mut commits) => {
+                if trace {
+                    ui::print_trace(&format!("retrieved {} commits from history", commits.len()));
+                }
                 if commits.is_empty() {
                     None
                 } else {
@@ -167,11 +188,17 @@ async fn generate_commit_message_with_progress_impl(
                 }
             }
             Err(e) => {
+                if trace {
+                    ui::print_trace("failed to retrieve commit history");
+                }
                 warn!("Failed to retrieve commit history: {}", e);
                 None
             }
         }
     } else {
+        if trace {
+            ui::print_trace("skipping commit history (disabled in config)");
+        }
         None
     };
 
@@ -189,6 +216,9 @@ async fn generate_commit_message_with_progress_impl(
             )
         })?;
 
+    if trace {
+        ui::print_trace(&format!("calculated message budget: {} tokens", message_budget));
+    }
     let mut budget_warnings = Vec::new();
     let normalized_user_context = normalize_user_context(user_context);
     let had_user_context = normalized_user_context.is_some();
@@ -231,10 +261,17 @@ async fn generate_commit_message_with_progress_impl(
         .remaining_for_diff()
         .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
 
+    if trace {
+        ui::print_trace(&format!("set token limit for diff processing: {} tokens", token_limit.get()));
+    }
+
     let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
         .with_ignore_files(config.ignore_files.clone())
         .with_lockfile_token_limit(config.lockfile_token_limit);
 
+    if trace {
+        ui::print_trace("processing diff content");
+    }
     let chunks = processor.process_safe(diff.as_ref());
 
     if chunks.is_empty() {
@@ -251,6 +288,9 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("No processable diff content found");
     }
 
+    if trace {
+        ui::print_trace(&format!("processed {} diff chunks", chunks.len()));
+    }
     let binary_only = chunks
         .iter()
         .all(|chunk| chunk.content.starts_with("[Binary file:"));
@@ -282,6 +322,10 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
+    if trace {
+        ui::print_trace(&format!("total tokens in chunks: {}", total_tokens.get()));
+    }
+
     if progress_tx
         .send(Event::GenerationProgress {
             stage: format!(
@@ -308,13 +352,17 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
+    if trace {
+        ui::print_trace("calling orchestrator to generate commit message");
+    }
     let mut result = orchestrator
-        .generate_commit_message(
+        .generate_commit_message_with_trace(
             chunks,
             user_context.as_deref(),
             config.commit_message_validation_mode,
             config.commit_message_max_length,
             history_context,
+            trace,
         )
         .await?;
 
@@ -328,6 +376,9 @@ async fn generate_commit_message_with_progress_impl(
             .push("Only binary files detected; commit message may be generic.".to_string());
     }
 
+    if trace {
+        ui::print_trace("finalizing generation result");
+    }
     if progress_tx
         .send(Event::GenerationProgress {
             stage: "Finalizing...".to_string(),
@@ -580,6 +631,7 @@ mod tests {
             tx,
             None,
             &MockCommitHistoryProvider::empty(),
+            false,
         )
         .await;
 
@@ -608,6 +660,7 @@ mod tests {
             tx,
             None,
             &MockCommitHistoryProvider::empty(),
+            false,
         )
         .await;
 
@@ -624,6 +677,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             max_input_tokens: TokenCount::new_at_least_one(256000),
             max_output_tokens: TokenCount::new_at_least_one(8192),
+            model_api_url: Some(url::Url::parse("https://test.openai.azure.com/").unwrap()),
             ..Default::default()
         };
 
@@ -638,14 +692,15 @@ mod tests {
             tx,
             None,
             &MockCommitHistoryProvider::empty(),
+            false,
         )
         .await;
 
         assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        eprintln!("Actual error message: {}", error_msg); // Debug print
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
+            error_msg
                 .contains("No processable diff content found")
         );
     }
