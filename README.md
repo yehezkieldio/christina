@@ -2,149 +2,133 @@
 <img src=".github/assets/avatar.png" align="center" width="120px" height="120px" />
 <h3>Christina</h3>
 <p>Terminal interface for AI-powered conventional commit generation.</p>
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)
 </div>
 
 ---
 
-Christina is a personal Terminal User Interface (TUI) tool designed to streamline version control workflows. It analyzes your staged Git changes and uses AI to automatically generate meaningful, conventional commit messages, saving you time and ensuring consistency across your project history, *most of the time.*
+Christina is a high-performance terminal utility designed to automate the generation of [Conventional Commits](https://www.conventionalcommits.org/). It employs advanced Large Language Models (LLMs) to analyze staged changes, utilizing a specialized Map-Reduce architecture to handle large-scale diffs while ensuring semantic consistency and adherence to version control standards.
 
-## Features
+## Technical Overview
 
-- **Automated Conventional Commits**: Analyzes staged changes and generates high-quality commit messages conforming to [Conventional Commits](https://www.conventionalcommits.org/).
-- **Multi-Provider Support**: Seamlessly switch between OpenAI, Azure, and Groq backends.
-- **Smart Diff Processing**: Only sends relevant parts of your diff to the LLM, managing token limits efficiently.
-- **Context Injection**: Provide optional hints to the AI to guide message generation.
-- **Dry Run Mode**: Preview generated messages without committing.
-- **High-Performance CLI**: Built in Rust with focus on speed and minimal resource usage.
-- **Profile System**: Configure and switch between multiple LLM profiles for different projects or environments.
-- **Integrated Logging**: Rolling diagnostic logs for easy troubleshooting.
+Christina is engineered for speed, privacy, and precision. It leverages Rust's asynchronous runtime (`tokio`) for concurrent processing and the `tiktoken` library for efficient local token counting. Unlike simpler alternatives, it implements an intelligent diff analysis pipeline that maintains architectural intent across massive commits.
 
-## Getting Started
+### Key Capabilities
 
-### Prerequisites
+*   **Recursive Diff Chunking**: Automatically fragments large diffs into semantically coherent units (File > Hunk > Line) to respect LLM context windows without losing change locality.
+*   **Map-Reduce Orchestration**: Parallelizes chunk summarization before synthesizing a final intent-based commit message, supporting repositories with hundreds of modified files.
+*   **Architectural Intent Extraction**: Groups atomic changes into high-level themes to generate descriptions that reflect "why" and "what" rather than just listing file names.
+*   **Zero-Trust Security**: Native integration with OS Keyrings (via `keyring`) and environment variables ensures API keys are never stored in plaintext or leaked into telemetry.
+*   **Profile System**: Supports multiple provider configurations (Azure OpenAI, OpenAI) with fine-grained control over model parameters and token budgets.
+*   **Interactive TUI**: Provides a streamlined interface for message validation, regenerative refinement, and inline Emacs-style editing.
 
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable)
-- [Just](https://github.com/casey/just) (optional, but recommended for build shortcuts)
+## Installation
 
-### Installation
+### From Source
+
+Requires the latest stable Rust toolchain.
 
 ```bash
-# Clone the repository
 git clone https://github.com/yehezkieldio/christina-vibe.git
 cd christina-vibe
-
-# Build and install
 cargo install --path christina
 ```
 
-### Usage
+### Development
 
-1. **Configure your first profile:**
-   ```bash
-   # Add a new profile (OpenAI example)
-   # Plaintext keys are accepted by default (you'll get a warning)
-   christina profile create my-openai --provider openai --model gpt-4o --api-key YOUR_KEY
-   # Environment or keyring references are recommended for security
-   christina profile create my-openai --provider openai --model gpt-4o --api-key env:OPENAI_API_KEY
-   christina profile create my-openai --provider openai --model gpt-4o --api-key keyring:christina.openai
-   ```
+The project uses `just` for workflow automation:
 
-2. **Generate a commit message:**
-   ```bash
-   # Stage some changes
-   git add .
-
-   # Run christina
-   christina
-   ```
-
-3. **Options:**
-   ```bash
-   # Dry run (don't actually commit)
-   christina --dry-run
-
-   # Provide context
-   christina --context "Fixed a critical memory leak in the tokenizer"
-   ```
+```bash
+just all     # Execute formatting, linting, and tests
+just test    # Run full test suite using nextest
+```
 
 ## Configuration
 
-Christina stores configuration and profiles in your OS-standard config directory (e.g., `~/.config/christina/` on Linux).
-See `config.example.toml` for the full reference and `docs/guides/advanced-config.md` for deep usage patterns.
+Christina employs a layered configuration model with the following precedence (highest to lowest):
 
-Quick tips:
-- Global config: `~/.config/christina/config.toml` (Linux/macOS) or `%APPDATA%\\christina\\config.toml` (Windows)
-- Local overrides: `./christina.toml` (safe fields only, per-repo)
-- CLI helpers: `christina config list|get|set|path`
+1.  **Environment Variables**: Prefixed with `CHRISTINA_` (e.g., `CHRISTINA_MODEL`).
+2.  **Local Overrides**: `./christina.toml` located in the repository root (safe fields only).
+3.  **Global Configuration**: `~/.config/christina/config.toml` (Linux/macOS) or `%APPDATA%\christina\config.toml` (Windows).
 
-### Example `config.toml`
+### Core Settings
+
+| Key | Type | Default | Description |
+|:--- |:--- |:--- |:--- |
+| `active_profile` | String | `"default"` | The name of the LLM profile to use. |
+| `commit_message_max_length` | Integer | `72` | Hard limit for the commit subject line. |
+| `commit_message_validation_mode` | Enum | `"soft"` | `strict`, `soft`, or `disabled`. |
+| `ignore_files` | List | `[]` | Glob patterns to exclude from analysis. |
+| `max_concurrent_requests` | Integer | `4` | Concurrency limit for map-phase summarization. |
+| `lockfile_token_limit` | Integer | `100` | Token cap for dependency lockfiles to preserve budget. |
+
+### Profile Configuration
+
+Profiles are defined in the `[profiles]` table.
 
 ```toml
-schema_version = 2
-
-[standard]
-active_profile = "default"
-commit_message_max_length = 72
-commit_message_validation_mode = "soft"
-ignore_files = []
-
-[advanced]
-lockfile_token_limit = 100
-use_commit_history = true
-commit_history_depth = 5
-max_concurrent_requests = 4
-max_partial_failure_rate = 0.10
-prompt_failure_rate_threshold = 0.05
-
-[experimental]
-use_experimental = false
-
-[profiles.default]
-name = "default"
-provider = "openai"
-model = "gpt-4.1-mini"
-api_key = { value = "YOUR_KEY" }
+[profiles.production]
+provider = "azure"
+model = "gpt-4o"
+api_key = { keyring = "christina.azure.prod" }
+api_url = "https://your-resource.openai.azure.com/"
 max_input_tokens = 128000
 max_output_tokens = 4096
 temperature = 0.3
 ```
 
-### Profile Management
+## Pipeline Architecture
 
-Profiles allow you to manage multiple LLM configurations.
+Christina's processing pipeline is divided into two distinct crates to separate domain logic from interface concerns.
 
+### christina-core
+
+The headless engine responsible for:
+*   **Token Management**: Local BPE tokenization and budget allocation.
+*   **Chunking Logic**: Recursive algorithms for diff partitioning.
+*   **Prompt Engineering**: Few-shot templates and anti-slop verbiage enforcement.
+*   **Domain Models**: Immutable types for Git snapshots and commit messages.
+
+### christina
+
+The orchestrator and user interface responsible for:
+*   **Concurrency**: Managing parallel LLM requests with rate limiting and exponential backoff.
+*   **Git Integration**: Interfacing with `git2` for diff extraction and commit authoring.
+*   **Secret Resolution**: Dynamic loading of credentials from secure stores.
+*   **Telemetry**: Real-time progress events and diagnostic tracing.
+
+## Advanced Usage
+
+### Context Injection
+
+Augment the AI's understanding by providing high-level context:
 ```bash
-# List all profiles
-christina profile list
-
-# Create a profile (OpenAI example)
-christina profile create my-openai --provider openai --model gpt-4.1-mini --api-key env:OPENAI_API_KEY
-
-# Switch to a different profile
-christina profile switch my-groq-profile
-
-# View detailed config for a profile
-christina profile show my-openai
+christina --context "Refactored the persistence layer to support S3"
 ```
 
-### API Keys
-You can provide API keys in three ways:
-- Plaintext (default): `api_key = { value = "YOUR_KEY" }`
-- Environment variable: `api_key = { env = "OPENAI_API_KEY" }`
-- Keyring reference: `api_key = { keyring = "christina.openai" }`
+### Diagnostic Tracing
 
-Plaintext is accepted by default (with a warning). For security, prefer env or keyring.
+Enable deep pipeline telemetry to analyze token usage, chunking efficiency, and provider latency:
+```bash
+christina --trace
+```
 
-## Architecture
+### Dry Run
 
-Christina follows a modular design split into two main crates:
-- `christina-core`: Headless logic, Git integration, LLM orchestrator, and domain models.
-- `christina`: CLI interface, orchestration, and user interaction layer.
+Preview the generated commit message without performing filesystem modifications:
+```bash
+christina --dry-run
+```
 
-For more details, see [ARCHITECTURE.md](ARCHITECTURE.md).
+## Security and Privacy
+
+*   **Data Locality**: Changes are sent directly to your configured provider. No intermediate servers are involved.
+*   **Redaction**: API keys and sensitive data are handled via `SecretString` wrappers that redact content in all debug and log outputs.
+*   **Injection Prevention**: Diff headers are strictly parsed to prevent malicious content from overriding system prompt instructions.
 
 ## License
 
-Licensed under either the MIT License or the Apache License 2.0, at your option
-
-For detailed license information, please refer to the [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) files.
+Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE).
