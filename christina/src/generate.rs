@@ -173,11 +173,16 @@ async fn generate_commit_message_with_progress_impl(
                         );
                     }
 
-                    let formatted = commits
-                        .iter()
-                        .map(|c| format!("- {}: {}", c.sha, c.subject))
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let mut formatted = String::with_capacity(commits.len() * 80);
+                    for (index, commit) in commits.iter().enumerate() {
+                        if index > 0 {
+                            formatted.push('\n');
+                        }
+                        formatted.push_str("- ");
+                        formatted.push_str(&commit.sha);
+                        formatted.push_str(": ");
+                        formatted.push_str(&commit.subject);
+                    }
                     let history = if omitted_count > 0 {
                         format!(
                             "Recent commits:\n{}\n[... {} older commits omitted ...]",
@@ -280,7 +285,20 @@ async fn generate_commit_message_with_progress_impl(
         ui::print_trace(&format!("raw diff length: {} characters", diff.len()));
         ui::print_trace(&format!("processed {} diff chunks", chunks.len()));
         for (i, chunk) in chunks.iter().enumerate() {
-            ui::print_trace(&format!("  [{}] {} tokens, {} files: {}", i, chunk.token_count.get(), chunk.files.len(), chunk.files.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")));
+            let mut file_list = String::with_capacity(chunk.files.len() * 32);
+            for (index, file) in chunk.files.iter().enumerate() {
+                if index > 0 {
+                    file_list.push_str(", ");
+                }
+                file_list.push_str(file.as_ref());
+            }
+            ui::print_trace(&format!(
+                "  [{}] {} tokens, {} files: {}",
+                i,
+                chunk.token_count.get(),
+                chunk.files.len(),
+                file_list
+            ));
         }
     }
 
@@ -307,13 +325,21 @@ async fn generate_commit_message_with_progress_impl(
         TokenCount::new_at_least_one(total_tokens_before_merge.try_into().unwrap_or(u32::MAX));
 
     if original_chunk_count > 1 && total_tokens_before_merge <= token_limit {
-        let mut combined_files = Vec::new();
-        let mut seen = HashSet::new();
-        let combined_content = chunks
+        let total_files = chunks.iter().map(|chunk| chunk.files.len()).sum::<usize>();
+        let mut combined_files = Vec::with_capacity(total_files);
+        let mut seen = HashSet::with_capacity(total_files);
+        let combined_capacity = chunks
             .iter()
-            .map(|chunk| chunk.content.as_ref())
-            .collect::<Vec<_>>()
-            .join("\n\n");
+            .map(|chunk| chunk.content.len())
+            .sum::<usize>()
+            .saturating_add((original_chunk_count.saturating_sub(1)) * 2);
+        let mut combined_content = String::with_capacity(combined_capacity);
+        for (index, chunk) in chunks.iter().enumerate() {
+            if index > 0 {
+                combined_content.push_str("\n\n");
+            }
+            combined_content.push_str(chunk.content.as_ref());
+        }
 
         for chunk in &chunks {
             for file in &chunk.files {
@@ -466,7 +492,8 @@ pub struct CommitInfo {
 fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
     let repo = git2::Repository::open(repo_path)?;
 
-    if repo.is_shallow() {
+    let is_shallow = repo.is_shallow();
+    if is_shallow {
         warn!("Running in shallow clone, commit history may be limited");
         // In shallow clones, limit history to what's available (typically 1 commit)
         // to avoid spending time on unavailable history
@@ -483,7 +510,7 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
     let mut commits = Vec::new();
 
     // For shallow clones, cap at a lower limit since history is limited anyway
-    let effective_limit = if repo.is_shallow() {
+    let effective_limit = if is_shallow {
         limit.min(3)
     } else {
         limit

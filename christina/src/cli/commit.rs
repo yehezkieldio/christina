@@ -31,36 +31,22 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     let (repo_path, diff) = validate_repository().await?;
     let diff = Arc::<str>::from(diff);
 
-    if let Some(stats) = trace_stats.as_ref() {
-        let mut stats = match stats.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        stats.repo_path = Some(repo_path.clone());
-    }
-
     if trace {
         ui::print_trace("collecting staged files");
     }
     let files = adapter::get_staged_files_with_timeout(&repo_path).await?;
 
-    if let Some(stats) = trace_stats.as_ref() {
-        let mut stats = match stats.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        stats.staged_files = files.len();
-    }
-
     display_changes(&files);
 
     if trace {
+        let diff_stats = compute_diff_stats(diff.as_ref());
         if let Some(stats) = trace_stats.as_ref() {
             let mut stats = match stats.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            let diff_stats = compute_diff_stats(diff.as_ref());
+            stats.repo_path = Some(repo_path.clone());
+            stats.staged_files = files.len();
             stats.diff_bytes = diff.len();
             stats.diff_lines = diff_stats.lines_total;
             stats.diff_additions = diff_stats.additions;
@@ -202,10 +188,10 @@ fn display_changes(files: &[GitFile]) {
     let count = files.len();
     let label = if count == 1 { "file" } else { "files" };
     ui::print_info(&format!("{} {} staged", count, label));
-    let file_paths = files
-        .iter()
-        .map(|file| file.path.to_string())
-        .collect::<Vec<_>>();
+    let mut file_paths = Vec::with_capacity(files.len());
+    for file in files {
+        file_paths.push(file.path.to_string());
+    }
     ui::print_file_list(&file_paths, 10);
 }
 

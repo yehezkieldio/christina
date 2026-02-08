@@ -432,7 +432,7 @@ impl AIOrchestrator {
                     user_context,
                     validation_mode,
                     max_length,
-                    history_context.clone(),
+                    history_context.as_deref(),
                     trace,
                 )
                 .await?;
@@ -516,7 +516,7 @@ impl AIOrchestrator {
                 user_context,
                 validation_mode,
                 max_length,
-                history_context.clone(),
+                history_context.as_deref(),
                 trace,
             )
             .await?;
@@ -545,7 +545,7 @@ impl AIOrchestrator {
         user_context: Option<&str>,
         validation_mode: ValidationMode,
         max_length: Option<usize>,
-        history_context: Option<String>,
+        history_context: Option<&str>,
         trace: bool,
     ) -> Result<(CommitMessage, bool, bool, Vec<String>)> {
         if trace {
@@ -562,7 +562,7 @@ impl AIOrchestrator {
         let mut prompt = builder.build_direct_prompt();
         if let Some(hist) = history_context {
             prompt.push_str("\n\nRecent commit history for style reference:\n");
-            prompt.push_str(&hist);
+            prompt.push_str(hist);
         }
 
         let messages = vec![
@@ -635,19 +635,18 @@ impl AIOrchestrator {
         }
         let retry_policy = self.retry_policy.clone();
         let orchestrator = self;
-        let mut futures = stream::iter(chunks.iter().cloned().map(move |chunk| {
+        let mut futures = stream::iter(chunks.iter().map(move |chunk| {
             let provider = Arc::clone(&self.provider);
             let limiter = self.limiter.clone();
-            let content = chunk.content;
-            let files = chunk.files;
+            let content = Arc::clone(&chunk.content);
+            let files = chunk.files.clone();
             let retry_policy = retry_policy.clone();
 
             async move {
-                let files_for_error = files.clone();
                 let result = async {
                     let _permit = limiter.acquire().await;
 
-                    let builder = PromptBuilder::new().with_diff(&content);
+                    let builder = PromptBuilder::new().with_diff(content.as_ref());
                     let messages = vec![
                         ChatMessage {
                             role: Role::System,
@@ -669,10 +668,14 @@ impl AIOrchestrator {
                         .map_err(MapError::Completion)?;
 
                     let summary = orchestrator.summary_from_response_with_files(&summary, &files);
-                    Ok::<ChunkSummary, MapError>(ChunkSummary { summary, files })
+                    Ok::<String, MapError>(summary)
                 }
                 .await;
-                result.map_err(|e: MapError| (e, files_for_error))
+
+                match result {
+                    Ok(summary) => Ok(ChunkSummary { summary, files }),
+                    Err(err) => Err((err, files)),
+                }
             }
         }))
         .buffer_unordered(map_concurrency);
@@ -708,11 +711,11 @@ impl AIOrchestrator {
                     }
 
                     failed_count += 1;
-                    failed_files.extend(files.clone());
 
                     if trace {
                         ui::print_trace(&format!("failed to process chunk for files: {:?}", files));
                     }
+                    failed_files.extend(files);
                 }
             }
         }
@@ -868,34 +871,40 @@ impl AIOrchestrator {
             ));
         }
 
-        let batches: Vec<Vec<ChunkSummary>> = summaries
-            .chunks(MAX_SUMMARIES_PER_INTENT_BATCH)
-            .map(|chunk| chunk.to_vec())
-            .collect();
-
-        let batch_count = batches.len();
+        let batch_count = (summaries.len() + MAX_SUMMARIES_PER_INTENT_BATCH - 1)
+            / MAX_SUMMARIES_PER_INTENT_BATCH;
         if trace {
             ui::print_trace(&format!("Grouped into {} batches", batch_count));
         }
 
-        let sub_themes_results = stream::iter(batches.into_iter().enumerate().map(
-            |(idx, batch)| async move {
-                match self.extract_sub_themes(&batch).await {
-                    Ok(themes) => {
-                        if trace {
-                            ui::print_trace(&format!("Batch {}: extracted {} sub-themes", idx, themes.len()));
+        let sub_themes_results = stream::iter(
+            summaries
+                .chunks(MAX_SUMMARIES_PER_INTENT_BATCH)
+                .enumerate()
+                .map(|(idx, batch)| async move {
+                    match self.extract_sub_themes(batch).await {
+                        Ok(themes) => {
+                            if trace {
+                                ui::print_trace(&format!(
+                                    "Batch {}: extracted {} sub-themes",
+                                    idx,
+                                    themes.len()
+                                ));
+                            }
+                            Ok(themes)
                         }
-                        Ok(themes)
-                    }
-                    Err(e) => {
-                        if trace {
-                            ui::print_trace(&format!("Batch {}: failed to extract sub-themes: {}", idx, e));
+                        Err(e) => {
+                            if trace {
+                                ui::print_trace(&format!(
+                                    "Batch {}: failed to extract sub-themes: {}",
+                                    idx, e
+                                ));
+                            }
+                            Ok(self.fallback_sub_themes_from_summaries(batch))
                         }
-                        Ok(self.fallback_sub_themes_from_summaries(&batch))
                     }
-                }
-            },
-        ))
+                }),
+        )
         .buffer_unordered(self.concurrency_limit.min(batch_count).max(1))
         .collect::<Vec<Result<Vec<SubTheme>>>>()
         .await;
@@ -922,7 +931,7 @@ impl AIOrchestrator {
         if trace {
             ui::print_trace(&format!("aggregating {} sub-themes into final themes", all_sub_themes.len()));
         }
-        let final_themes = self.aggregate_sub_themes(&all_sub_themes).await;
+        let final_themes = self.aggregate_sub_themes(all_sub_themes).await;
 
         match final_themes {
             Ok(themes) => {
@@ -970,15 +979,16 @@ impl AIOrchestrator {
         self.parse_sub_themes(&response)
     }
 
-    async fn aggregate_sub_themes(&self, sub_themes: &[SubTheme]) -> Result<Vec<Theme>> {
+    async fn aggregate_sub_themes(&self, sub_themes: Vec<SubTheme>) -> Result<Vec<Theme>> {
         let mut scope_groups: std::collections::HashMap<Option<String>, Vec<SubTheme>> =
             std::collections::HashMap::new();
 
+        let total_sub_themes = sub_themes.len();
         for theme in sub_themes {
             scope_groups
                 .entry(theme.scope.clone())
                 .or_default()
-                .push(theme.clone());
+                .push(theme);
         }
 
         let mut merged_themes: Vec<Theme> = Vec::new();
@@ -1015,7 +1025,7 @@ impl AIOrchestrator {
 
         debug!(
             "Aggregated {} sub-themes into {} final themes",
-            sub_themes.len(),
+            total_sub_themes,
             merged_themes.len()
         );
 
@@ -1023,23 +1033,23 @@ impl AIOrchestrator {
     }
 
     fn format_summaries_for_prompt(&self, summaries: &[ChunkSummary]) -> Vec<String> {
-        summaries
-            .iter()
-            .map(|summary| {
-                let paths = summary
-                    .files
-                    .iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(
-                    "[{} files: {}] {}",
-                    summary.files.len(),
-                    paths,
-                    summary.summary
-                )
-            })
-            .collect()
+        let mut formatted = Vec::with_capacity(summaries.len());
+        for summary in summaries {
+            let mut paths = String::with_capacity(summary.files.len() * 32);
+            for (index, path) in summary.files.iter().enumerate() {
+                if index > 0 {
+                    paths.push_str(", ");
+                }
+                paths.push_str(path.as_ref());
+            }
+            formatted.push(format!(
+                "[{} files: {}] {}",
+                summary.files.len(),
+                paths,
+                summary.summary
+            ));
+        }
+        formatted
     }
 
     fn normalize_theme_item(
@@ -1135,16 +1145,18 @@ impl AIOrchestrator {
         }
 
         let preview_limit = 3usize;
-        let preview = files
-            .iter()
-            .take(preview_limit)
-            .map(|path| path.to_string())
-            .collect::<Vec<_>>();
+        let mut preview = String::new();
+        for (index, path) in files.iter().take(preview_limit).enumerate() {
+            if index > 0 {
+                preview.push_str(", ");
+            }
+            preview.push_str(path.as_ref());
+        }
 
         if files.len() > preview_limit {
-            format!("Update {} files: {} …", files.len(), preview.join(", "))
+            format!("Update {} files: {} …", files.len(), preview)
         } else {
-            format!("Update {} files: {}", files.len(), preview.join(", "))
+            format!("Update {} files: {}", files.len(), preview)
         }
     }
 
@@ -1180,12 +1192,17 @@ impl AIOrchestrator {
 
     fn fallback_sub_themes_from_summaries(&self, batch: &[ChunkSummary]) -> Vec<SubTheme> {
         let total_files: usize = batch.iter().map(|s| s.files.len()).sum();
-        let combined_description = batch
+        let mut combined_description = String::new();
+        for summary in batch
             .iter()
             .map(|s| s.summary.trim())
             .filter(|summary| !summary.is_empty() && !self.is_json_like_summary(summary))
-            .collect::<Vec<_>>()
-            .join("; ");
+        {
+            if !combined_description.is_empty() {
+                combined_description.push_str("; ");
+            }
+            combined_description.push_str(summary);
+        }
         let combined_description = if combined_description.is_empty() {
             "Code changes".to_string()
         } else {
@@ -1236,12 +1253,17 @@ impl AIOrchestrator {
             }
         }
         let total_files: usize = summaries.iter().map(|s| s.files.len()).sum();
-        let combined_description = summaries
+        let mut combined_description = String::new();
+        for summary in summaries
             .iter()
             .map(|s| s.summary.trim())
             .filter(|summary| !summary.is_empty() && !self.is_json_like_summary(summary))
-            .collect::<Vec<_>>()
-            .join("; ");
+        {
+            if !combined_description.is_empty() {
+                combined_description.push_str("; ");
+            }
+            combined_description.push_str(summary);
+        }
         let combined_description = if combined_description.is_empty() {
             "Code changes".to_string()
         } else {
@@ -1395,7 +1417,7 @@ impl AIOrchestrator {
         user_context: Option<&str>,
         validation_mode: ValidationMode,
         max_length: Option<usize>,
-        history_context: Option<String>,
+        history_context: Option<&str>,
         trace: bool,
     ) -> Result<(CommitMessage, bool, bool, Vec<String>)> {
         if trace {
@@ -1412,7 +1434,7 @@ impl AIOrchestrator {
         let mut prompt = builder.build_synthesis_prompt();
         if let Some(hist) = history_context {
             prompt.push_str("\n\nRecent commit history for style reference:\n");
-            prompt.push_str(&hist);
+            prompt.push_str(hist);
         }
 
         let messages = vec![
@@ -1459,32 +1481,34 @@ impl AIOrchestrator {
     }
 
     fn clean_response(&self, response: &str) -> String {
-        let mut message = response.trim().to_string();
+        let mut message = response.trim();
 
-        if message.starts_with("```")
-            && let Some(end) = message[3..].find("```")
-        {
-            message = message[3..3 + end].trim().to_string();
+        if message.starts_with("```") {
+            if let Some(end) = message[3..].find("```") {
+                message = message[3..3 + end].trim();
+            }
         }
 
-        let preambles = [
-            "Here is the commit message:",
-            "Here's the commit message:",
-            "Commit message:",
-            "The commit message is:",
+        const PREAMBLES: [&str; 4] = [
+            "here is the commit message:",
+            "here's the commit message:",
+            "commit message:",
+            "the commit message is:",
         ];
 
-        for preamble in &preambles {
-            if let Some(pos) = message.to_lowercase().find(&preamble.to_lowercase()) {
-                message = message[pos + preamble.len()..].trim().to_string();
+        let message_lower = message.to_ascii_lowercase();
+        for preamble in PREAMBLES {
+            if let Some(pos) = message_lower.find(preamble) {
+                message = message[pos + preamble.len()..].trim();
+                break;
             }
         }
 
         if let Some(newline) = message.find('\n') {
-            message = message[..newline].trim().to_string();
+            message = message[..newline].trim();
         }
 
-        message
+        message.to_string()
     }
 
     fn map_concurrency(&self, chunk_count: usize) -> usize {
@@ -2289,7 +2313,7 @@ This is not JSON at all, just plain text
         ];
 
         let themes = orchestrator
-            .aggregate_sub_themes(&sub_themes)
+            .aggregate_sub_themes(sub_themes)
             .await
             .expect("aggregation should succeed");
 
@@ -2347,7 +2371,7 @@ This is not JSON at all, just plain text
         ];
 
         let themes = orchestrator
-            .aggregate_sub_themes(&sub_themes)
+            .aggregate_sub_themes(sub_themes)
             .await
             .expect("aggregation should succeed");
 
