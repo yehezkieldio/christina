@@ -1,88 +1,46 @@
 # Christina Architecture
 
-This document describes the high-level architecture of Christina and the design principles guiding its development.
+Christina is engineered as a high-throughput, semantically aware commit generation engine. This document details the system decomposition and the Map-Reduce pipeline used to manage large-scale Git diffs.
 
-## Design Philosophy
+## System Decomposition
 
-Christina is built with the following principles (as defined in [AGENTS.md](AGENTS.md)):
+The project is structured as a Rust workspace to maintain a strict separation between core domain logic and the user-facing interface.
 
-- **Data-Oriented Design**: Focus on data flow and state transitions rather than object-oriented hierarchies.
-- **Explicit Ownership**: Leveraging Rust's ownership model for safety and performance without over-reliance on interior mutability.
-- **"Correct by Construction"**: Using the type system to enforce invariants (e.g., specific types for commit messages, file paths).
-- **Performance First**: Minimal allocations, high-performance token counting, and efficient diff processing.
+### 1. `christina-core` (The Engine)
+A headless, zero-IO library that defines the stable domain model and the atomic processing primitives.
+- **Processing Pipeline**: Implementation of recursive diff chunking and BPE tokenization.
+- **Domain Models**: Validated newtypes for `CommitMessage`, `FilePath`, and `TokenCount` that enforce system invariants.
+- **Prompt Templates**: Few-shot LLM templates with strict "anti-slop" verbiage enforcement.
+- **Token Management**: Local token counting via `tiktoken` to ensure context window compliance before network egress.
 
-## Codebase Structure
+### 2. `christina` (The Orchestrator)
+The user-facing CLI and runtime orchestrator.
+- **Git Adapter**: Integration with `git2` for staged change extraction and commit authoring.
+- **AI Orchestrator**: Multi-threaded Map-Reduce implementation using `tokio`.
+- **Secret Provider**: Resolution of credentials from environment variables or OS keyrings.
+- **Telemetry**: Diagnostic tracing and real-time progress events for the TUI.
 
-The project is organized as a Rust workspace with two primary crates:
+## The Generation Pipeline
 
-### 1. `christina-core`
+Christina employs a Map-Reduce architecture to overcome LLM context window limitations and maintain high semantic coherence across large commits.
 
-The logic heart of the application. It is intentionally headless and could be used by other frontends (e.g., a GUI or a web service).
+1.  **Ingestion**: Staged changes are extracted via `git2` into a `RepoSnapshot`.
+2.  **Chunking**: The diff is recursively partitioned into semantically coherent chunks (File > Hunk > Line).
+3.  **Map Phase**: Chunks are processed in parallel. Each chunk is summarized by the LLM to extract its primary technical change.
+4.  **Intent Extraction**: Atomic summaries are grouped into architectural themes.
+5.  **Reduce Phase**: Themes are synthesized into a final single-line Conventional Commit message.
+6.  **Validation**: The output is verified against the Conventional Commits specification before presentation.
 
-- **`git/`**: Wraps `git2-rs` to provide high-level operations like staging checks, diff generation, and commit execution.
-- **`llm/`**: A provider-agnostic interface for AI services. Currently supports Azure OpenAI.
-- **`types/`**: Core domain models that ensure data validity across the system.
-- **`config/`**: Handles configuration resolution, profile management, and secure secret storage using system keyrings.
-- **`tokenizer.rs`**: High-performance token counting powered by `tiktoken` to ensure diffs fit within model context windows.
+## Design Principles
 
-### 2. `christina` (CLI)
+- **Data-Oriented Design**: We prioritize data flow over object-oriented hierarchies. State transitions are explicit and linear.
+- **Correct by Construction**: We leverage Rust's type system to eliminate invalid states. A `CommitMessage` cannot exist unless it satisfies formatting invariants.
+- **Performance as a Design-Time Property**: Performance is not a cleanup phase. We use buffer pooling in chunking and LRU caching in tokenization to minimize overhead.
+- **Zero-Trust Input**: All external data (diffs and user context) is treated as untrusted and strictly delimited to prevent prompt injection.
 
-The user-facing CLI application.
+## Cross-References
 
-- **`cli.rs`**: Argument parsing using `clap`.
-- **`generate.rs`**: The main orchestration logic that ties Git changes, LLM generation, and user confirmation together.
-- **`ui/`**: (Coming soon) Components for terminal interaction, spinners, and progress reporting.
-- **`events.rs`**: Internal event system for tracking long-running tasks like AI generation.
-
-## Data Flow
-
-1. **Analysis**: `christina` asks `christina-core` to inspect the current Git repository for staged changes.
-2. **Context Compression**: The diff is processed to ensure it fits within the selected LLM's context window.
-3. **Generation**: `christina` sends the compressed diff (and optional user context) to `christina-core::llm`, which communicates with the configured AI provider.
-4. **Validation**: The generated message is parsed and validated against Conventional Commit standards.
-5. **Execution**: Upon user confirmation, `christina` calls `christina-core::git` to perform the actual commit.
-
-## Profile System
-
-Christina supports multiple "Profiles". A profile defines:
-- The AI Provider (Azure, etc.)
-- The Model (e.g., `gpt-4o`)
-- Configuration parameters (Temperature, Max Tokens)
-- Secrets (API Keys, stored securely)
-
-Profiles are stored in `~/.config/christina/profiles.json` (or OS equivalent), with sensitive data moved to the system keyring.
-
-## Error Handling
-
-- **Domain Errors**: Defined in `christina-core/src/error.rs` using `thiserror`.
-- **CLI Errors**: Handled in `christina` using `anyhow` for flexible reporting.
-- **Panics**: Used strictly for invariant violations and unrecoverable programming errors.
-
-## Prompt Safety
-
-- User-provided context is treated as untrusted data and wrapped in explicit delimiters.
-- Context length is capped to 500 bytes to prevent prompt overflows and injection attempts.
-
-## Performance Considerations
-
-- **Memory**: Uses `mimalloc` for better allocation performance in multi-threaded environments.
-- **Concurrency**: LLM requests are handled asynchronously via `tokio`.
-- **Tokenization**: Efficiently handles large diffs by pre-calculating tokens before sending requests.
-
-## Detailed Documentation
-
-For more in-depth information, please refer to the following resources:
-
-### Architecture Decision Records (ADRs)
-- [ADR 001: Crate Split](docs/adrs/001-crate-split.md)
-- [ADR 002: Diff Chunking Strategy](docs/adrs/002-diff-chunking-strategy.md)
-- [ADR 003: Provider-Agnostic Interface](docs/adrs/003-provider-agnostic-interface.md)
-
-### Component Specifications
-- [AI Orchestrator](docs/specs/ai-orchestrator.md)
-- [Diff Processor](docs/specs/diff-processor.md)
-
-### Developer Guides
-- [Rust Design Patterns](docs/guides/design-patterns.md)
-- [Provider Implementation Guide](docs/guides/provider-implementation.md)
-- [Advanced Configuration Guide](docs/guides/advanced-config.md)
+- [Design Philosophy](DESIGN.md): Deep dive into technical choices.
+- [Generation Pipeline](GENERATION_PIPELINE.md): Detailed step-by-step data transformation.
+- [Performance Optimization](PERFORMANCE_OPTIMIZATION.md): Documented hot-path optimizations.
+- [Technical Specification](SPECIFICATION.md): Wire formats and schema definitions.

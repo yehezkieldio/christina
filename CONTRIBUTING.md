@@ -1,41 +1,50 @@
 # Contributing to Christina
 
-Thank you for your interest in contributing to Christina!
+We maintain high standards for code quality, performance, and type safety. This guide details the technical requirements for contributors.
 
-## Development Setup
+## Development Environment
 
-1. **Install Rust and Cargo**: We use the latest stable version of Rust.
-2. **Install Just**: [Just](https://github.com/casey/just) is used as a command runner.
-3. **Configuration**: You'll need at least one LLM API key to test generation.
+1.  **Toolchain**: Latest stable Rust.
+2.  **Workflow**: We use `just` for automated checks.
+3.  **Tests**: We use `nextest` for faster, parallel test execution.
 
-### Useful Commands
+```bash
+cargo install cargo-nextest
+```
 
-- `just check`: Check if the project compiles.
-- `just clippy`: Run lints (we treat warnings as errors).
-- `just test`: Run all tests.
-- `just fmt`: Format the codebase.
+### Essential Commands
 
-## Project Structure
-
-- `christina/`: The CLI application.
-- `christina-core/`: The core logic library.
+| Command | Purpose |
+|:--- |:--- |
+| `just all` | Run formatter, linter, and all tests. |
+| `just clippy` | Execute strict linting (warnings are errors). |
+| `just test` | Run the unit and integration test suite. |
+| `just check` | Verify compilation across the workspace. |
 
 ## Coding Standards
 
-We follow strict Rust idioms as outlined in our [Architecture Documentation](ARCHITECTURE.md):
+### 1. Ownership & Safety
+- **Zero Unsafe**: The use of `unsafe` is prohibited.
+- **Explicit Ownership**: Design with ownership semantics. Mutation should happen through replacement rather than aliasing where possible.
+- **Short-lived Borrows**: References should be transient and local. Avoid storing references in long-lived structs.
 
-- No `unsafe` code.
-- Prefer concrete types over complex trait abstractions unless polymorphic behavior is required.
-- Maintain "correct by construction" invariants.
-- Ensure all public APIs are documented.
-- All new features should include corresponding tests.
+### 2. Type System as Invariants
+- Use the **Correct by Construction** pattern.
+- Avoid primitive obsession. Use newtypes (e.g., `TokenCount`, `GenerationId`) to enforce domain constraints at the type level.
+- Handle recoverable failures with `Result`. Programming errors and invariant violations should `panic!`.
+
+### 3. Performance
+- Performance is a design-time property. Identify hot paths (tokenization, chunking) and optimize for throughput.
+- Minimize allocations in the generation pipeline.
+- Use the benchmark suite (`cargo bench`) to verify that changes do not regress performance.
 
 ## Pull Request Process
 
-1. Fork the repository and create your branch from `main`.
-2. Ensure `just clippy` and `just test` pass.
-3. Update documentation if you're adding new features or changing existing behavior.
-4. Submit a PR with a clear description of the changes.
+1.  **Fork and Branch**: Create a feature branch from `main`.
+2.  **Verified Commits**: We recommend using `christina` to generate your own commit messages.
+3.  **Quality Gate**: Ensure `just all` passes with zero warnings and zero failures.
+4.  **Documentation**: Update relevant `.md` files if you modify the pipeline or configuration schema.
+5.  **Review**: PRs require technical review. Focus on clarity, performance, and idiomatic Rust.
 
 ## License
 
