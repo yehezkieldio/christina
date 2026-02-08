@@ -170,7 +170,7 @@ pub fn edit_commit_message_inline(
 
     let mut current = sanitize_inline_message(initial_content);
     loop {
-        let prompt = "Edit commit message (Enter to submit, Ctrl-C to cancel): ";
+        let prompt = "Edit commit message: ";
         match editor.readline_with_initial(prompt, (&current, "")) {
             Ok(line) => {
                 let trimmed = line.trim();
