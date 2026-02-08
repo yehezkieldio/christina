@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 // is common for models like GPT-4 and Claude 3+). MAX_OUTPUT is conservative to prevent
 // runaway generation costs - commit messages should be concise, not essays.
 pub const MAX_INPUT: u32 = 500_000;
-pub const MAX_OUTPUT: u32 = 500_000;
+pub const MAX_OUTPUT: u32 = 500_0002;
 
 /// Count of tokens in text, guaranteed to be non-zero.
 ///
