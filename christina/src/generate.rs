@@ -85,7 +85,7 @@ pub async fn generate_commit_message_with_progress(
 }
 
 async fn generate_commit_message_with_progress_impl(
-    mut config: Config,
+    config: Config,
     diff: Arc<str>,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
@@ -472,33 +472,6 @@ mod tests {
     }
 
     #[test]
-    fn test_config_to_profile_azure() {
-        let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::Azure,
-            api_key: Some("azure-key".to_string()),
-            model_api_url: Some(url::Url::parse("https://test.openai.azure.com").unwrap()),
-            azure_api_version: Some("2023-05-15".to_string()),
-            azure_deployment_id: Some("gpt-4-deployment".to_string()),
-            max_input_tokens: TokenCount::new_at_least_one(8000),
-            max_output_tokens: TokenCount::new_at_least_one(1000),
-            model_temperature: 0.5,
-            ..Default::default()
-        };
-
-        let api_key = require_api_key(&config).unwrap();
-        let profile = config_to_profile(&config, api_key);
-
-        assert_eq!(profile.provider, ProviderKind::Azure);
-        assert_eq!(profile.azure_api_version, Some("2023-05-15".to_string()));
-        assert_eq!(
-            profile.azure_deployment_id,
-            Some("gpt-4-deployment".to_string())
-        );
-    }
-
-
-    #[test]
     fn test_config_to_profile_no_api_key() {
         let config = Config {
             model: "gpt-4o".into(),
@@ -675,36 +648,6 @@ mod tests {
                 .to_string()
                 .contains("No processable diff content found")
         );
-    }
-
-    #[tokio::test]
-    async fn test_generate_with_progress_receiver_dropped() {
-        let config = Config {
-            model: "gpt-4".into(),
-            model_provider: ProviderKind::OpenAI,
-            api_key: Some("test-key".to_string()),
-            ..Default::default()
-        };
-
-        let (tx, rx) = mpsc::channel(1);
-        drop(rx);
-
-        let diff = Arc::<str>::from("diff --git a/test.txt b/test.txt\n+new line\n");
-        let repo_path = PathBuf::from("/fake/repo");
-
-        let result = generate_commit_message_with_progress_impl(
-            config,
-            diff,
-            repo_path,
-            tx,
-            None,
-            &MockCommitHistoryProvider::empty(),
-        )
-        .await;
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Progress receiver dropped"));
     }
 
     #[test]

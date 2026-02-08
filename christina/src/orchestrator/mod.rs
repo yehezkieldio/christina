@@ -55,7 +55,7 @@ const MAX_CONCURRENT_REQUESTS: usize = 5;
 // The llm crate v1.3.7 provides LLMBuilder::timeout_seconds() for backend-level HTTP timeouts.
 // However, this orchestrator uses tokio::time::timeout wrapping all generate() calls with
 // progressive timeouts (30s → 60s → 120s). This approach provides:
-// - Unified timeout handling across all backends (OpenAI, Azure, Groq) without duplicating
+// - Unified timeout handling across all backends (Azure) without duplicating
 //   timeout configuration
 // - Distinction between different failure scenarios: connection/DNS (fails fast) vs. slow
 //   responses (retries with increasing patience)

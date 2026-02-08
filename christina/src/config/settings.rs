@@ -15,7 +15,7 @@ use crate::config::secrets::{Secret, resolve_secret};
 use christina_core::{
     ConfigFile,
     types::{
-        FreeTierLimits, ModelName, ProviderKind, UsageTier,
+        ModelName, ProviderKind,
         commit::ValidationMode,
         tokens::{MAX_INPUT, MAX_OUTPUT, TokenCount},
     },

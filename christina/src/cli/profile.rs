@@ -462,25 +462,6 @@ mod tests {
     }
 
     #[test]
-    fn test_list_with_profiles() {
-        let mut config = config_with_profile("dev");
-        let profile = ProviderProfile::new(
-            "prod".to_string(),
-            ProviderKind::OpenAI,
-            ModelName::from("gpt-4"),
-        );
-        config.profiles.add(profile).unwrap();
-        config.profiles.set_active("dev").unwrap();
-        let mut output = Vec::new();
-
-        handle_list(&config, &mut output).unwrap();
-
-        let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("dev *"));
-        assert!(output_str.contains("prod"));
-    }
-
-    #[test]
     fn test_show_existing_profile() {
         let config = config_with_profile("test");
         let mut output = Vec::new();

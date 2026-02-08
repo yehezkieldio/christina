@@ -16,12 +16,11 @@ use crate::config::profiles::ProviderProfile;
 
 use christina_core::{
     error::{CompletionError, ProviderError},
-    llm::{ChatMessage, LlmRequest, Role},
+    llm::{ChatMessage, LlmRequest},
     types::backend_id::GenerationId,
     types::tokens::TokenCount,
     types::{ModelName, ProviderKind, Temperature},
 };
-use llm::chat::ChatMessage as LLMChatMessage;
 
 // NOTE: AtomicU64::fetch_add wraps on overflow. Wraparound is acceptable here
 // because IDs are used for logging/correlation, not long-term uniqueness.
@@ -188,7 +187,6 @@ impl Provider {
                     temperature,
                 })
             }
-            _ => Err(ProviderError::UnsupportedProvider(format!("{:?}", profile.provider)).into()),
         }
     }
 
@@ -533,24 +531,6 @@ mod tests {
         );
     }
 
-    #[test]
-    #[allow(clippy::unwrap_used)]
-    fn test_provider_from_profile_groq() {
-        let profile = ProviderProfile::new(
-            "test".to_string(),
-            ProviderKind::Groq,
-            ModelName::from("llama-3"),
-        );
-
-        let provider = Provider::from_profile(&profile, "gsk-test").unwrap();
-
-        match provider {
-            Provider::Groq { model, .. } => {
-                assert_eq!(model, ModelName::from("llama-3"));
-            }
-            _ => panic!("Expected Groq provider"),
-        }
-    }
 
     #[test]
     fn test_request_from_messages() {

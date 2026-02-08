@@ -20,7 +20,7 @@ The project is organized as a Rust workspace with two primary crates:
 The logic heart of the application. It is intentionally headless and could be used by other frontends (e.g., a GUI or a web service).
 
 - **`git/`**: Wraps `git2-rs` to provide high-level operations like staging checks, diff generation, and commit execution.
-- **`llm/`**: A provider-agnostic interface for AI services. Currently supports OpenAI, Azure OpenAI, and Groq.
+- **`llm/`**: A provider-agnostic interface for AI services. Currently supports Azure OpenAI.
 - **`types/`**: Core domain models that ensure data validity across the system.
 - **`config/`**: Handles configuration resolution, profile management, and secure secret storage using system keyrings.
 - **`tokenizer.rs`**: High-performance token counting powered by `tiktoken` to ensure diffs fit within model context windows.
@@ -45,8 +45,8 @@ The user-facing CLI application.
 ## Profile System
 
 Christina supports multiple "Profiles". A profile defines:
-- The AI Provider (OpenAI, Groq, etc.)
-- The Model (e.g., `gpt-4o`, `llama3-70b`)
+- The AI Provider (Azure, etc.)
+- The Model (e.g., `gpt-4o`)
 - Configuration parameters (Temperature, Max Tokens)
 - Secrets (API Keys, stored securely)
 

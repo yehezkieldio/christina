@@ -150,7 +150,7 @@ impl CompletionError {
     /// Parse an API error message to create appropriate error variant.
     ///
     /// WHY string parsing: API providers return errors as unstructured text/HTML.
-    /// No standardized error schema across OpenAI/Azure/Groq. Regex would be
+    /// No standardized error schema across Azure. Regex would be
     /// brittle; simple substring matching is sufficient and maintainable.
     ///
     /// WHY default to ServerError: Unknown errors assumed retryable. False

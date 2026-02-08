@@ -6,7 +6,6 @@
 use crate::config::AzureEndpoint;
 use crate::error::ProviderError;
 use crate::types::{ModelName, ProviderKind, Temperature, TokenCount};
-use url::Url;
 
 /// Configuration for an LLM provider
 #[derive(Debug, Clone)]
@@ -25,19 +24,8 @@ pub struct ProviderSpec {
 
 impl ProviderSpec {
     pub fn validate(&self) -> Result<(), ProviderError> {
-        self.validate_endpoint_consistency()?;
         self.validate_url_scheme()?;
         Ok(())
-    }
-
-    fn validate_endpoint_consistency(&self) -> Result<(), ProviderError> {
-        match (&self.kind, &self.endpoint) {
-            (ProviderKind::Azure, ProviderEndpoint::AzureOpenAi { .. }) => Ok(()),
-            (kind, endpoint) => Err(ProviderError::InvalidConfig(format!(
-                "Provider kind {:?} is incompatible with endpoint variant {:?}",
-                kind, endpoint
-            ))),
-        }
     }
 
     fn validate_url_scheme(&self) -> Result<(), ProviderError> {
@@ -160,31 +148,5 @@ mod tests {
         let result = spec.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("HTTPS"));
-    }
-
-    #[test]
-    fn provider_endpoint_azure() {
-        let endpoint = ProviderEndpoint::AzureOpenAi {
-            endpoint: AzureEndpoint {
-                endpoint: "https://test.openai.azure.com".to_string(),
-                api_version: "2024-02-15".to_string(),
-                deployment_id: "gpt-4".to_string(),
-            },
-            api_version: "2024-02-15".to_string(),
-            deployment_id: "gpt-4".to_string(),
-        };
-
-        match endpoint {
-            ProviderEndpoint::AzureOpenAi {
-                endpoint,
-                api_version,
-                deployment_id,
-            } => {
-                assert!(endpoint.endpoint.contains("azure.com"));
-                assert_eq!(api_version, "2024-02-15");
-                assert_eq!(deployment_id, "gpt-4");
-            }
-            _ => panic!("Expected AzureOpenAi variant"),
-        }
     }
 }
