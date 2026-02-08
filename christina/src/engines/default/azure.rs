@@ -92,9 +92,10 @@ pub async fn execute_azure_request_with_retry(
 }
 
 fn is_reasoning_model(model: &str) -> bool {
-    // Heuristic: reasoning model families need max_completion_tokens semantics.
+    // Due to reasoning effort, max_tokens is renamed to max_completion_tokens
+    // Especially for gpt-5 series
     let m = model.to_ascii_lowercase();
-    m.starts_with("o1") || m.starts_with("o3") || m.starts_with("o4") || m.starts_with("gpt-5")
+    m.starts_with("gpt-5")
 }
 
 #[derive(Serialize, Debug)]

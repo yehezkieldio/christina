@@ -5,9 +5,14 @@
 
 pub mod events;
 
+use std::io::IsTerminal;
+
 use console::{Style, Term, style};
 use dialoguer::{Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
+use rustyline::error::ReadlineError;
+use rustyline::history::DefaultHistory;
+use rustyline::{At, Cmd, Config, EditMode, Editor, KeyCode, KeyEvent, Modifiers, Movement, Word};
 
 // =================================================================================
 //  CONSTANTS & THEME
@@ -41,16 +46,16 @@ pub fn muted_style() -> Style {
 //  HEADER COMPONENT
 // =================================================================================
 
-pub fn print_header() {
-    let term = Term::stdout();
-    let version = env!("CARGO_PKG_VERSION");
-    let _ = term.write_line(&format!(
-        "{} {}",
-        header_style().apply_to("christina"),
-        muted_style().apply_to(format!("v{}", version))
-    ));
-    let _ = term.write_line("");
-}
+// pub fn print_header() {
+//     let term = Term::stdout();
+//     let version = env!("CARGO_PKG_VERSION");
+//     let _ = term.write_line(&format!(
+//         "{} {}",
+//         header_style().apply_to("christina"),
+//         muted_style().apply_to(format!("v{}", version))
+//     ));
+//     let _ = term.write_line("");
+// }
 
 // =================================================================================
 //  PROGRESS / SPINNER UTILITIES
@@ -143,47 +148,62 @@ pub fn select_action(actions: &[&str]) -> Result<usize, dialoguer::Error> {
         .interact()
 }
 
-pub fn edit_in_editor(initial_content: &str) -> Result<String, std::io::Error> {
-    let editor = std::env::var("VISUAL")
-        .or_else(|_| std::env::var("EDITOR"))
-        .unwrap_or_else(|_| {
-            if cfg!(windows) {
-                "notepad".to_string()
-            } else {
-                "vi".to_string()
-            }
-        });
-
-    // Use a temp file to interop with any editor, then read back the result.
-    let dir = std::env::temp_dir();
-    let path = dir.join(format!("christina-commit-{}.txt", std::process::id()));
-
-    std::fs::write(&path, initial_content)?;
-
-    let status = std::process::Command::new(&editor)
-        .arg(&path)
-        .status()
-        .map_err(|e| {
-            std::io::Error::other(format!("Failed to launch editor '{}': {}", editor, e))
-        })?;
-
-    if !status.success() {
-        let _ = std::fs::remove_file(&path);
-        return Err(std::io::Error::other("Editor exited with non-zero status"));
-    }
-
-    let content = std::fs::read_to_string(&path)?;
-    let _ = std::fs::remove_file(&path);
-
-    let trimmed = content.trim().to_string();
-    if trimmed.is_empty() {
+pub fn edit_commit_message_inline(
+    initial_content: &str,
+) -> Result<Option<String>, std::io::Error> {
+    if !Term::stdout().is_term() || !std::io::stdin().is_terminal() {
         return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Commit message is empty after editing",
+            std::io::ErrorKind::Unsupported,
+            "Inline editing requires an interactive terminal",
         ));
     }
 
-    Ok(trimmed)
+    let config = Config::builder()
+        .edit_mode(EditMode::Emacs)
+        .auto_add_history(false)
+        .build();
+    let mut editor = Editor::<(), DefaultHistory>::with_config(config).map_err(|err| {
+        std::io::Error::other(format!("Failed to initialize line editor: {err}"))
+    })?;
+
+    bind_ctrl_word_navigation(&mut editor);
+
+    let mut current = sanitize_inline_message(initial_content);
+    loop {
+        let prompt = "Edit commit message (Enter to submit, Ctrl-C to cancel): ";
+        match editor.readline_with_initial(prompt, (&current, "")) {
+            Ok(line) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    print_warning("Commit message cannot be empty.");
+                    current = line;
+                    continue;
+                }
+                return Ok(Some(trimmed.to_string()));
+            }
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => return Ok(None),
+            Err(err) => {
+                return Err(std::io::Error::other(format!(
+                    "Inline editing failed: {err}"
+                )))
+            }
+        }
+    }
+}
+
+fn bind_ctrl_word_navigation(editor: &mut Editor<(), DefaultHistory>) {
+    let _ = editor.bind_sequence(
+        KeyEvent(KeyCode::Left, Modifiers::CTRL),
+        Cmd::Move(Movement::BackwardWord(1, Word::Emacs)),
+    );
+    let _ = editor.bind_sequence(
+        KeyEvent(KeyCode::Right, Modifiers::CTRL),
+        Cmd::Move(Movement::ForwardWord(1, At::AfterEnd, Word::Emacs)),
+    );
+}
+
+fn sanitize_inline_message(message: &str) -> String {
+    message.lines().collect::<Vec<_>>().join(" ")
 }
 
 // =================================================================================

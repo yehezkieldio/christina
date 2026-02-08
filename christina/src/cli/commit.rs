@@ -22,7 +22,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     // Only allocate trace stats when explicitly enabled.
     // std::sync::Mutex is fine here: locks are short-lived and never held across .await.
     let trace_stats = trace.then(|| Arc::new(Mutex::new(TraceStats::new(dry_run))));
-    ui::print_header();
+    // ui::print_header();
     ui::print_divider();
 
     if trace {
@@ -74,38 +74,48 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     if trace {
         ui::print_trace("starting commit message generation");
     }
-    let message = loop {
-        let message = match generate_commit(
+    let context = context.map(str::to_string);
+    let message = {
+        let mut message = generate_commit(
             Arc::clone(&diff),
-            context.map(|s| s.to_string()),
+            context.clone(),
             repo_path.clone(),
             trace,
             trace_stats.as_ref().cloned(),
         )
-        .await
-        {
-            Ok(message) => message,
-            Err(err) => return Err(err),
-        };
+        .await?;
 
-        if trace {
-            ui::print_trace("awaiting commit confirmation");
-        }
-        let action = confirm_commit(&message, yes)?;
+        loop {
+            if trace {
+                ui::print_trace("awaiting commit confirmation");
+            }
+            let action = confirm_commit(&message, yes)?;
 
-        match action {
-            CommitAction::Accept => break message,
-            CommitAction::Edit => match ui::edit_in_editor(&message) {
-                Ok(edited) => break edited,
-                Err(err) => {
-                    ui::print_warning(&format!("Editor failed: {err}"));
-                    continue;
+            match action {
+                CommitAction::Accept => break message,
+                CommitAction::Edit => match ui::edit_commit_message_inline(&message) {
+                    Ok(Some(edited)) => {
+                        message = edited;
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        ui::print_warning(&format!("Inline edit failed: {err}"));
+                    }
+                },
+                CommitAction::Regenerate => {
+                    message = generate_commit(
+                        Arc::clone(&diff),
+                        context.clone(),
+                        repo_path.clone(),
+                        trace,
+                        trace_stats.as_ref().cloned(),
+                    )
+                    .await?;
                 }
-            },
-            CommitAction::Regenerate => continue,
-            CommitAction::Decline => {
-                ui::print_info("Commit cancelled.");
-                return Ok(());
+                CommitAction::Decline => {
+                    ui::print_info("Commit cancelled.");
+                    return Ok(());
+                }
             }
         }
     };
