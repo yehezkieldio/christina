@@ -1,11 +1,7 @@
-test change 2 to verify build
-
-test change
-
 <div align="center">
 <img src=".github/assets/avatar.png" align="center" width="120px" height="120px" />
 <h3>Christina</h3>
-<p>Automated Conventional Commit Generator Powered By LLMs</p>
+<p>Terminal interface for AI-powered conventional commit generation.</p>
 </div>
 
 ---
