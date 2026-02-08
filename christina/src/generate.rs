@@ -104,7 +104,7 @@ async fn generate_commit_message_with_progress_impl(
     }
     if progress_tx
         .send(Event::GenerationProgress {
-            stage: "Connecting to AI provider...".to_string(),
+            stage: "connecting to provider".to_string(),
         })
         .await
         .is_err()
@@ -120,7 +120,7 @@ async fn generate_commit_message_with_progress_impl(
     }
     if progress_tx
         .send(Event::GenerationProgress {
-            stage: "Processing diff content...".to_string(),
+            stage: "processing diff".to_string(),
         })
         .await
         .is_err()
@@ -338,7 +338,7 @@ async fn generate_commit_message_with_progress_impl(
     if progress_tx
         .send(Event::GenerationProgress {
             stage: format!(
-                "Analyzing {} chunk{}...",
+                "analyzing {} chunk{}",
                 chunks.len(),
                 if chunks.len() == 1 { "" } else { "s" }
             ),
@@ -353,7 +353,7 @@ async fn generate_commit_message_with_progress_impl(
 
     if progress_tx
         .send(Event::GenerationProgress {
-            stage: "Generating commit message...".to_string(),
+            stage: "generating message".to_string(),
         })
         .await
         .is_err()
@@ -408,7 +408,7 @@ async fn generate_commit_message_with_progress_impl(
     }
     if progress_tx
         .send(Event::GenerationProgress {
-            stage: "Finalizing...".to_string(),
+            stage: "finalizing".to_string(),
         })
         .await
         .is_err()

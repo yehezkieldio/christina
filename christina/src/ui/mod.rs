@@ -27,15 +27,15 @@ pub fn header_style() -> Style {
 }
 
 pub fn error_style() -> Style {
-    Style::new().red()
+    Style::new().bold()
 }
 
 pub fn warning_style() -> Style {
-    Style::new().yellow()
+    Style::new().bold()
 }
 
 pub fn accent_style() -> Style {
-    Style::new().cyan()
+    Style::new().bold()
 }
 
 pub fn muted_style() -> Style {
@@ -71,15 +71,15 @@ pub fn create_spinner(msg: &str) -> ProgressBar {
     }
 
     let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            .template("{spinner:.cyan} {msg}")
-            .unwrap_or_else(|_| ProgressStyle::default_spinner())
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
-    );
+    let spinner_style = ProgressStyle::default_spinner()
+        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
+        .template("{spinner} {msg}")
+        .unwrap_or_else(|_| {
+            ProgressStyle::default_spinner().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
+        });
+    pb.set_style(spinner_style);
     pb.set_message(msg.to_string());
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
+    pb.enable_steady_tick(std::time::Duration::from_millis(120));
     pb
 }
 
@@ -89,27 +89,30 @@ pub fn create_spinner(msg: &str) -> ProgressBar {
 
 pub fn print_success(msg: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!("{} {}", muted_style().apply_to("ok"), msg));
+    let _ = term.write_line(&format!("{} {}", muted_style().apply_to("✓"), msg));
 }
 
 pub fn print_error(msg: &str) {
     let term = Term::stderr();
-    let _ = term.write_line(&format!("{} {}", error_style().apply_to("error"), msg));
+    let label = error_style().apply_to("×");
+    let body = error_style().apply_to(msg);
+    let _ = term.write_line(&format!("{} {}", label, body));
 }
 
 pub fn print_warning(msg: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!("{} {}", warning_style().apply_to("warn"), msg));
+    let label = warning_style().apply_to("!");
+    let _ = term.write_line(&format!("{} {}", label, msg));
 }
 
 pub fn print_info(msg: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!("{} {}", muted_style().apply_to("info"), msg));
+    let _ = term.write_line(&format!("{} {}", muted_style().apply_to("•"), msg));
 }
 
 pub fn print_trace(msg: &str) {
     let term = Term::stderr();
-    let label = muted_style().apply_to("trace");
+    let label = muted_style().apply_to("·");
     let body = muted_style().apply_to(msg);
     let _ = term.write_line(&format!("{} {}", label, body));
 }
@@ -122,21 +125,21 @@ fn get_theme() -> ColorfulTheme {
     ColorfulTheme {
         defaults_style: muted_style(),
         prompt_style: Style::new(),
-        prompt_prefix: style(String::from("?")).dim(),
-        prompt_suffix: style(String::from("›")).bold(),
-        success_prefix: style(String::from("ok")).green(),
-        success_suffix: style(String::from("·")).dim(),
-        error_prefix: style(String::from("error")).red(),
+        prompt_prefix: style(String::from("›")).dim(),
+        prompt_suffix: style(String::from("")),
+        success_prefix: style(String::from("ok")).dim(),
+        success_suffix: style(String::from("")),
+        error_prefix: style(String::from("error")),
         error_style: error_style(),
         hint_style: muted_style(),
         values_style: accent_style(),
         active_item_style: accent_style(),
         inactive_item_style: Style::new(),
-        active_item_prefix: style(String::from("> ")).cyan(),
+        active_item_prefix: style(String::from("› ")),
         inactive_item_prefix: style(String::from("  ")),
-        checked_item_prefix: style(String::from("ok")).green(),
+        checked_item_prefix: style(String::from("✓ ")),
         unchecked_item_prefix: style(String::from("  ")),
-        picked_item_prefix: style(String::from("> ")).cyan(),
+        picked_item_prefix: style(String::from("› ")),
         unpicked_item_prefix: style(String::from("  ")),
     }
 }
@@ -212,10 +215,18 @@ fn sanitize_inline_message(message: &str) -> String {
 pub fn print_commit_message(msg: &str) {
     let term = Term::stdout();
     let width = std::cmp::min(term.size().1 as usize, 96);
-    let width = width.saturating_sub(2).max(40);
+    let width = width.saturating_sub(6).max(40);
 
     for line in wrap_text(msg, width) {
-        let _ = term.write_line(&line);
+        if line.is_empty() {
+            let _ = term.write_line(&format!("{}", muted_style().apply_to("│")));
+        } else {
+            let _ = term.write_line(&format!(
+                "{} {}",
+                muted_style().apply_to("│"),
+                line
+            ));
+        }
     }
     let _ = term.write_line("");
 }
@@ -229,14 +240,14 @@ pub fn print_file_list(files: &[String], max_items: usize) {
 
     let visible = files.len().min(max_items);
     for file in files.iter().take(visible) {
-        let _ = term.write_line(&format!("  {}", file));
+        let _ = term.write_line(&format!("{} {}", muted_style().apply_to("·"), file));
     }
 
     if files.len() > visible {
         let remaining = files.len() - visible;
         let _ = term.write_line(&format!(
             "{}",
-            muted_style().apply_to(format!("  ... {} more", remaining))
+            muted_style().apply_to(format!("… {} more", remaining))
         ));
     }
     let _ = term.write_line("");
@@ -283,8 +294,9 @@ pub fn print_section(title: &str) {
     let term = Term::stdout();
     let _ = term.write_line("");
     let _ = term.write_line(&format!(
-        "{}",
-        header_style().apply_to(title.to_uppercase())
+        "{} {}",
+        muted_style().apply_to("—"),
+        header_style().apply_to(title)
     ));
     let _ = term.write_line("");
 }

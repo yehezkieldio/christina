@@ -84,24 +84,36 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
             trace_stats.as_ref().cloned(),
         )
         .await?;
+        let mut message_state = MessageState::Proposed;
 
         loop {
             if trace {
                 ui::print_trace("awaiting commit confirmation");
             }
-            let action = confirm_commit(&message, yes)?;
+            let action = confirm_commit(&message, yes, message_state)?;
 
             match action {
                 CommitAction::Accept => break message,
-                CommitAction::Edit => match ui::edit_commit_message_inline(&message) {
-                    Ok(Some(edited)) => {
-                        message = edited;
+                CommitAction::Edit => {
+                    ui::print_info("Edit message (enter to save, esc to cancel).");
+                    match ui::edit_commit_message_inline(&message) {
+                        Ok(Some(edited)) => {
+                            if edited.trim() == message.trim() {
+                                ui::print_info("No changes applied.");
+                            } else {
+                                message = edited;
+                                message_state = MessageState::Edited;
+                                ui::print_success("Message updated.");
+                            }
+                        }
+                        Ok(None) => {
+                            ui::print_info("Edit cancelled.");
+                        }
+                        Err(err) => {
+                            ui::print_warning(&format!("Inline edit failed: {err}"));
+                        }
                     }
-                    Ok(None) => {}
-                    Err(err) => {
-                        ui::print_warning(&format!("Inline edit failed: {err}"));
-                    }
-                },
+                }
                 CommitAction::Regenerate => {
                     message = generate_commit(
                         Arc::clone(&diff),
@@ -111,6 +123,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
                         trace_stats.as_ref().cloned(),
                     )
                     .await?;
+                    message_state = MessageState::Regenerated;
                 }
                 CommitAction::Decline => {
                     ui::print_info("Commit cancelled.");
@@ -121,11 +134,8 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
     };
 
     if dry_run {
-        println!("\n{}", "═".repeat(60));
-        println!("DRY RUN MODE - Commit NOT created");
-        println!("{}\n", "═".repeat(60));
-        println!("The following commit message would have been used:\n");
-        println!("{}", message);
+        ui::print_section("Dry run");
+        ui::print_info("Commit not created.");
         if trace {
             print_trace_summary(trace_stats.as_ref());
         }
@@ -184,8 +194,10 @@ async fn validate_repository() -> Result<(PathBuf, String)> {
 }
 
 fn display_changes(files: &[GitFile]) {
-    ui::print_section("Staged");
-    ui::print_info(&format!("{} file(s) staged", files.len()));
+    ui::print_section("Staged changes");
+    let count = files.len();
+    let label = if count == 1 { "file" } else { "files" };
+    ui::print_info(&format!("{} {} staged", count, label));
     let file_paths = files
         .iter()
         .map(|file| file.path.to_string())
@@ -200,7 +212,7 @@ async fn generate_commit(
     trace: bool,
     trace_stats: Option<Arc<Mutex<TraceStats>>>,
 ) -> Result<String> {
-    let spinner = ui::create_spinner("Analyzing changes...");
+    let spinner = ui::create_spinner("analyzing changes");
     let config = Config::load_async().await?;
 
     if trace {
@@ -309,8 +321,25 @@ enum CommitAction {
     Decline,
 }
 
-fn confirm_commit(message: &str, yes: bool) -> Result<CommitAction> {
-    ui::print_section("Proposed");
+#[derive(Clone, Copy, Debug)]
+enum MessageState {
+    Proposed,
+    Edited,
+    Regenerated,
+}
+
+impl MessageState {
+    fn label(self) -> &'static str {
+        match self {
+            MessageState::Proposed => "proposed",
+            MessageState::Edited => "edited",
+            MessageState::Regenerated => "regenerated",
+        }
+    }
+}
+
+fn confirm_commit(message: &str, yes: bool, state: MessageState) -> Result<CommitAction> {
+    ui::print_section(&format!("Message · {}", state.label()));
     ui::print_commit_message(message);
 
     if yes {
