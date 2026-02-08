@@ -166,6 +166,8 @@ async fn execute_azure_request_inner(
         })
         .collect();
 
+    // Note: We can't access trace here, so we'll rely on the caller to log appropriately
+
     let reasoning = is_reasoning_model(model);
     let max_tokens_value = request.max_tokens.get();
 
@@ -200,6 +202,8 @@ async fn execute_azure_request_inner(
     let url = format!(
         "{endpoint}/openai/deployments/{deployment_id}/chat/completions?api-version={api_version}"
     );
+
+    // Note: We can't access trace here, so we'll rely on the caller to log appropriately
 
     let client = azure_client();
     let response = client

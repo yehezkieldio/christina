@@ -274,6 +274,14 @@ async fn generate_commit_message_with_progress_impl(
     }
     let chunks = processor.process_safe(diff.as_ref());
 
+    if trace {
+        ui::print_trace(&format!("raw diff length: {} characters", diff.len()));
+        ui::print_trace(&format!("processed {} diff chunks", chunks.len()));
+        for (i, chunk) in chunks.iter().enumerate() {
+            ui::print_trace(&format!("  [{}] {} tokens, {} files: {}", i, chunk.token_count.get(), chunk.files.len(), chunk.files.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")));
+        }
+    }
+
     if chunks.is_empty() {
         let file_paths = parsing::extract_file_paths(diff.as_ref());
         if !file_paths.is_empty()
@@ -353,7 +361,9 @@ async fn generate_commit_message_with_progress_impl(
     }
 
     if trace {
-        ui::print_trace("calling orchestrator to generate commit message");
+        ui::print_trace(&format!("calling orchestrator to generate commit message with {} chunks", chunks.len()));
+        ui::print_trace(&format!("user context: {}", user_context.as_deref().map_or("none".to_string(), |ctx| format!("present ({} chars)", ctx.len()))));
+        ui::print_trace(&format!("history context: {}", history_context.as_ref().map_or("none".to_string(), |ctx| format!("present ({} chars)", ctx.len()))));
     }
     let mut result = orchestrator
         .generate_commit_message_with_trace(
@@ -365,6 +375,11 @@ async fn generate_commit_message_with_progress_impl(
             trace,
         )
         .await?;
+    
+    if trace {
+        ui::print_trace(&format!("generation completed with {} failed chunks out of {}", result.failed_chunks, result.total_chunks));
+        ui::print_trace(&format!("intent fallback used: {}", result.intent_fallback_used));
+    }
 
     if !budget_warnings.is_empty() {
         result.validation_warnings.extend(budget_warnings);

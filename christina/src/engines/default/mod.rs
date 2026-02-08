@@ -223,6 +223,7 @@ impl Provider {
                     max_tokens,
                     temperature,
                 } => {
+                    // Trace logging is handled at higher levels in the orchestrator
                     let request = request_from_messages(messages, *max_tokens, *temperature);
                     let response = azure::execute_azure_request(
                         &request,
@@ -233,6 +234,7 @@ impl Provider {
                         model.as_str(),
                     )
                     .await?;
+                    // Trace logging is handled at higher levels in the orchestrator
                     Ok(response.content)
                 }
                 #[cfg(test)]
