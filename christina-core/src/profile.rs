@@ -57,7 +57,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::Secret,
     types::{
-        ModelName, ProviderKind, TokenCount,
+        ModelName, ProviderKind, ReasoningEffort, TokenCount,
         tokens::{MAX_INPUT, MAX_OUTPUT},
     },
 };
@@ -83,6 +83,7 @@ pub struct ProviderProfile<S = String> {
     pub azure_api_version: Option<String>,
     pub azure_deployment_id: Option<String>,
     pub temperature: Option<f32>,
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl<S> ProviderProfile<S> {
@@ -121,6 +122,7 @@ impl ProviderProfile<String> {
             azure_api_version,
             azure_deployment_id: None,
             temperature: None,
+            reasoning_effort: None,
         }
     }
 }

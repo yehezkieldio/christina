@@ -26,12 +26,13 @@
 pub mod retry;
 pub mod throttle;
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
+use serde_json::json;
 use tracing::{debug, warn};
 
 use crate::engines::Provider;
@@ -40,7 +41,7 @@ use crate::orchestrator::throttle::RequestLimiter;
 use crate::ui;
 
 use christina_core::error::CompletionError;
-use christina_core::llm::{ChatMessage, Role};
+use christina_core::llm::{ChatMessage, Role, StructuredOutputFormat};
 use christina_core::prompt::{PromptBuilder, Theme};
 use christina_core::types::DiffChunk;
 use christina_core::types::{CommitMessage, FilePath, commit::ValidationMode};
@@ -79,6 +80,9 @@ const LLM_TIMEOUT_SECONDS: u64 = 120;
 // 20 summaries = 1500 tokens, leaves ~2500 for context in 4K window. Higher = truncation risk.
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
 
+// WHY 4 summaries: Small batches are usually coherent; skipping intent saves 1 API call.
+const MAX_SUMMARIES_WITHOUT_INTENT: usize = 4;
+
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
 
@@ -95,6 +99,76 @@ const HISTORY_BUDGET_FRACTION: f64 = 0.15;
 /// Examples: "feat(auth): implement OAuth flow" (~10 tokens), "fix: correct typo" (~5 tokens).
 /// 150 tokens accommodates commits with body text and footers, supporting diverse conventions.
 const AVG_TOKENS_PER_COMMIT: f64 = 150.0;
+
+fn summary_response_format() -> StructuredOutputFormat {
+    static FORMAT: OnceLock<StructuredOutputFormat> = OnceLock::new();
+    FORMAT
+        .get_or_init(|| StructuredOutputFormat {
+            name: "summary".to_string(),
+            description: Some("Single-sentence summary of a diff chunk".to_string()),
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "summary": { "type": "string" }
+                },
+                "required": ["summary"],
+                "additionalProperties": false
+            }),
+            strict: true,
+        })
+        .clone()
+}
+
+fn intent_response_format() -> StructuredOutputFormat {
+    static FORMAT: OnceLock<StructuredOutputFormat> = OnceLock::new();
+    FORMAT
+        .get_or_init(|| StructuredOutputFormat {
+            name: "themes".to_string(),
+            description: Some("Grouped commit themes".to_string()),
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "themes": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": { "type": "string" },
+                                "description": { "type": "string" },
+                                "fileCount": { "type": "integer" },
+                                "scope": { "type": ["string", "null"] }
+                            },
+                            "required": ["title", "description", "fileCount", "scope"],
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "required": ["themes"],
+                "additionalProperties": false
+            }),
+            strict: true,
+        })
+        .clone()
+}
+
+fn commit_response_format() -> StructuredOutputFormat {
+    static FORMAT: OnceLock<StructuredOutputFormat> = OnceLock::new();
+    FORMAT
+        .get_or_init(|| StructuredOutputFormat {
+            name: "commit_message".to_string(),
+            description: Some("Single-line Conventional Commit header".to_string()),
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "message": { "type": "string" }
+                },
+                "required": ["message"],
+                "additionalProperties": false
+            }),
+            strict: true,
+        })
+        .clone()
+}
 
 #[derive(Debug)]
 enum MapError {
@@ -199,6 +273,16 @@ struct ThemeResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct SummaryResponse {
+    summary: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitResponse {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ThemeItem {
     #[serde(default)]
     title: Option<String>,
@@ -272,8 +356,8 @@ impl AIOrchestrator {
     /// WHY 3-phase pipeline: Map (parallel chunk summarization) → Intent (extract themes)
     /// → Reduce (synthesize message). Each phase is independently testable and optimizable.
     ///
-    /// WHY detect_contradictions on ≤2 summaries: Intent extraction requires ≥3 summaries
-    /// for meaningful clustering. With 2, fallback to heuristic theme generation. Contradiction
+    /// WHY detect_contradictions on ≤4 summaries: Small batches tend to be coherent, so we
+    /// skip intent extraction to save one API call. Contradiction
     /// detection warns about conflicting changes (feat+revert) that need manual review.
     #[allow(dead_code)]
     pub async fn generate_commit_message(
@@ -394,7 +478,7 @@ impl AIOrchestrator {
         if trace {
             ui::print_trace(&format!("starting intent phase with {} summaries", summaries.len()));
         }
-        let (themes, intent_fallback_used) = if summaries.len() <= 2 {
+        let (themes, intent_fallback_used) = if summaries.len() <= MAX_SUMMARIES_WITHOUT_INTENT {
             if trace {
                 ui::print_trace(&format!("using fallback themes for small summary count ({} summaries)", summaries.len()));
                 ui::print_trace(&format!("summaries content: {:?}", summaries.iter().map(|s| &s.summary).collect::<Vec<_>>()));
@@ -492,11 +576,16 @@ impl AIOrchestrator {
             },
         ];
 
-        let response = generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
+        let response = generate_with_retry(
+            self.provider.as_ref(),
+            &messages,
+            Some(commit_response_format()),
+            &self.retry_policy,
+        )
             .await
             .context("Direct generation failed")?;
 
-        let cleaned = self.clean_response(&response);
+        let cleaned = self.commit_message_from_response(&response);
         if trace {
             ui::print_trace("completed direct generation synthesis");
         }
@@ -545,6 +634,7 @@ impl AIOrchestrator {
             ui::print_trace(&format!("using concurrency level: {}", map_concurrency));
         }
         let retry_policy = self.retry_policy.clone();
+        let parse_summary = |response: &str| self.summary_from_response(response);
         let mut futures = stream::iter(chunks.iter().cloned().map(move |chunk| {
             let provider = Arc::clone(&self.provider);
             let limiter = self.limiter.clone();
@@ -569,12 +659,17 @@ impl AIOrchestrator {
                         },
                     ];
 
-                    let summary = generate_with_retry(provider.as_ref(), &messages, &retry_policy)
+                    let summary = generate_with_retry(
+                        provider.as_ref(),
+                        &messages,
+                        Some(summary_response_format()),
+                        &retry_policy,
+                    )
                         .await
                         .map_err(MapError::Completion)?;
 
                     Ok::<ChunkSummary, MapError>(ChunkSummary {
-                        summary: summary.trim().to_string(),
+                        summary: parse_summary(&summary),
                         files,
                     })
                 }
@@ -616,7 +711,7 @@ impl AIOrchestrator {
 
                     failed_count += 1;
                     failed_files.extend(files.clone());
-                    
+
                     if trace {
                         ui::print_trace(&format!("failed to process chunk for files: {:?}", files));
                     }
@@ -725,14 +820,19 @@ impl AIOrchestrator {
         if trace {
             ui::print_trace("calling LLM for intent extraction");
         }
-        let response = generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
+        let response = generate_with_retry(
+            self.provider.as_ref(),
+            &messages,
+            Some(intent_response_format()),
+            &self.retry_policy,
+        )
             .await
             .context("Intent extraction failed after retries")?;
 
         if trace {
             ui::print_trace(&format!("received LLM response for intent extraction, length: {}", response.len()));
         }
-        
+
         match self.parse_themes(&response) {
             Ok(themes) => {
                 if trace {
@@ -860,7 +960,12 @@ impl AIOrchestrator {
 
         let _permit = self.limiter.acquire().await;
 
-        let response = generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
+        let response = generate_with_retry(
+            self.provider.as_ref(),
+            &messages,
+            Some(intent_response_format()),
+            &self.retry_policy,
+        )
             .await
             .context("Sub-theme extraction failed")?;
 
@@ -977,6 +1082,54 @@ impl AIOrchestrator {
         }
 
         Ok(themes)
+    }
+
+    fn summary_from_response(&self, response: &str) -> String {
+        if let Some(summary) = self.try_parse_summary(response) {
+            return summary;
+        }
+
+        let trimmed = response.trim();
+        if trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+
+        trimmed
+            .lines()
+            .next()
+            .unwrap_or(trimmed)
+            .trim()
+            .to_string()
+    }
+
+    fn try_parse_summary(&self, response: &str) -> Option<String> {
+        let json_str = self.extract_json(response);
+        let parsed: SummaryResponse = serde_json::from_str(&json_str).ok()?;
+        let summary = parsed.summary.trim();
+        if summary.is_empty() {
+            None
+        } else {
+            Some(summary.to_string())
+        }
+    }
+
+    fn commit_message_from_response(&self, response: &str) -> String {
+        if let Some(message) = self.try_parse_commit_message(response) {
+            return message;
+        }
+
+        self.clean_response(response)
+    }
+
+    fn try_parse_commit_message(&self, response: &str) -> Option<String> {
+        let json_str = self.extract_json(response);
+        let parsed: CommitResponse = serde_json::from_str(&json_str).ok()?;
+        let message = parsed.message.trim();
+        if message.is_empty() {
+            None
+        } else {
+            Some(message.to_string())
+        }
     }
 
     fn fallback_sub_themes_from_summaries(&self, batch: &[ChunkSummary]) -> Vec<SubTheme> {
@@ -1215,11 +1368,16 @@ impl AIOrchestrator {
             },
         ];
 
-        let response = generate_with_retry(self.provider.as_ref(), &messages, &self.retry_policy)
+        let response = generate_with_retry(
+            self.provider.as_ref(),
+            &messages,
+            Some(commit_response_format()),
+            &self.retry_policy,
+        )
             .await
             .context("Reduce phase synthesis failed")?;
 
-        let cleaned = self.clean_response(&response);
+        let cleaned = self.commit_message_from_response(&response);
         if trace {
             ui::print_trace("completed reduce phase synthesis");
         }
@@ -1309,15 +1467,36 @@ fn timeout_for_attempt(attempt: u32) -> Duration {
 async fn generate_with_retry(
     provider: &Provider,
     messages: &[ChatMessage],
+    response_format: Option<StructuredOutputFormat>,
     policy: &RetryPolicy,
 ) -> Result<String, CompletionError> {
     let mut last_error = None;
 
     for attempt in 0..=policy.max_retries {
         let timeout = timeout_for_attempt(attempt as u32);
-        match tokio::time::timeout(timeout, provider.generate(messages)).await {
+        let result = if let Some(format) = response_format.clone() {
+            tokio::time::timeout(
+                timeout,
+                provider.generate_with_format(messages, Some(format)),
+            )
+            .await
+        } else {
+            tokio::time::timeout(timeout, provider.generate(messages)).await
+        };
+
+        match result {
             Ok(Ok(result)) => return Ok(result),
             Ok(Err(err)) => {
+                if should_retry_without_schema(&err, response_format.as_ref()) {
+                    let fallback = tokio::time::timeout(
+                        timeout,
+                        provider.generate_with_format(messages, None),
+                    )
+                    .await;
+                    if let Ok(Ok(result)) = fallback {
+                        return Ok(result);
+                    }
+                }
                 if !err.is_transient() {
                     return Err(err);
                 }
@@ -1349,6 +1528,27 @@ async fn generate_with_retry(
             "All retry attempts exhausted without error details".to_string(),
         )
     }))
+}
+
+fn should_retry_without_schema(
+    err: &CompletionError,
+    response_format: Option<&StructuredOutputFormat>,
+) -> bool {
+    if response_format.is_none() {
+        return false;
+    }
+
+    match err {
+        CompletionError::InvalidResponse(msg) => {
+            let msg = msg.to_ascii_lowercase();
+            msg.contains("response_format")
+                || msg.contains("json_schema")
+                || msg.contains("schema")
+                || msg.contains("structured")
+                || msg.contains("strict")
+        }
+        _ => false,
+    }
 }
 
 fn validate_commit_message(

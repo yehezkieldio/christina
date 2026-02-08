@@ -6,6 +6,7 @@
 use crate::error::ProviderError;
 use crate::types::backend_id::GenerationId;
 use crate::types::{Temperature, tokens::TokenCount};
+use serde_json::Value as JsonValue;
 
 /// Represents a single message in a chat conversation
 #[derive(Debug, Clone)]
@@ -48,6 +49,15 @@ pub enum Role {
     Assistant,
 }
 
+/// Structured output schema wrapper for providers that support JSON schemas.
+#[derive(Debug, Clone)]
+pub struct StructuredOutputFormat {
+    pub name: String,
+    pub description: Option<String>,
+    pub schema: JsonValue,
+    pub strict: bool,
+}
+
 /// A request to generate a commit message using an LLM
 #[derive(Debug, Clone)]
 pub struct LlmRequest {
@@ -64,6 +74,8 @@ pub struct LlmRequest {
     /// Kept separate so providers that already embed a system message can
     /// inject it without mutating the original message list.
     pub system_prompt: Option<String>,
+    /// Optional structured output schema for response validation.
+    pub response_format: Option<StructuredOutputFormat>,
 }
 
 impl LlmRequest {
@@ -72,6 +84,14 @@ impl LlmRequest {
             return Err(ProviderError::InvalidConfig(
                 "LlmRequest must contain at least one message".to_string(),
             ));
+        }
+
+        if let Some(format) = &self.response_format {
+            if !format.schema.is_object() {
+                return Err(ProviderError::InvalidConfig(
+                    "response_format schema must be a JSON object".to_string(),
+                ));
+            }
         }
 
         Ok(())
@@ -126,6 +146,7 @@ mod tests {
             max_tokens,
             temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
+            response_format: None,
         };
 
         assert_eq!(req.id, id);
@@ -173,6 +194,7 @@ mod tests {
             max_tokens: TokenCount::new(100).unwrap(),
             temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
+            response_format: None,
         };
 
         assert!(req.validate().is_ok());
@@ -186,6 +208,7 @@ mod tests {
             max_tokens: TokenCount::new(100).unwrap(),
             temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
+            response_format: None,
         };
 
         let result = req.validate();
@@ -227,6 +250,7 @@ mod tests {
             max_tokens: TokenCount::new(100).unwrap(),
             temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: Some("You are a helpful assistant".to_string()),
+            response_format: None,
         };
 
         assert!(req.validate().is_ok());
@@ -245,6 +269,26 @@ mod tests {
             max_tokens: TokenCount::new(100).unwrap(),
             temperature: Temperature::try_new(0.7).unwrap(),
             system_prompt: None,
+            response_format: None,
+        };
+
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_request_with_structured_output() {
+        let req = LlmRequest {
+            id: GenerationId::new(1),
+            messages: vec![ChatMessage::user("test")],
+            max_tokens: TokenCount::new(100).unwrap(),
+            temperature: Temperature::try_new(0.7).unwrap(),
+            system_prompt: None,
+            response_format: Some(StructuredOutputFormat {
+                name: "summary".to_string(),
+                description: None,
+                schema: serde_json::json!({"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"], "additionalProperties": false}),
+                strict: true,
+            }),
         };
 
         assert!(req.validate().is_ok());

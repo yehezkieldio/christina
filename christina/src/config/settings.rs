@@ -15,7 +15,7 @@ use crate::config::secrets::{Secret, resolve_secret};
 use christina_core::{
     ConfigFile,
     types::{
-        ModelName, ProviderKind,
+        ModelName, ProviderKind, ReasoningEffort,
         commit::ValidationMode,
         tokens::{MAX_INPUT, MAX_OUTPUT, TokenCount},
     },
@@ -106,6 +106,10 @@ pub struct Config {
     #[serde(skip_serializing)]
     pub model_temperature: f32,
 
+    /// Reasoning effort for reasoning-capable models (low|medium|high).
+    #[serde(skip_serializing)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+
     /// Files to exclude from AI processing (lockfiles, binaries, etc.)
     #[serde(default)]
     pub ignore_files: Vec<String>,
@@ -167,6 +171,7 @@ impl Default for Config {
             azure_api_version: None,
             azure_deployment_id: None,
             model_temperature: 0.3,
+            reasoning_effort: None,
             ignore_files: Vec::new(),
             lockfile_token_limit: default_lockfile_token_limit(),
             use_experimental: false,
@@ -291,6 +296,15 @@ impl Config {
             && let Ok(v) = env_val.parse()
         {
             config.model_temperature = v;
+        }
+        if let Ok(env_val) = std::env::var("CHRISTINA_REASONING_EFFORT") {
+            match env_val.parse::<ReasoningEffort>() {
+                Ok(value) => config.reasoning_effort = Some(value),
+                Err(err) => {
+                    tracing::warn!("Invalid CHRISTINA_REASONING_EFFORT: {}", err);
+                    eprintln!("Warning: invalid CHRISTINA_REASONING_EFFORT: {}", err);
+                }
+            }
         }
         if let Ok(env_val) = std::env::var("CHRISTINA_USE_COMMIT_HISTORY")
             && let Ok(v) = env_val.parse()
@@ -530,6 +544,7 @@ impl Config {
             "max_partial_failure_rate" => Some(self.max_partial_failure_rate.to_string()),
             "prompt_failure_rate_threshold" => Some(self.prompt_failure_rate_threshold.to_string()),
             "model_temperature" => Some(self.model_temperature.to_string()),
+            "reasoning_effort" => self.reasoning_effort.map(|v| v.to_string()),
             _ => None,
         }
     }
@@ -565,6 +580,9 @@ impl Config {
                     "api_key" | "model_api_key" => profile.api_key = Secret::Value(v.to_string()),
                     "model_temperature" => {
                         profile.temperature = Some(v.parse().map_err(anyhow::Error::msg)?)
+                    }
+                    "reasoning_effort" => {
+                        profile.reasoning_effort = Some(v.parse().map_err(anyhow::Error::msg)?)
                     }
                     // Note: ignore_files are not in profile
                     _ => {}
@@ -711,6 +729,11 @@ impl Config {
                 self.model_temperature = parsed.clamp(0.0, 2.0);
                 update_active_profile(key, value)?;
             }
+            "reasoning_effort" => {
+                let parsed: ReasoningEffort = value.parse().map_err(anyhow::Error::msg)?;
+                self.reasoning_effort = Some(parsed);
+                update_active_profile(key, value)?;
+            }
             _ => anyhow::bail!("Unknown configuration key: {}", key),
         }
         Ok(())
@@ -724,6 +747,7 @@ impl Config {
         self.model_api_url = profile.api_url.clone();
         self.azure_api_version = profile.azure_api_version.clone();
         self.azure_deployment_id = profile.azure_deployment_id.clone();
+        self.reasoning_effort = profile.reasoning_effort;
         self.api_key = match resolve_secret(&profile.api_key) {
             Ok(secret) => Some(secret.expose_secret().to_string()),
             Err(err) => {
@@ -785,6 +809,7 @@ impl Config {
             azure_api_version: self.azure_api_version.clone(),
             azure_deployment_id: self.azure_deployment_id.clone(),
             temperature: None,
+            reasoning_effort: self.reasoning_effort,
         }
     }
 }
@@ -906,6 +931,9 @@ fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
         }
         if let Some(temp) = profile.temperature {
             writeln!(out, "temperature = {}", temp)?;
+        }
+        if let Some(effort) = profile.reasoning_effort {
+            writeln!(out, "reasoning_effort = {}", toml_string(effort.as_str()))?;
         }
     }
 
@@ -1478,6 +1506,7 @@ mod tests {
             azure_api_version: Some("test-version".to_string()),
             azure_deployment_id: Some("test-deployment".to_string()),
             temperature: None,
+            reasoning_effort: None,
         };
 
         config.apply_profile(&profile);

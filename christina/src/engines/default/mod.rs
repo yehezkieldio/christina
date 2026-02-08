@@ -19,7 +19,7 @@ use christina_core::{
     llm::{ChatMessage, LlmRequest},
     types::backend_id::GenerationId,
     types::tokens::TokenCount,
-    types::{ModelName, ProviderKind, Temperature},
+    types::{ModelName, ProviderKind, ReasoningEffort, Temperature},
 };
 
 // NOTE: AtomicU64::fetch_add wraps on overflow. Wraparound is acceptable here
@@ -112,6 +112,7 @@ pub enum Provider {
         deployment_id: String,
         max_tokens: TokenCount,
         temperature: Temperature,
+        reasoning_effort: Option<ReasoningEffort>,
     },
     #[cfg(test)]
     Mock { response: String, delay_ms: u64 },
@@ -185,12 +186,21 @@ impl Provider {
                     deployment_id,
                     max_tokens: profile.max_output_tokens,
                     temperature,
+                    reasoning_effort: profile.reasoning_effort,
                 })
             }
         }
     }
 
     pub async fn generate(&self, messages: &[ChatMessage]) -> Result<String, CompletionError> {
+        self.generate_with_format(messages, None).await
+    }
+
+    pub async fn generate_with_format(
+        &self,
+        messages: &[ChatMessage],
+        response_format: Option<christina_core::llm::StructuredOutputFormat>,
+    ) -> Result<String, CompletionError> {
         let request = match self {
             Provider::Azure {
                 model,
@@ -198,7 +208,7 @@ impl Provider {
                 temperature,
                 ..
             } => {
-                let req = request_from_messages(messages, *max_tokens, *temperature);
+                let req = request_from_messages(messages, *max_tokens, *temperature, response_format.clone());
                 let gen_id = req.id;
                 let span = tracing::info_span!(
                     "llm_generate",
@@ -222,9 +232,10 @@ impl Provider {
                     deployment_id,
                     max_tokens,
                     temperature,
+                    reasoning_effort,
                 } => {
                     // Trace logging is handled at higher levels in the orchestrator
-                    let request = request_from_messages(messages, *max_tokens, *temperature);
+                    let request = request_from_messages(messages, *max_tokens, *temperature, response_format);
                     let response = azure::execute_azure_request(
                         &request,
                         api_key.as_str(),
@@ -232,6 +243,7 @@ impl Provider {
                         deployment_id,
                         api_version,
                         model.as_str(),
+                        *reasoning_effort,
                     )
                     .await?;
                     // Trace logging is handled at higher levels in the orchestrator
@@ -309,6 +321,7 @@ fn request_from_messages(
     messages: &[ChatMessage],
     max_tokens: TokenCount,
     temperature: Temperature,
+    response_format: Option<christina_core::llm::StructuredOutputFormat>,
 ) -> LlmRequest {
     let mut mapped = Vec::with_capacity(messages.len());
     for msg in messages {
@@ -327,6 +340,7 @@ fn request_from_messages(
         max_tokens,
         temperature,
         system_prompt: None,
+        response_format,
     }
 }
 
@@ -543,7 +557,7 @@ mod tests {
         let max_tokens = TokenCount::new_at_least_one(100);
 
         let request =
-            request_from_messages(&messages, max_tokens, Temperature::try_new(0.7).unwrap());
+            request_from_messages(&messages, max_tokens, Temperature::try_new(0.7).unwrap(), None);
 
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.max_tokens, max_tokens);

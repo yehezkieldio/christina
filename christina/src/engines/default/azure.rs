@@ -7,7 +7,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use christina_core::error::CompletionError;
-use christina_core::llm::{LlmRequest, LlmResponse, Role};
+use christina_core::llm::{LlmRequest, LlmResponse, Role, StructuredOutputFormat};
+use christina_core::types::ReasoningEffort;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +39,7 @@ pub async fn execute_azure_request(
     deployment_id: &str,
     api_version: &str,
     model: &str,
+    reasoning_effort: Option<ReasoningEffort>,
 ) -> Result<LlmResponse, CompletionError> {
     execute_azure_request_with_retry(
         request,
@@ -46,6 +48,7 @@ pub async fn execute_azure_request(
         deployment_id,
         api_version,
         model,
+        reasoning_effort,
         &RetryPolicy::default(),
     )
     .await
@@ -59,6 +62,7 @@ pub async fn execute_azure_request_with_retry(
     deployment_id: &str,
     api_version: &str,
     model: &str,
+    reasoning_effort: Option<ReasoningEffort>,
     retry_policy: &RetryPolicy,
 ) -> Result<LlmResponse, CompletionError> {
     let request = Arc::new(request.clone());
@@ -67,6 +71,7 @@ pub async fn execute_azure_request_with_retry(
     let deployment_id: Arc<str> = Arc::from(deployment_id);
     let api_version: Arc<str> = Arc::from(api_version);
     let model: Arc<str> = Arc::from(model);
+    let reasoning_effort = reasoning_effort.map(|value| Arc::from(value.as_str()));
 
     retry_with_backoff(retry_policy, || {
         let request = Arc::clone(&request);
@@ -75,6 +80,7 @@ pub async fn execute_azure_request_with_retry(
         let deployment_id = Arc::clone(&deployment_id);
         let api_version = Arc::clone(&api_version);
         let model = Arc::clone(&model);
+        let reasoning_effort = reasoning_effort.clone();
 
         async move {
             execute_azure_request_inner(
@@ -84,6 +90,7 @@ pub async fn execute_azure_request_with_retry(
                 deployment_id.as_ref(),
                 api_version.as_ref(),
                 model.as_ref(),
+                reasoning_effort.as_deref(),
             )
             .await
         }
@@ -95,7 +102,18 @@ fn is_reasoning_model(model: &str) -> bool {
     // Due to reasoning effort, max_tokens is renamed to max_completion_tokens
     // Especially for gpt-5 series
     let m = model.to_ascii_lowercase();
-    m.starts_with("gpt-5")
+    if m.starts_with("gpt-5") {
+        return true;
+    }
+
+    if let Some(rest) = m.strip_prefix('o') {
+        return rest
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit());
+    }
+
+    false
 }
 
 #[derive(Serialize, Debug)]
@@ -115,6 +133,57 @@ struct AzureChatRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<AzureResponseFormat>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+enum AzureResponseType {
+    JsonSchema,
+}
+
+#[derive(Serialize, Debug)]
+struct AzureResponseFormat {
+    #[serde(rename = "type")]
+    response_type: AzureResponseType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    json_schema: Option<AzureStructuredOutput>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct AzureStructuredOutput {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    schema: serde_json::Value,
+    strict: bool,
+}
+
+impl From<&StructuredOutputFormat> for AzureResponseFormat {
+    fn from(format: &StructuredOutputFormat) -> Self {
+        let schema = normalize_schema(format.schema.clone());
+        AzureResponseFormat {
+            response_type: AzureResponseType::JsonSchema,
+            json_schema: Some(AzureStructuredOutput {
+                name: format.name.clone(),
+                description: format.description.clone(),
+                schema,
+                strict: format.strict,
+            }),
+        }
+    }
+}
+
+fn normalize_schema(mut schema: serde_json::Value) -> serde_json::Value {
+    if let Some(obj) = schema.as_object_mut() {
+        if !obj.contains_key("additionalProperties") {
+            obj.insert("additionalProperties".to_string(), serde_json::json!(false));
+        }
+    }
+    schema
 }
 
 #[derive(Deserialize, Debug)]
@@ -150,6 +219,7 @@ async fn execute_azure_request_inner(
     deployment_id: &str,
     api_version: &str,
     model: &str,
+    reasoning_effort: Option<&str>,
 ) -> Result<LlmResponse, CompletionError> {
     let messages: Vec<AzureChatMessage<'_>> = request
         .messages
@@ -171,6 +241,16 @@ async fn execute_azure_request_inner(
 
     let reasoning = is_reasoning_model(model);
     let max_tokens_value = request.max_tokens.get();
+    let effort = if reasoning {
+        reasoning_effort.or(Some(ReasoningEffort::Low.as_str()))
+    } else {
+        None
+    };
+
+    let response_format = request
+        .response_format
+        .as_ref()
+        .map(AzureResponseFormat::from);
 
     let body = AzureChatRequest {
         model,
@@ -191,6 +271,8 @@ async fn execute_azure_request_inner(
             Some(request.temperature.value())
         },
         stream: false,
+        reasoning_effort: effort,
+        response_format,
     };
 
     if tracing::enabled!(tracing::Level::TRACE)
@@ -328,6 +410,8 @@ mod tests {
             max_completion_tokens: Some(512),
             temperature: None,
             stream: false,
+            reasoning_effort: None,
+            response_format: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert!(json.get("max_tokens").is_none());
@@ -344,6 +428,8 @@ mod tests {
             max_completion_tokens: None,
             temperature: Some(0.3),
             stream: false,
+            reasoning_effort: None,
+            response_format: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["max_tokens"], 512);

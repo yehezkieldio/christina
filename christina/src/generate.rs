@@ -64,6 +64,7 @@ fn config_to_profile(config: &Config, api_key: &str) -> ProviderProfile {
         azure_api_version: config.azure_api_version.clone(),
         azure_deployment_id: config.azure_deployment_id.clone(),
         temperature: Some(config.model_temperature),
+        reasoning_effort: config.reasoning_effort,
     }
 }
 pub async fn generate_commit_message_with_progress_and_trace(
@@ -375,7 +376,7 @@ async fn generate_commit_message_with_progress_impl(
             trace,
         )
         .await?;
-    
+
     if trace {
         ui::print_trace(&format!("generation completed with {} failed chunks out of {}", result.failed_chunks, result.total_chunks));
         ui::print_trace(&format!("intent fallback used: {}", result.intent_fallback_used));
@@ -383,6 +384,17 @@ async fn generate_commit_message_with_progress_impl(
 
     if !budget_warnings.is_empty() {
         result.validation_warnings.extend(budget_warnings);
+    }
+
+    if result.total_chunks > 0 {
+        let failure_rate = result.failed_chunks as f64 / result.total_chunks as f64;
+        if failure_rate > config.prompt_failure_rate_threshold {
+            result.validation_warnings.push(format!(
+                "High chunk failure rate: {:.0}% exceeds threshold {:.0}%",
+                failure_rate * 100.0,
+                config.prompt_failure_rate_threshold * 100.0
+            ));
+        }
     }
 
     if binary_only {

@@ -194,6 +194,18 @@
         "provider": {
           "$ref": "#/definitions/ProviderKind"
         },
+        "reasoning_effort": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        },
         "temperature": {
           "type": [
             "number",

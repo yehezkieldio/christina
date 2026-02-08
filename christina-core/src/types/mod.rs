@@ -16,6 +16,7 @@ pub mod diff;
 pub mod model_name;
 pub mod path;
 pub mod provider_kind;
+pub mod reasoning_effort;
 pub mod temperature;
 pub mod tokens;
 
@@ -25,5 +26,6 @@ pub use diff::{DiffChunk, FileDiff, MAX_DIFF_SIZE};
 pub use model_name::ModelName;
 pub use path::FilePath;
 pub use provider_kind::ProviderKind;
+pub use reasoning_effort::ReasoningEffort;
 pub use temperature::Temperature;
 pub use tokens::TokenCount;

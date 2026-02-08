@@ -1,88 +1,34 @@
-# Christina Configuration Example
-#
-# This file demonstrates all available configuration options for Christina.
-# Copy this file to ~/.config/christina/config.toml (Linux/macOS) or
-# %APPDATA%\christina\config.toml (Windows) and customize as needed.
-#
-# Local overrides are supported via ./christina.toml (safe fields only):
-# - ignore_files
-# - lockfile_token_limit
-# - commit_message_max_length
-# - commit_message_validation_mode
-# - use_commit_history
-# - commit_history_depth
-
-# Schema version for config migrations
 schema_version = 2
 
-# Standard settings (common defaults)
 [standard]
-# Active profile to use by default (preferred over profiles.active)
 active_profile = "default"
-
-# Maximum length for commit messages (default: 72 characters)
-# Set to null or omit to use the default
-# commit_message_max_length = 72
-
-# Validation mode for commit message length: soft | strict | disabled
 commit_message_validation_mode = "soft"
-
-# Files to exclude from AI processing
-# These patterns support:
-# - Exact filename matches: "Cargo.lock"
-# - Wildcard suffixes: "*.lock"
-# - Directory prefixes: "vendor/"
-# Empty list means no exclusions
-ignore_files = ["Cargo.lock", "*.lock", "vendor/"]
+ignore_files = []
 
 # Advanced settings
-[advanced]
-# Maximum tokens to include from lockfiles when truncating
-# Default: 100
 lockfile_token_limit = 100
-
-# Whether to include commit history context in LLM prompts
 use_commit_history = true
-
-# Number of recent commits to include for style analysis
 commit_history_depth = 5
-
-# Maximum concurrent LLM requests
 max_concurrent_requests = 4
-
-# Maximum allowed chunk failure rate before aborting map phase
-# Recommended range: 0.01 - 0.50
-# 0.0 fails on any chunk error, 1.0 allows all failures
 max_partial_failure_rate = 0.10
-
-# Failure rate threshold for prompting user confirmation
 prompt_failure_rate_threshold = 0.05
 
-# Experimental settings (opt-in)
 [experimental]
-# Enable experimental settings (default: false)
 use_experimental = false
 
-# Provider Profiles
-#
-# Each profile defines a connection to an LLM provider.
-# You can define multiple profiles and switch between them.
-
-# Azure OpenAI Example
 [profiles.azure]
 name = "azure"
 provider = "azure"
 model = "gpt-4"
 api_key = { env = "AZURE_OPENAI_API_KEY" }
-# For Azure, api_url must include the deployment endpoint
 api_url = "https://your-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions"
 azure_api_version = "2024-12-01-preview"
 azure_deployment_id = "gpt-4"
 max_input_tokens = 256000
 max_output_tokens = 8192
 temperature = 0.3
+reasoning_effort = "low"
 
-# High-token model for large diffs
 [profiles.large-context]
 name = "large-context"
 provider = "azure"
@@ -94,3 +40,4 @@ azure_deployment_id = "gpt-4o"
 max_input_tokens = 512000
 max_output_tokens = 16384
 temperature = 0.3
+reasoning_effort = "low"

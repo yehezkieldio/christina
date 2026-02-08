@@ -34,7 +34,10 @@ pub use error::{
     ProviderError, TokenizerError, TokenizerResult,
 };
 pub use git::{GitFile, GitFileStatus, RepoRoot, RepoRootError};
-pub use llm::{ChatMessage, LlmRequest, LlmResponse, ProviderEndpoint, ProviderSpec, Role};
+pub use llm::{
+    ChatMessage, LlmRequest, LlmResponse, ProviderEndpoint, ProviderSpec, Role,
+    StructuredOutputFormat,
+};
 pub use pipeline::LlmBackend;
 pub use profile::{Profiles, ProviderProfile};
 pub use tokenizer::Tokenizer;
