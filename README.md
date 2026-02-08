@@ -143,10 +143,6 @@ Christina follows a modular design split into two main crates:
 
 For more details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## TUI Status
-
-The TUI mode is currently **temporarily removed** to focus on core stability. See [TUI_INTEGRATION.md](TUI_INTEGRATION.md) for the roadmap and status.
-
 ## License
 
 Licensed under either the MIT License or the Apache License 2.0, at your option
