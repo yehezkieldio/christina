@@ -240,7 +240,11 @@ pub fn print_file_list(files: &[String], max_items: usize) {
 
     let visible = files.len().min(max_items);
     for file in files.iter().take(visible) {
-        let _ = term.write_line(&format!("{} {}", muted_style().apply_to("·"), file));
+        let _ = term.write_line(&format!(
+            "{} {}",
+            muted_style().apply_to("  ·"),
+            muted_style().apply_to(file)
+        ));
     }
 
     if files.len() > visible {

@@ -85,12 +85,14 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
         )
         .await?;
         let mut message_state = MessageState::Proposed;
+        let mut show_message = true;
 
         loop {
             if trace {
                 ui::print_trace("awaiting commit confirmation");
             }
-            let action = confirm_commit(&message, yes, message_state)?;
+            let action = confirm_commit(&message, yes, message_state, show_message)?;
+            show_message = false;
 
             match action {
                 CommitAction::Accept => break message,
@@ -103,6 +105,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
                             } else {
                                 message = edited;
                                 message_state = MessageState::Edited;
+                                show_message = true;
                                 ui::print_success("Message updated.");
                             }
                         }
@@ -124,6 +127,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
                     )
                     .await?;
                     message_state = MessageState::Regenerated;
+                    show_message = true;
                 }
                 CommitAction::Decline => {
                     ui::print_info("Commit cancelled.");
@@ -236,11 +240,7 @@ async fn generate_commit(
         while let Some(event) = _progress_rx.recv().await {
             match event {
                 Event::GenerationProgress { stage, .. } => {
-                    let stage_for_trace = stage.clone();
                     _progress_spinner.set_message(stage);
-                    if trace_enabled {
-                        ui::print_trace(&format!("stage: {}", stage_for_trace));
-                    }
                 }
                 Event::TokenCountUpdate { token_count } => {
                     if let Some(stats) = trace_stats_handle.as_ref() {
@@ -338,9 +338,16 @@ impl MessageState {
     }
 }
 
-fn confirm_commit(message: &str, yes: bool, state: MessageState) -> Result<CommitAction> {
-    ui::print_section(&format!("Message · {}", state.label()));
-    ui::print_commit_message(message);
+fn confirm_commit(
+    message: &str,
+    yes: bool,
+    state: MessageState,
+    show_message: bool,
+) -> Result<CommitAction> {
+    if show_message {
+        ui::print_section(&format!("Message · {}", state.label()));
+        ui::print_commit_message(message);
+    }
 
     if yes {
         return Ok(CommitAction::Accept);

@@ -3,6 +3,7 @@
 //! WHY lives in CLI crate: orchestration depends on IO (git, LLM provider) and
 //! user-facing progress events, which are intentionally outside `christina-core`.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ use christina_core::processing::{
     fit_history_to_budget, fit_user_context_to_budget, normalize_user_context,
 };
 use christina_core::prompt::{DIRECT_COMMIT_PROMPT, SYSTEM_PROMPT};
-use christina_core::types::TokenCount;
+use christina_core::types::{DiffChunk, TokenCount};
 
 /// Trait for accessing Git repository commit history.
 /// Allows for testing without real repository access.
@@ -273,7 +274,7 @@ async fn generate_commit_message_with_progress_impl(
     if trace {
         ui::print_trace("processing diff content");
     }
-    let chunks = processor.process_safe(diff.as_ref());
+    let mut chunks = processor.process_safe(diff.as_ref());
 
     if trace {
         ui::print_trace(&format!("raw diff length: {} characters", diff.len()));
@@ -297,8 +298,44 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("No processable diff content found");
     }
 
-    if trace {
-        ui::print_trace(&format!("processed {} diff chunks", chunks.len()));
+    let original_chunk_count = chunks.len();
+    let total_tokens_before_merge = chunks
+        .iter()
+        .map(|chunk| chunk.token_count.get() as u64)
+        .sum::<u64>();
+    let total_tokens_before_merge =
+        TokenCount::new_at_least_one(total_tokens_before_merge.try_into().unwrap_or(u32::MAX));
+
+    if original_chunk_count > 1 && total_tokens_before_merge <= token_limit {
+        let mut combined_files = Vec::new();
+        let mut seen = HashSet::new();
+        let combined_content = chunks
+            .iter()
+            .map(|chunk| chunk.content.as_ref())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        for chunk in &chunks {
+            for file in &chunk.files {
+                if seen.insert(file.clone()) {
+                    combined_files.push(file.clone());
+                }
+            }
+        }
+
+        let combined_token_count = tokenizer.count_tokens(&combined_content);
+        chunks = vec![DiffChunk::new(
+            Arc::from(combined_content),
+            combined_files,
+            combined_token_count,
+        )];
+
+        if trace {
+            ui::print_trace(&format!(
+                "fast path: merged {} chunks into single prompt",
+                original_chunk_count
+            ));
+        }
     }
     let binary_only = chunks
         .iter()

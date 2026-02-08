@@ -81,7 +81,7 @@ const LLM_TIMEOUT_SECONDS: u64 = 120;
 const MAX_SUMMARIES_PER_INTENT_BATCH: usize = 20;
 
 // WHY 4 summaries: Small batches are usually coherent; skipping intent saves 1 API call.
-const MAX_SUMMARIES_WITHOUT_INTENT: usize = 4;
+const MAX_SUMMARIES_WITHOUT_INTENT: usize = 3;
 
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
@@ -109,7 +109,7 @@ fn summary_response_format() -> StructuredOutputFormat {
             schema: json!({
                 "type": "object",
                 "properties": {
-                    "summary": { "type": "string" }
+                    "summary": { "type": "string", "minLength": 1 }
                 },
                 "required": ["summary"],
                 "additionalProperties": false
@@ -133,8 +133,8 @@ fn intent_response_format() -> StructuredOutputFormat {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "title": { "type": "string" },
-                                "description": { "type": "string" },
+                                "title": { "type": "string", "minLength": 1 },
+                                "description": { "type": "string", "minLength": 1 },
                                 "fileCount": { "type": "integer" },
                                 "scope": { "type": ["string", "null"] }
                             },
@@ -487,7 +487,7 @@ impl AIOrchestrator {
             if trace {
                 ui::print_trace("using fallback themes for small summary count");
             }
-            (self.fallback_themes_from_summaries(&summaries, trace), true)
+            (self.fallback_themes_from_summaries(&summaries, trace), false)
         } else {
             if trace {
                 ui::print_trace(&format!("proceeding with intent extraction for {} summaries", summaries.len()));
@@ -634,7 +634,7 @@ impl AIOrchestrator {
             ui::print_trace(&format!("using concurrency level: {}", map_concurrency));
         }
         let retry_policy = self.retry_policy.clone();
-        let parse_summary = |response: &str| self.summary_from_response(response);
+        let orchestrator = self;
         let mut futures = stream::iter(chunks.iter().cloned().map(move |chunk| {
             let provider = Arc::clone(&self.provider);
             let limiter = self.limiter.clone();
@@ -668,10 +668,8 @@ impl AIOrchestrator {
                         .await
                         .map_err(MapError::Completion)?;
 
-                    Ok::<ChunkSummary, MapError>(ChunkSummary {
-                        summary: parse_summary(&summary),
-                        files,
-                    })
+                    let summary = orchestrator.summary_from_response_with_files(&summary, &files);
+                    Ok::<ChunkSummary, MapError>(ChunkSummary { summary, files })
                 }
                 .await;
                 result.map_err(|e: MapError| (e, files_for_error))
@@ -1102,6 +1100,54 @@ impl AIOrchestrator {
             .to_string()
     }
 
+    fn summary_from_response_with_files(&self, response: &str, files: &[FilePath]) -> String {
+        let summary = self.summary_from_response(response);
+        let trimmed = summary.trim();
+
+        if trimmed.is_empty() || self.is_json_like_summary(trimmed) {
+            return self.fallback_summary_from_files(files);
+        }
+
+        trimmed.to_string()
+    }
+
+    fn is_json_like_summary(&self, summary: &str) -> bool {
+        let trimmed = summary.trim();
+        if !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
+            return false;
+        }
+
+        let value: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+
+        value.get("summary").is_some()
+    }
+
+    fn fallback_summary_from_files(&self, files: &[FilePath]) -> String {
+        if files.is_empty() {
+            return "Update staged files".to_string();
+        }
+
+        if files.len() == 1 {
+            return format!("Update {}", files[0]);
+        }
+
+        let preview_limit = 3usize;
+        let preview = files
+            .iter()
+            .take(preview_limit)
+            .map(|path| path.to_string())
+            .collect::<Vec<_>>();
+
+        if files.len() > preview_limit {
+            format!("Update {} files: {} …", files.len(), preview.join(", "))
+        } else {
+            format!("Update {} files: {}", files.len(), preview.join(", "))
+        }
+    }
+
     fn try_parse_summary(&self, response: &str) -> Option<String> {
         let json_str = self.extract_json(response);
         let parsed: SummaryResponse = serde_json::from_str(&json_str).ok()?;
@@ -1136,9 +1182,15 @@ impl AIOrchestrator {
         let total_files: usize = batch.iter().map(|s| s.files.len()).sum();
         let combined_description = batch
             .iter()
-            .map(|s| s.summary.as_str())
+            .map(|s| s.summary.trim())
+            .filter(|summary| !summary.is_empty() && !self.is_json_like_summary(summary))
             .collect::<Vec<_>>()
             .join("; ");
+        let combined_description = if combined_description.is_empty() {
+            "Code changes".to_string()
+        } else {
+            combined_description
+        };
 
         vec![SubTheme {
             title: "Code changes".to_string(),
@@ -1186,9 +1238,15 @@ impl AIOrchestrator {
         let total_files: usize = summaries.iter().map(|s| s.files.len()).sum();
         let combined_description = summaries
             .iter()
-            .map(|s| s.summary.as_str())
+            .map(|s| s.summary.trim())
+            .filter(|summary| !summary.is_empty() && !self.is_json_like_summary(summary))
             .collect::<Vec<_>>()
             .join("; ");
+        let combined_description = if combined_description.is_empty() {
+            "Code changes".to_string()
+        } else {
+            combined_description
+        };
 
         vec![Theme::new(
             "Code changes".to_string(),
