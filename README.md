@@ -17,13 +17,13 @@ stage changes, run `christina`, review the message, commit.
 
 ## Features
 
-- **Staged-Diff Workflow**: Only staged changes are considered. If nothing is staged, Christina exits before contacting the model.
-- **Conventional Commit Validation**: Generated messages are checked against configurable validation modes (`strict`, `soft`, or `disabled`) and a configurable subject length.
-- **Large-Diff Chunking**: Oversized diffs are budgeted with local `tiktoken` counting, summarized concurrently, and reduced into one final message.
-- **Commit History Context**: Recent commit subjects can be included so the generated message follows the local repository style.
-- **Interactive Confirmation**: Accept, edit, regenerate, decline, or run with `--yes` for non-interactive use.
-- **Secure Profile Storage**: Profiles support literal values, environment references (`env:NAME`), and keyring references (`keyring:NAME`) when the `keyring-support` feature is enabled.
-- **Diagnostic Trace Mode**: `--trace` prints generation stages and summary stats for debugging token budgets, provider behavior, and commit creation.
+- **Staged-Diff Workflow**: Only staged changes are considered, so the proposed message describes exactly what Git is about to commit. If the index is empty, Christina exits before contacting the model.
+- **Conventional Commit Validation**: Generated messages are cleaned and checked against configurable validation modes (`strict`, `soft`, or `disabled`). Subject length can be bounded so the result stays compatible with conventional tooling and local commit style.
+- **Large-Diff Chunking**: Oversized diffs are budgeted with local `tiktoken` counting, split into manageable chunks, summarized concurrently, and reduced into one final message. Lockfiles can be capped separately so dependency churn does not consume the whole prompt.
+- **Commit History Context**: Recent commit subjects can be included as style context for the generator. History is trimmed against the token budget, which keeps it useful without crowding out the staged diff.
+- **Interactive Confirmation**: The generated message is shown before commit creation, with options to accept, edit inline, regenerate, or decline. `--yes` keeps the same pipeline available for non-interactive use.
+- **Secure Profile Storage**: Provider profiles support literal values, environment references (`env:NAME`), and keyring references (`keyring:NAME`) when the `keyring-support` feature is enabled. Secrets are resolved at runtime instead of being printed through normal config output.
+- **Diagnostic Trace Mode**: `--trace` prints generation stages, budget warnings, repository stats, and commit outcome details. It is meant for understanding slow generations, provider failures, and unexpected prompt-budget behavior.
 
 ## Pipeline
 
