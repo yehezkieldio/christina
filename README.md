@@ -1,133 +1,182 @@
 <div align="center">
 <img src=".github/assets/avatar.png" align="center" width="120px" height="120px" />
 <h3>Christina</h3>
-<p>Terminal interface for AI-powered conventional commit generation.</p>
+<p>Terminal commit assistant for staged Git changes.</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)
+<a href="https://github.com/yehezkieldio/christina"><img src="https://img.shields.io/badge/rust-2024-C96329?style=flat&labelColor=1C2C2E&logo=Rust&logoColor=white"></a>
+<a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT-C96329?style=flat&labelColor=1C2C2E"></a>
+<a href="LICENSE-APACHE"><img src="https://img.shields.io/badge/license-Apache--2.0-C96329?style=flat&labelColor=1C2C2E"></a>
 </div>
 
 ---
 
-Christina is a high-performance terminal utility designed to automate the generation of [Conventional Commits](https://www.conventionalcommits.org/). It employs advanced Large Language Models (LLMs) to analyze staged changes, utilizing a specialized Map-Reduce architecture to handle large-scale diffs while ensuring semantic consistency and adherence to version control standards.
+Christina reads the staged diff in the current Git repository, asks an Azure OpenAI
+chat model for a Conventional Commit message, and either creates the commit or lets
+you inspect the proposed message first. It is built for ordinary command-line use:
+stage changes, run `christina`, review the message, commit.
 
-## Technical Overview
+## Features
 
-Christina is engineered for speed, privacy, and precision. It leverages Rust's asynchronous runtime (`tokio`) for concurrent processing and the `tiktoken` library for efficient local token counting. Unlike simpler alternatives, it implements an intelligent diff analysis pipeline that maintains architectural intent across massive commits.
+- **Staged-diff workflow**: Only staged changes are considered. If nothing is staged, Christina exits before contacting the model.
+- **Conventional Commit output**: Generated messages are checked against configurable validation modes (`strict`, `soft`, or `disabled`) and a configurable subject length.
+- **Large-diff handling**: Oversized diffs are chunked with local `tiktoken` counting, summarized concurrently, and reduced into one final message.
+- **Commit history context**: Recent commit subjects can be included so the generated message follows the local repository style.
+- **Interactive confirmation**: Accept, edit, regenerate, decline, or run with `--yes` for non-interactive use.
+- **Secure profile storage**: Profiles support literal values, environment references (`env:NAME`), and keyring references (`keyring:NAME`) when the `keyring-support` feature is enabled.
+- **Trace mode**: `--trace` prints generation stages and summary stats for debugging token budgets, provider behavior, and commit creation.
 
-### Key Capabilities
+## Pipeline
 
-*   **Recursive Diff Chunking**: Automatically fragments large diffs into semantically coherent units (File > Hunk > Line) to respect LLM context windows without losing change locality.
-*   **Map-Reduce Orchestration**: Parallelizes chunk summarization before synthesizing a final intent-based commit message, supporting repositories with hundreds of modified files.
-*   **Architectural Intent Extraction**: Groups atomic changes into high-level themes to generate descriptions that reflect "why" and "what" rather than just listing file names.
-*   **Zero-Trust Security**: Native integration with OS Keyrings (via `keyring`) and environment variables ensures API keys are never stored in plaintext or leaked into telemetry.
-*   **Profile System**: Supports multiple provider configurations (Azure OpenAI, OpenAI) with fine-grained control over model parameters and token budgets.
-*   **Interactive TUI**: Provides a streamlined interface for message validation, regenerative refinement, and inline Emacs-style editing.
+Each run follows a fixed sequence:
 
-## Installation
+1. **Read Git state**: Open the current repository, verify staged changes, and build the staged diff.
+2. **Load configuration**: Merge global config, safe local overrides from `./christina.toml`, active profile values, and `CHRISTINA_*` environment overrides.
+3. **Prepare context**: Collect staged file names, optional user context, and recent commit history if enabled.
+4. **Generate**: Send the diff directly for small inputs or split large diffs into chunks, summarize them concurrently, and synthesize a final message.
+5. **Review**: Show the generated message and let the operator accept, edit, regenerate, or cancel.
+6. **Commit**: Create the Git commit unless `--dry-run` was supplied.
 
-### From Source
+## Building from Source
 
-Requires the latest stable Rust toolchain.
+Christina currently ships from source.
 
-```bash
-git clone https://github.com/yehezkieldio/christina-vibe.git
-cd christina-vibe
+### Prerequisites
+
+- [Rust](https://rustup.rs/) stable toolchain with edition 2024 support
+- [`just`](https://github.com/casey/just) for development commands
+- An Azure OpenAI chat deployment
+
+### Build
+
+```sh
+git clone https://github.com/yehezkieldio/christina.git
+cd christina
+cargo build --release -p christina
+```
+
+The binary is placed at `./target/release/christina`.
+
+To install from this checkout:
+
+```sh
 cargo install --path christina
 ```
 
-### Development
+## Quick Start
 
-The project uses `just` for workflow automation:
+### 1. Configure a provider profile
 
-```bash
-just all     # Execute formatting, linting, and tests
-just test    # Run full test suite using nextest
+Christina currently supports Azure OpenAI.
+
+```sh
+christina profile create azure \
+  --provider azure \
+  --model gpt-4o \
+  --api-key env:AZURE_OPENAI_API_KEY \
+  --api-url https://your-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions \
+  --azure-api-version 2024-12-01-preview \
+  --azure-deployment-id gpt-4o
+
+christina profile switch azure
+```
+
+Then provide the secret through the referenced environment variable:
+
+```sh
+export AZURE_OPENAI_API_KEY=your-api-key
+```
+
+You can see the global config path with:
+
+```sh
+christina config path
+```
+
+### 2. Stage changes
+
+```sh
+git add path/to/file.rs
+```
+
+### 3. Generate a commit
+
+```sh
+christina
+```
+
+Useful variants:
+
+```sh
+christina --dry-run
+christina --yes
+christina --context "rename the parser state machine"
+christina --trace
 ```
 
 ## Configuration
 
-Christina employs a layered configuration model with the following precedence (highest to lowest):
+Configuration is loaded in ascending priority:
 
-1.  **Environment Variables**: Prefixed with `CHRISTINA_` (e.g., `CHRISTINA_MODEL`).
-2.  **Local Overrides**: `./christina.toml` located in the repository root (safe fields only).
-3.  **Global Configuration**: `~/.config/christina/config.toml` (Linux/macOS) or `%APPDATA%\christina\config.toml` (Windows).
+1. Global config: `~/.config/christina/config.toml` on Linux and macOS, or the platform equivalent.
+2. Local repository override: `./christina.toml` for safe repository-local settings.
+3. Active profile values.
+4. Environment variables.
 
-### Core Settings
+Selected environment overrides:
 
-| Key | Type | Default | Description |
-|:--- |:--- |:--- |:--- |
-| `active_profile` | String | `"default"` | The name of the LLM profile to use. |
-| `commit_message_max_length` | Integer | `72` | Hard limit for the commit subject line. |
-| `commit_message_validation_mode` | Enum | `"soft"` | `strict`, `soft`, or `disabled`. |
-| `ignore_files` | List | `[]` | Glob patterns to exclude from analysis. |
-| `max_concurrent_requests` | Integer | `4` | Concurrency limit for map-phase summarization. |
-| `lockfile_token_limit` | Integer | `100` | Token cap for dependency lockfiles to preserve budget. |
+| Variable | Meaning |
+| --- | --- |
+| `CHRISTINA_MODEL_PROVIDER` | Provider kind. Currently `azure`. |
+| `CHRISTINA_MODEL` | Model name sent to the provider. |
+| `CHRISTINA_MODEL_API_KEY` | API key value. |
+| `CHRISTINA_MODEL_API_URL` | Azure chat completions URL. |
+| `CHRISTINA_AZURE_API_VERSION` | Azure API version. |
+| `CHRISTINA_AZURE_DEPLOYMENT_ID` | Azure deployment id. |
+| `CHRISTINA_TOKENS_MAX_INPUT` | Maximum input token budget. |
+| `CHRISTINA_TOKENS_OUTPUT` | Maximum output token budget. |
+| `CHRISTINA_MODEL_TEMPERATURE` | Sampling temperature. |
+| `CHRISTINA_REASONING_EFFORT` | Optional provider reasoning effort. |
+| `CHRISTINA_USE_COMMIT_HISTORY` | Enable or disable recent commit history context. |
+| `CHRISTINA_COMMIT_HISTORY_DEPTH` | Number of recent commits to inspect, clamped to 0-50. |
+| `CHRISTINA_CONCURRENCY_LIMIT` | Concurrent map requests, clamped to 1-20. |
+| `CHRISTINA_MAX_FAILURE_RATE` | Allowed partial map failure rate before aborting. |
 
-### Profile Configuration
+A complete example lives in [`config.example.toml`](config.example.toml).
 
-Profiles are defined in the `[profiles]` table.
+## Christina-specific
 
-```toml
-[profiles.production]
-provider = "azure"
-model = "gpt-4o"
-api_key = { keyring = "christina.azure.prod" }
-api_url = "https://your-resource.openai.azure.com/"
-max_input_tokens = 128000
-max_output_tokens = 4096
-temperature = 0.3
+Christina only reads staged changes. It does not inspect unstaged work, and it
+will exit before contacting the model when the index is empty.
+
+The current provider surface is Azure OpenAI. The config model and profile CLI are
+provider-shaped, but this checkout only has the Azure backend wired in.
+
+Local repository config is intentionally narrower than global config. Use
+`./christina.toml` for safe project-level behavior such as ignored files and
+validation settings; keep provider credentials in the global config, environment,
+or keyring.
+
+Additional notes live under [`docs/`](docs/), including the generation pipeline,
+design notes, benchmarks, advanced configuration, and contribution notes.
+
+## Development
+
+The workspace contains:
+
+- `christina`: CLI, Git integration, configuration loading, Azure provider calls, orchestration, and terminal UI.
+- `christina-core`: provider-agnostic domain types, config file shapes, tokenizer utilities, prompt construction, chunking, and tests.
+- `ui-extractable`: small terminal UI extraction experiment used by the workspace.
+
+Common commands:
+
+```sh
+just check
+just clippy
+just test
+just fmt
 ```
 
-## Pipeline Architecture
-
-Christina's processing pipeline is divided into two distinct crates to separate domain logic from interface concerns.
-
-### christina-core
-
-The headless engine responsible for:
-*   **Token Management**: Local BPE tokenization and budget allocation.
-*   **Chunking Logic**: Recursive algorithms for diff partitioning.
-*   **Prompt Engineering**: Few-shot templates and anti-slop verbiage enforcement.
-*   **Domain Models**: Immutable types for Git snapshots and commit messages.
-
-### christina
-
-The orchestrator and user interface responsible for:
-*   **Concurrency**: Managing parallel LLM requests with rate limiting and exponential backoff.
-*   **Git Integration**: Interfacing with `git2` for diff extraction and commit authoring.
-*   **Secret Resolution**: Dynamic loading of credentials from secure stores.
-*   **Telemetry**: Real-time progress events and diagnostic tracing.
-
-## Advanced Usage
-
-### Context Injection
-
-Augment the AI's understanding by providing high-level context:
-```bash
-christina --context "Refactored the persistence layer to support S3"
-```
-
-### Diagnostic Tracing
-
-Enable deep pipeline telemetry to analyze token usage, chunking efficiency, and provider latency:
-```bash
-christina --trace
-```
-
-### Dry Run
-
-Preview the generated commit message without performing filesystem modifications:
-```bash
-christina --dry-run
-```
-
-## Security and Privacy
-
-*   **Data Locality**: Changes are sent directly to your configured provider. No intermediate servers are involved.
-*   **Redaction**: API keys and sensitive data are handled via `SecretString` wrappers that redact content in all debug and log outputs.
-*   **Injection Prevention**: Diff headers are strictly parsed to prevent malicious content from overriding system prompt instructions.
+`just clippy` runs with `-D warnings`. `just test` expects `cargo nextest` to be installed.
 
 ## License
 

@@ -376,7 +376,7 @@ pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
         }
     }
 
-    let header_line = format_row(headers.iter().copied().collect(), &widths);
+    let header_line = format_row(headers.to_vec(), &widths);
     let divider_line = widths
         .iter()
         .map(|width| "─".repeat(*width))
