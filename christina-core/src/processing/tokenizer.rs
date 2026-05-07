@@ -161,7 +161,7 @@ impl TokenizerService {
 
     pub fn decode(&self, tokens: &[u32]) -> Result<String> {
         self.bpe
-            .decode(tokens.to_vec())
+            .decode(tokens)
             .map_err(|e| TokenizerError::Tokenizer(format!("Failed to decode tokens: {}", e)))
     }
 }
