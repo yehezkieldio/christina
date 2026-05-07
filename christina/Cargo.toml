@@ -34,15 +34,15 @@ fs2 = "0.4.3"
 keyring = { version = "3", optional = true }
 moka = { version = "0.12", features = ["sync"] }
 ahash = "0.8"
-tiktoken-rs = "0.9.1"
+tiktoken-rs = "0.11.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-console = "0.15"
-indicatif = "0.17"
-dialoguer = "0.11"
+console = "0.16"
+indicatif = "0.18"
+dialoguer = "0.12"
 memchr = "2.7"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "json"] }
 rustyline = { version = "13", features = ["custom-bindings"] }
 
 [dev-dependencies]
