@@ -1,11 +1,12 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ConfigFile",
   "description": "On-disk configuration representation (serde-friendly)",
   "type": "object",
   "properties": {
     "advanced": {
       "description": "Advanced settings",
+      "$ref": "#/$defs/AdvancedConfig",
       "default": {
         "commit_history_depth": 5,
         "lockfile_token_limit": 100,
@@ -13,101 +14,80 @@
         "max_partial_failure_rate": 0.1,
         "prompt_failure_rate_threshold": 0.05,
         "use_commit_history": true
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/AdvancedConfig"
-        }
-      ]
+      }
     },
     "experimental": {
       "description": "Experimental settings (opt-in)",
+      "$ref": "#/$defs/ExperimentalConfig",
       "default": {
         "use_experimental": false
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/ExperimentalConfig"
-        }
-      ]
+      }
     },
     "profiles": {
       "description": "Provider profiles",
+      "$ref": "#/$defs/Profiles",
       "default": {
         "active": null
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/Profiles_for_String"
-        }
-      ]
+      }
     },
     "schema_version": {
       "description": "Schema version for config file format migrations",
-      "default": 2,
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "default": 2,
+      "minimum": 0
     },
     "standard": {
       "description": "Standard settings",
+      "$ref": "#/$defs/StandardConfig",
       "default": {
         "active_profile": null,
         "commit_message_max_length": null,
         "commit_message_validation_mode": "soft",
         "ignore_files": []
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/StandardConfig"
-        }
-      ]
+      }
     }
   },
-  "definitions": {
+  "$defs": {
     "AdvancedConfig": {
       "description": "Advanced configuration settings.",
       "type": "object",
       "properties": {
         "commit_history_depth": {
           "description": "Number of recent commits to include for style analysis",
-          "default": 5,
           "type": "integer",
           "format": "uint",
-          "minimum": 0.0
+          "default": 5,
+          "minimum": 0
         },
         "lockfile_token_limit": {
           "description": "Maximum tokens to include from lockfiles when truncating",
-          "default": 100,
-          "allOf": [
-            {
-              "$ref": "#/definitions/TokenCount"
-            }
-          ]
+          "$ref": "#/$defs/TokenCount",
+          "default": 100
         },
         "max_concurrent_requests": {
           "description": "Maximum concurrent LLM requests",
-          "default": 4,
           "type": "integer",
           "format": "uint",
-          "minimum": 0.0
+          "default": 4,
+          "minimum": 0
         },
         "max_partial_failure_rate": {
           "description": "Maximum allowed fraction of chunk failures before aborting map phase",
-          "default": 0.1,
           "type": "number",
-          "format": "double"
+          "format": "double",
+          "default": 0.1
         },
         "prompt_failure_rate_threshold": {
           "description": "Failure rate threshold for prompting user confirmation",
-          "default": 0.05,
           "type": "number",
-          "format": "double"
+          "format": "double",
+          "default": 0.05
         },
         "use_commit_history": {
           "description": "Whether to include commit history context in LLM prompts",
-          "default": true,
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         }
       }
     },
@@ -117,8 +97,8 @@
       "properties": {
         "use_experimental": {
           "description": "Enable experimental settings (default: false)",
-          "default": false,
-          "type": "boolean"
+          "type": "boolean",
+          "default": false
         }
       }
     },
@@ -126,40 +106,35 @@
       "description": "LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')",
       "type": "string"
     },
-    "Profiles_for_String": {
-      "description": "Collection of provider profiles with an active profile selection.\n\nGeneric parameter `S` determines secret storage strategy: - `S = String`: Direct string values, serializable - `S = SecretRef`: References to secrets (env vars, keyring), serializable - `S = SecretString`: Resolved secret values, NOT serializable\n\nThe `definitions` field uses serde's `flatten` attribute to serialize profiles directly into the parent config structure, enabling TOML files like: ```toml [profiles.default] provider = \"openai\" model = \"gpt-4\" ```\n\nSee module-level documentation for usage patterns and best practices.",
+    "Profiles": {
+      "description": "Collection of provider profiles with an active profile selection.\n\nGeneric parameter `S` determines secret storage strategy:\n- `S = String`: Direct string values, serializable\n- `S = SecretRef`: References to secrets (env vars), serializable\n- `S = SecretString`: Resolved secret values, NOT serializable\n\nThe `definitions` field uses serde's `flatten` attribute to serialize profiles\ndirectly into the parent config structure, enabling TOML files like:\n```toml\n[profiles.default]\nprovider = \"azure\"\nmodel = \"gpt-4\"\n```\n\nSee module-level documentation for usage patterns and best practices.",
       "type": "object",
       "properties": {
         "active": {
-          "default": null,
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "default": null
         }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/ProviderProfile"
       }
     },
     "ProviderKind": {
-      "description": "Supported LLM API providers.\n\nThis enum drives client instantiation and request formatting. Each variant corresponds to a distinct API contract.",
+      "description": "Supported LLM API providers.\n\nThis enum drives client instantiation and request formatting.\nEach variant corresponds to a distinct API contract.",
       "type": "string",
       "enum": [
         "azure"
       ]
     },
-    "ProviderProfile_for_String": {
-      "description": "Configuration for an LLM provider (API credentials, model, token limits).\n\nGeneric parameter `S` determines secret storage strategy: - `S = String` or `S = SecretRef`: Disk storage, fully serializable - `S = SecretString`: Runtime secrets, NOT serializable\n\nSee module-level documentation for detailed usage patterns.",
+    "ProviderProfile": {
+      "description": "Configuration for an LLM provider (API credentials, model, token limits).\n\nGeneric parameter `S` determines secret storage strategy:\n- `S = String` or `S = SecretRef`: Disk storage, fully serializable\n- `S = SecretString`: Runtime secrets, NOT serializable\n\nSee module-level documentation for detailed usage patterns.",
       "type": "object",
-      "required": [
-        "api_key",
-        "max_input_tokens",
-        "max_output_tokens",
-        "model",
-        "name",
-        "provider"
-      ],
       "properties": {
         "api_key": {
-          "$ref": "#/definitions/Secret_for_String"
+          "$ref": "#/$defs/Secret"
         },
         "api_url": {
           "type": [
@@ -180,30 +155,28 @@
           ]
         },
         "max_input_tokens": {
-          "$ref": "#/definitions/TokenCount"
+          "$ref": "#/$defs/TokenCount"
         },
         "max_output_tokens": {
-          "$ref": "#/definitions/TokenCount"
+          "$ref": "#/$defs/TokenCount"
         },
         "model": {
-          "$ref": "#/definitions/ModelName"
+          "$ref": "#/$defs/ModelName"
         },
         "name": {
           "type": "string"
         },
         "provider": {
-          "$ref": "#/definitions/ProviderKind"
+          "$ref": "#/$defs/ProviderKind"
         },
         "reasoning_effort": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            null
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "temperature": {
@@ -213,46 +186,51 @@
           ],
           "format": "float"
         }
-      }
+      },
+      "required": [
+        "name",
+        "provider",
+        "model",
+        "api_key",
+        "max_input_tokens",
+        "max_output_tokens"
+      ]
     },
-    "Secret_for_String": {
-      "description": "Generic secret container\n\n**Important**: This type implements a custom Debug impl that redacts all secrets for security. To access secret values, use `expose_secret()` or resolver methods.",
+    "ReasoningEffort": {
+      "description": "Supported reasoning effort levels.",
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "Secret": {
+      "description": "Generic secret container.\n\nThis type is pure data. Resolution is handled in the `christina` crate.",
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "value"
-          ],
           "properties": {
             "value": {
               "type": "string"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "required": [
+            "value"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "env"
-          ],
           "properties": {
             "env": {
               "type": "string"
             }
           },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
+          "additionalProperties": false,
           "required": [
-            "keyring"
-          ],
-          "properties": {
-            "keyring": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+            "env"
+          ]
         }
       ]
     },
@@ -262,35 +240,31 @@
       "properties": {
         "active_profile": {
           "description": "Active profile name (preferred over profiles.active)",
-          "default": null,
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "default": null
         },
         "commit_message_max_length": {
           "description": "Maximum commit message length (None = 72)",
-          "default": null,
           "type": [
             "integer",
             "null"
           ],
           "format": "uint",
-          "minimum": 0.0
+          "default": null,
+          "minimum": 0
         },
         "commit_message_validation_mode": {
           "description": "Validation mode for commit message length",
-          "default": "soft",
-          "allOf": [
-            {
-              "$ref": "#/definitions/ValidationMode"
-            }
-          ]
+          "$ref": "#/$defs/ValidationMode",
+          "default": "soft"
         },
         "ignore_files": {
           "description": "Files to exclude from AI processing",
-          "default": [],
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           }
@@ -298,34 +272,28 @@
       }
     },
     "TokenCount": {
-      "description": "Count of tokens in text, guaranteed to be non-zero.\n\nWHY NonZeroU32: Empty text is never valid input for token-counting operations. By using NonZeroU32, we: 1. Eliminate defensive checks for zero throughout the codebase 2. Enable compiler optimizations (Option<TokenCount> is the same size as u32) 3. Make the domain constraint explicit in the type system\n\nWHY saturating arithmetic: When token counts are computed from potentially malicious or corrupted input, clamping to NonZeroU32::MIN (1) is safer than panicking or wrapping. This ensures the system remains operational even with bad data, trading precision for resilience.",
+      "description": "Count of tokens in text, guaranteed to be non-zero.\n\nWHY NonZeroU32: Empty text is never valid input for token-counting operations.\nBy using NonZeroU32, we:\n1. Eliminate defensive checks for zero throughout the codebase\n2. Enable compiler optimizations (Option<TokenCount> is the same size as u32)\n3. Make the domain constraint explicit in the type system\n\nWHY saturating arithmetic: When token counts are computed from potentially malicious\nor corrupted input, clamping to NonZeroU32::MIN (1) is safer than panicking or\nwrapping. This ensures the system remains operational even with bad data, trading\nprecision for resilience.",
       "type": "integer",
       "format": "uint32",
-      "minimum": 1.0
+      "minimum": 0
     },
     "ValidationMode": {
-      "description": "Validation mode for commit message length checks.\n\nWHY three modes: Different teams have different policies. Strict enforces limits (CI integration), Soft guides without blocking (developer experience), Disabled allows custom workflows (automated tools, migrations).",
+      "description": "Validation mode for commit message length checks.\n\nWHY three modes: Different teams have different policies. Strict enforces limits\n(CI integration), Soft guides without blocking (developer experience), Disabled\nallows custom workflows (automated tools, migrations).",
       "oneOf": [
         {
           "description": "Reject messages exceeding the limit",
           "type": "string",
-          "enum": [
-            "strict"
-          ]
+          "const": "strict"
         },
         {
           "description": "Warn but allow messages exceeding the limit",
           "type": "string",
-          "enum": [
-            "soft"
-          ]
+          "const": "soft"
         },
         {
           "description": "Skip length check entirely",
           "type": "string",
-          "enum": [
-            "disabled"
-          ]
+          "const": "disabled"
         }
       ]
     }

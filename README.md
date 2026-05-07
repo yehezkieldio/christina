@@ -29,7 +29,7 @@ middle.
 - **Large-Diff Chunking**: Oversized diffs are budgeted with local `tiktoken` counting, split into manageable chunks, summarized concurrently, and reduced into one final message. Lockfiles can be capped separately so dependency churn does not consume the whole prompt.
 - **Commit History Context**: Recent commit subjects can be included as style context for the generator. History is trimmed against the token budget, which keeps it useful without crowding out the staged diff.
 - **Interactive Confirmation**: The generated message is shown before commit creation, with options to accept, edit inline, regenerate, or decline. `--yes` keeps the same pipeline available for non-interactive use.
-- **Secure Profile Storage**: Provider profiles support literal values, environment references (`env:NAME`), and keyring references (`keyring:NAME`) when the `keyring-support` feature is enabled. Secrets are resolved at runtime instead of being printed through normal config output.
+- **Secure Profile Storage**: Provider profiles support literal values and environment references (`env:NAME`). Secrets are resolved at runtime instead of being printed through normal config output.
 - **Diagnostic Trace Mode**: `--trace` prints generation stages, budget warnings, repository stats, and commit outcome details. It is meant for understanding slow generations, provider failures, and unexpected prompt-budget behavior.
 
 ## Pipeline
@@ -42,8 +42,8 @@ Each `christina` invocation runs through a fixed sequence of stages:
    commit.
 2. **Configure**: Runtime settings are loaded from the global config, safe local
    overrides, the active profile, and environment variables. Provider credentials
-   are resolved from literal values, environment references, or keyring
-   references before any model request is made.
+   are resolved from literal values or environment references before any model
+   request is made.
 3. **Contextualize**: Staged file names, optional `--context` text, and recent
    commit subjects are prepared as prompt context. User context and history are
    trimmed against the token budget instead of being allowed to crowd out the

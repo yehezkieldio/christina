@@ -1,7 +1,7 @@
 //! Data-only secret representations for config and runtime.
 //!
 //! WHY keep in core: lets downstream crates share a single schema without
-//! pulling in OS keyring or env resolution logic, which lives in `christina`.
+//! pulling in environment resolution logic, which lives in `christina`.
 
 use std::fmt;
 
@@ -17,8 +17,6 @@ pub enum Secret<S> {
     Value(S),
     #[serde(rename = "env")]
     EnvVar(String),
-    #[serde(rename = "keyring")]
-    Keyring(String),
 }
 
 impl<S> fmt::Debug for Secret<S> {
@@ -26,20 +24,17 @@ impl<S> fmt::Debug for Secret<S> {
         match self {
             Secret::Value(_) => f.write_str("[REDACTED:secret-value]"),
             Secret::EnvVar(name) => f.write_fmt(format_args!("[REDACTED:env:{}]", name)),
-            Secret::Keyring(key) => f.write_fmt(format_args!("[REDACTED:keyring:{}]", key)),
         }
     }
 }
 
-/// On-disk reference (env var or keyring).
+/// On-disk reference (env var or literal value).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "value")]
 pub enum SecretRef {
     #[serde(rename = "env")]
     EnvVar(String),
-    #[serde(rename = "keyring")]
-    Keyring(String),
     #[serde(rename = "value")]
     Literal(String),
 }
@@ -49,15 +44,12 @@ impl SecretRef {
     ///
     /// Supports formats:
     /// - `env:VAR_NAME`
-    /// - `keyring:KEY_NAME`
     /// - `value:SECRET_VALUE`
     /// - Plain string (treated as literal)
     pub fn parse(s: &str) -> Self {
         // Infallible parse keeps CLI/config parsing simple; invalid prefixes fall back to literal.
         if let Some(rest) = s.strip_prefix("env:") {
             SecretRef::EnvVar(rest.to_string())
-        } else if let Some(rest) = s.strip_prefix("keyring:") {
-            SecretRef::Keyring(rest.to_string())
         } else if let Some(rest) = s.strip_prefix("value:") {
             SecretRef::Literal(rest.to_string())
         } else {
@@ -107,12 +99,6 @@ mod tests {
     }
 
     #[test]
-    fn secret_ref_parse_keyring() {
-        let secret = SecretRef::parse("keyring:christina.openai");
-        assert!(matches!(secret, SecretRef::Keyring(s) if s == "christina.openai"));
-    }
-
-    #[test]
     fn secret_ref_parse_value() {
         let secret = SecretRef::parse("value:secret123");
         assert!(matches!(secret, SecretRef::Literal(s) if s == "secret123"));
@@ -147,13 +133,6 @@ mod tests {
     }
 
     #[test]
-    fn secret_keyring_debug_redacted() {
-        let secret: Secret<String> = Secret::Keyring("christina.openai".to_string());
-        let debug = format!("{:?}", secret);
-        assert_eq!(debug, "[REDACTED:keyring:christina.openai]");
-    }
-
-    #[test]
     fn secret_string_clone() {
         let original = SecretString::new("secret".to_string());
         let cloned = original.clone();
@@ -177,13 +156,6 @@ mod tests {
     #[test]
     fn secret_env_var_clone() {
         let original: Secret<String> = Secret::EnvVar("VAR".to_string());
-        let cloned = original.clone();
-        assert_eq!(original, cloned);
-    }
-
-    #[test]
-    fn secret_keyring_clone() {
-        let original: Secret<String> = Secret::Keyring("key".to_string());
         let cloned = original.clone();
         assert_eq!(original, cloned);
     }

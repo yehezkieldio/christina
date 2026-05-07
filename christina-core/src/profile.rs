@@ -10,7 +10,7 @@
 //!
 //! **Disk Storage (`S = String` or `S = SecretRef`)**:
 //! - Used in config files loaded from disk
-//! - Secrets stored as references (env var names, keyring keys)
+//! - Secrets stored as references (env var names)
 //! - Fully serializable via serde
 //! - Example: `Profiles<String>` in `Config::profiles`
 //!
@@ -131,7 +131,7 @@ impl ProviderProfile<String> {
 ///
 /// Generic parameter `S` determines secret storage strategy:
 /// - `S = String`: Direct string values, serializable
-/// - `S = SecretRef`: References to secrets (env vars, keyring), serializable
+/// - `S = SecretRef`: References to secrets (env vars), serializable
 /// - `S = SecretString`: Resolved secret values, NOT serializable
 ///
 /// The `definitions` field uses serde's `flatten` attribute to serialize profiles

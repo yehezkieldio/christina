@@ -16,7 +16,7 @@ In the Map phase, some chunk summaries might fail (due to rate limits or malform
 
 ## Secure Secret Management
 
-Christina supports three modes for API keys:
+Christina supports two modes for API keys:
 
 1.  **Plaintext** (Not Recommended):
     ```toml
@@ -26,15 +26,6 @@ Christina supports three modes for API keys:
     ```toml
     api_key = { env = "AZURE_OPENAI_API_KEY" }
     ```
-3.  **OS Keyring** (Recommended):
-    ```toml
-    api_key = { keyring = "christina.openai" }
-    ```
-    You can set keys via the CLI:
-    ```bash
-    christina profile create my-prod --api-key "keyring:christina.prod"
-    ```
-
 ## Environment Overrides
 
 Every configuration value can be overridden via environment variables. This is useful for temporary one-off runs or CI/CD pipelines.

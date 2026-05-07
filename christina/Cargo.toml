@@ -31,7 +31,6 @@ url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
 futures = "0.3.31"
 fs2 = "0.4.3"
-keyring = { version = "4", optional = true }
 moka = { version = "0.12", features = ["sync"] }
 ahash = "0.8"
 tiktoken-rs = "0.11.0"
@@ -69,6 +68,5 @@ workspace = true
 # Christina will be distributed via NPM, via prebuilt binaries, except for development or debugging only features
 # We don't have feature-gated dependencies for now, will be not needed foreseeably
 [features]
-default = ["keyring-support"]
+default = []
 dhat-heap = ["dhat"]
-keyring-support = ["dep:keyring"]

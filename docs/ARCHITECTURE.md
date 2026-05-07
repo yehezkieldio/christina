@@ -17,7 +17,7 @@ A headless, zero-IO library that defines the stable domain model and the atomic 
 The user-facing CLI and runtime orchestrator.
 - **Git Adapter**: Integration with `git2` for staged change extraction and commit authoring.
 - **AI Orchestrator**: Multi-threaded Map-Reduce implementation using `tokio`.
-- **Secret Provider**: Resolution of credentials from environment variables or OS keyrings.
+- **Secret Provider**: Resolution of credentials from environment variables or literal profile values.
 - **Telemetry**: Diagnostic tracing and real-time progress events for the TUI.
 
 ## The Generation Pipeline

@@ -909,9 +909,6 @@ fn render_secret_inline(secret: &Secret<String>) -> String {
         Secret::EnvVar(name) => {
             format!("{{ env = {} }}", toml_string(name))
         }
-        Secret::Keyring(name) => {
-            format!("{{ keyring = {} }}", toml_string(name))
-        }
     }
 }
 
@@ -1263,14 +1260,6 @@ mod tests {
         let parsed: Result<ProviderKind, _> = val.parse();
         assert!(parsed.is_ok());
         assert_eq!(parsed.unwrap(), ProviderKind::Azure);
-    }
-
-    #[test]
-    fn env_var_parsing_use_keyring() {
-        let val = "true";
-        let parsed: Result<bool, _> = val.parse();
-        assert!(parsed.is_ok());
-        assert!(parsed.unwrap());
     }
 
     #[test]

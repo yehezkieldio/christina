@@ -29,8 +29,6 @@ use dialoguer as _;
 use directories as _;
 use fs2 as _;
 use indicatif as _;
-#[cfg(feature = "keyring-support")]
-use keyring as _;
 use mimalloc as _;
 use tokio as _;
 use toml as _;

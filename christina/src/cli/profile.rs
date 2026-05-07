@@ -1,7 +1,7 @@
 //! CLI handlers for provider profile management.
 //!
 //! WHY handle secrets here: profiles are user-facing config; we parse secret
-//! references (env/keyring/plaintext) before handing them to core types.
+//! references (env/plaintext) before handing them to core types.
 
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, Write};
@@ -17,15 +17,10 @@ fn parse_secret_input(key: &str, allow_plaintext: bool) -> Secret<String> {
     // SecretRef parsing is infallible; unknown prefixes are treated as literals.
     match SecretRef::parse(key) {
         SecretRef::EnvVar(name) => Secret::EnvVar(name),
-        SecretRef::Keyring(key_name) => Secret::Keyring(key_name),
         SecretRef::Literal(value) => {
             if !allow_plaintext {
-                tracing::warn!(
-                    "Storing plaintext API key. Consider env:VAR_NAME or keyring:KEY_NAME."
-                );
-                eprintln!(
-                    "Warning: storing plaintext API key. Consider env:VAR_NAME or keyring:KEY_NAME."
-                );
+                tracing::warn!("Storing plaintext API key. Consider env:VAR_NAME.");
+                eprintln!("Warning: storing plaintext API key. Consider env:VAR_NAME.");
             }
             Secret::Value(value)
         }
@@ -166,7 +161,6 @@ fn handle_show(config: &Config, output: &mut dyn Write, name: &str) -> Result<()
             let api_key_display = match &profile.api_key {
                 Secret::Value(_) => "<set>".to_string(),
                 Secret::EnvVar(name) => format!("<env:{}>", name),
-                Secret::Keyring(key) => format!("<keyring:{}>", key),
             };
             writeln!(output, "  API Key: {}", api_key_display)?;
             writeln!(
@@ -544,7 +538,7 @@ mod tests {
             "azure",
             Some("azure".to_string()),
             Some("gpt-4".to_string()),
-            Some("keyring:azure-key".to_string()),
+            Some("env:AZURE_OPENAI_API_KEY".to_string()),
             false,
             Some("https://test.openai.azure.com".to_string()),
             Some(100000),
@@ -724,12 +718,6 @@ mod tests {
     fn test_parse_secret_input_env() {
         let secret = parse_secret_input("env:MY_KEY", false);
         assert!(matches!(secret, Secret::EnvVar(_)));
-    }
-
-    #[test]
-    fn test_parse_secret_input_keyring() {
-        let secret = parse_secret_input("keyring:my-key", false);
-        assert!(matches!(secret, Secret::Keyring(_)));
     }
 
     #[test]
