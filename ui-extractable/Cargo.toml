@@ -5,9 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-console = "0.15"
-indicatif = "0.17"
-dialoguer = "0.11"
+console = "0.16"
+indicatif = "0.18"
+dialoguer = "0.12"
 
 [lints]
 workspace = true
