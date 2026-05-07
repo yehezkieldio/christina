@@ -31,7 +31,7 @@ url = { workspace = true }
 dhat = { version = "0.3.3", optional = true }
 futures = "0.3.31"
 fs2 = "0.4.3"
-keyring = { version = "3", optional = true }
+keyring = { version = "4", optional = true }
 moka = { version = "0.12", features = ["sync"] }
 ahash = "0.8"
 tiktoken-rs = "0.11.0"
