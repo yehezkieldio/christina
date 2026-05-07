@@ -10,10 +10,17 @@
 
 ---
 
-Christina reads the staged diff in the current Git repository, asks an Azure OpenAI
-chat model for a Conventional Commit message, and either creates the commit or lets
-you inspect the proposed message first. It is built for ordinary command-line use:
-stage changes, run `christina`, review the message, commit.
+Christina is a terminal commit assistant for Git repositories. Stage your changes,
+run `christina`, and it turns the staged diff into a Conventional Commit message
+using your configured Azure OpenAI deployment. The generated message is shown for
+review before Git writes anything, with inline editing, regeneration, dry-run, and
+non-interactive modes available for different workflows.
+
+Large commits are handled through the same flow: Christina budgets the diff
+locally, chunks oversized inputs when needed, includes recent commit history as
+style context, and reduces chunk summaries into one final message. It sends data
+directly to the configured provider; there is no Christina-hosted service in the
+middle.
 
 ## Features
 
