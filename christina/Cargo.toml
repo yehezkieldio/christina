@@ -42,7 +42,7 @@ console = "0.16"
 indicatif = "0.18"
 dialoguer = "0.12"
 memchr = "2.7"
-reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 rustyline = { version = "13", features = ["custom-bindings"] }
 
 [dev-dependencies]
