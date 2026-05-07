@@ -56,9 +56,18 @@ mod tests {
 
     #[test]
     fn parse_reasoning_effort() {
-        assert_eq!("low".parse::<ReasoningEffort>().unwrap(), ReasoningEffort::Low);
-        assert_eq!("MEDIUM".parse::<ReasoningEffort>().unwrap(), ReasoningEffort::Medium);
-        assert_eq!("High".parse::<ReasoningEffort>().unwrap(), ReasoningEffort::High);
+        assert_eq!(
+            "low".parse::<ReasoningEffort>().unwrap(),
+            ReasoningEffort::Low
+        );
+        assert_eq!(
+            "MEDIUM".parse::<ReasoningEffort>().unwrap(),
+            ReasoningEffort::Medium
+        );
+        assert_eq!(
+            "High".parse::<ReasoningEffort>().unwrap(),
+            ReasoningEffort::High
+        );
     }
 
     #[test]

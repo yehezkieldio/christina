@@ -376,7 +376,8 @@ impl AIOrchestrator {
             max_length,
             history_context,
             false,
-        ).await
+        )
+        .await
     }
 
     pub async fn generate_commit_message_with_trace(
@@ -395,7 +396,8 @@ impl AIOrchestrator {
             max_length,
             history_context,
             trace,
-        ).await
+        )
+        .await
     }
 
     async fn generate_commit_message_internal(
@@ -467,7 +469,11 @@ impl AIOrchestrator {
             debug!("map phase completed in {:?}", start.elapsed());
         }
         if trace {
-            ui::print_trace(&format!("map phase completed: {} summaries, {} failed", summaries.len(), failed_chunks));
+            ui::print_trace(&format!(
+                "map phase completed: {} summaries, {} failed",
+                summaries.len(),
+                failed_chunks
+            ));
         }
 
         let intent_start = if debug_enabled {
@@ -476,21 +482,36 @@ impl AIOrchestrator {
             None
         };
         if trace {
-            ui::print_trace(&format!("starting intent phase with {} summaries", summaries.len()));
+            ui::print_trace(&format!(
+                "starting intent phase with {} summaries",
+                summaries.len()
+            ));
         }
         let (themes, intent_fallback_used) = if summaries.len() <= MAX_SUMMARIES_WITHOUT_INTENT {
             if trace {
-                ui::print_trace(&format!("using fallback themes for small summary count ({} summaries)", summaries.len()));
-                ui::print_trace(&format!("summaries content: {:?}", summaries.iter().map(|s| &s.summary).collect::<Vec<_>>()));
+                ui::print_trace(&format!(
+                    "using fallback themes for small summary count ({} summaries)",
+                    summaries.len()
+                ));
+                ui::print_trace(&format!(
+                    "summaries content: {:?}",
+                    summaries.iter().map(|s| &s.summary).collect::<Vec<_>>()
+                ));
             }
             self.detect_contradictions(&summaries);
             if trace {
                 ui::print_trace("using fallback themes for small summary count");
             }
-            (self.fallback_themes_from_summaries(&summaries, trace), false)
+            (
+                self.fallback_themes_from_summaries(&summaries, trace),
+                false,
+            )
         } else {
             if trace {
-                ui::print_trace(&format!("proceeding with intent extraction for {} summaries", summaries.len()));
+                ui::print_trace(&format!(
+                    "proceeding with intent extraction for {} summaries",
+                    summaries.len()
+                ));
             }
             let result = self.extract_intent(&summaries, trace).await?;
             if trace {
@@ -503,7 +524,10 @@ impl AIOrchestrator {
         }
 
         if trace {
-            ui::print_trace(&format!("starting reduce phase with {} themes", themes.len()));
+            ui::print_trace(&format!(
+                "starting reduce phase with {} themes",
+                themes.len()
+            ));
         }
         let reduce_start = if debug_enabled {
             Some(Instant::now())
@@ -582,8 +606,8 @@ impl AIOrchestrator {
             Some(commit_response_format()),
             &self.retry_policy,
         )
-            .await
-            .context("Direct generation failed")?;
+        .await
+        .context("Direct generation failed")?;
 
         let cleaned = self.commit_message_from_response(&response);
         if trace {
@@ -664,8 +688,8 @@ impl AIOrchestrator {
                         Some(summary_response_format()),
                         &retry_policy,
                     )
-                        .await
-                        .map_err(MapError::Completion)?;
+                    .await
+                    .map_err(MapError::Completion)?;
 
                     let summary = orchestrator.summary_from_response_with_files(&summary, &files);
                     Ok::<String, MapError>(summary)
@@ -688,10 +712,14 @@ impl AIOrchestrator {
             match result {
                 Ok(summary) => {
                     if trace {
-                        ui::print_trace(&format!("generated summary for {} files: {}", summary.files.len(), &summary.summary[..std::cmp::min(100, summary.summary.len())]));
+                        ui::print_trace(&format!(
+                            "generated summary for {} files: {}",
+                            summary.files.len(),
+                            &summary.summary[..std::cmp::min(100, summary.summary.len())]
+                        ));
                     }
                     successes.push(summary);
-                },
+                }
                 Err((e, files)) => {
                     if e.is_systemic() {
                         if trace {
@@ -741,7 +769,11 @@ impl AIOrchestrator {
 
         if failure_rate > max_failure_rate {
             if trace {
-                ui::print_trace(&format!("failure rate too high: {:.0}% (threshold: {:.0}%)", failure_rate * 100.0, max_failure_rate * 100.0));
+                ui::print_trace(&format!(
+                    "failure rate too high: {:.0}% (threshold: {:.0}%)",
+                    failure_rate * 100.0,
+                    max_failure_rate * 100.0
+                ));
             }
             anyhow::bail!(
                 "Partial failure rate too high: {}/{} chunks failed ({:.0}%). \
@@ -761,7 +793,12 @@ impl AIOrchestrator {
 
         if failed_count > 0 {
             if trace {
-                ui::print_trace(&format!("{} of {} chunks failed ({:.0}%)", failed_count, total_chunks, failure_rate * 100.0));
+                ui::print_trace(&format!(
+                    "{} of {} chunks failed ({:.0}%)",
+                    failed_count,
+                    total_chunks,
+                    failure_rate * 100.0
+                ));
             }
             warn!(
                 "{}/{} chunks failed ({:.0}%). Generated message may not reflect all changes. Files with failed analysis: {}",
@@ -783,9 +820,16 @@ impl AIOrchestrator {
         Ok((successes, failed_count, failed_files))
     }
 
-    async fn extract_intent(&self, summaries: &[ChunkSummary], trace: bool) -> Result<(Vec<Theme>, bool)> {
+    async fn extract_intent(
+        &self,
+        summaries: &[ChunkSummary],
+        trace: bool,
+    ) -> Result<(Vec<Theme>, bool)> {
         if trace {
-            ui::print_trace(&format!("starting intent extraction with {} summaries", summaries.len()));
+            ui::print_trace(&format!(
+                "starting intent extraction with {} summaries",
+                summaries.len()
+            ));
         }
         self.detect_contradictions(summaries);
 
@@ -797,7 +841,10 @@ impl AIOrchestrator {
         }
 
         if trace {
-            ui::print_trace(&format!("preparing intent extraction prompt with {} summaries", summaries.len()));
+            ui::print_trace(&format!(
+                "preparing intent extraction prompt with {} summaries",
+                summaries.len()
+            ));
         }
         let summary_strings = self.format_summaries_for_prompt(summaries);
         let builder = PromptBuilder::new().with_summaries(&summary_strings);
@@ -827,11 +874,14 @@ impl AIOrchestrator {
             Some(intent_response_format()),
             &self.retry_policy,
         )
-            .await
-            .context("Intent extraction failed after retries")?;
+        .await
+        .context("Intent extraction failed after retries")?;
 
         if trace {
-            ui::print_trace(&format!("received LLM response for intent extraction, length: {}", response.len()));
+            ui::print_trace(&format!(
+                "received LLM response for intent extraction, length: {}",
+                response.len()
+            ));
         }
 
         match self.parse_themes(&response) {
@@ -840,11 +890,17 @@ impl AIOrchestrator {
                     ui::print_trace(&format!("successfully parsed {} themes", themes.len()));
                 }
                 Ok((themes, false))
-            },
+            }
             Err(e) => {
                 if trace {
-                    ui::print_trace(&format!("failed to parse themes: {}, using fallback generation", e));
-                    ui::print_trace(&format!("LLM response excerpt: {}", &response.chars().take(200).collect::<String>()));
+                    ui::print_trace(&format!(
+                        "failed to parse themes: {}, using fallback generation",
+                        e
+                    ));
+                    ui::print_trace(&format!(
+                        "LLM response excerpt: {}",
+                        &response.chars().take(200).collect::<String>()
+                    ));
                 }
                 debug!(
                     "Failed to parse themes JSON: {}. Using fallback theme generation.",
@@ -871,8 +927,8 @@ impl AIOrchestrator {
             ));
         }
 
-        let batch_count = (summaries.len() + MAX_SUMMARIES_PER_INTENT_BATCH - 1)
-            / MAX_SUMMARIES_PER_INTENT_BATCH;
+        let batch_count =
+            (summaries.len() + MAX_SUMMARIES_PER_INTENT_BATCH - 1) / MAX_SUMMARIES_PER_INTENT_BATCH;
         if trace {
             ui::print_trace(&format!("Grouped into {} batches", batch_count));
         }
@@ -929,17 +985,23 @@ impl AIOrchestrator {
         }
 
         if trace {
-            ui::print_trace(&format!("aggregating {} sub-themes into final themes", all_sub_themes.len()));
+            ui::print_trace(&format!(
+                "aggregating {} sub-themes into final themes",
+                all_sub_themes.len()
+            ));
         }
         let final_themes = self.aggregate_sub_themes(all_sub_themes).await;
 
         match final_themes {
             Ok(themes) => {
                 if trace {
-                    ui::print_trace(&format!("successfully aggregated into {} final themes", themes.len()));
+                    ui::print_trace(&format!(
+                        "successfully aggregated into {} final themes",
+                        themes.len()
+                    ));
                 }
                 Ok((themes, any_fallback))
-            },
+            }
             Err(e) => {
                 if trace {
                     ui::print_trace("Theme aggregation failed, using fallback.");
@@ -973,8 +1035,8 @@ impl AIOrchestrator {
             Some(intent_response_format()),
             &self.retry_policy,
         )
-            .await
-            .context("Sub-theme extraction failed")?;
+        .await
+        .context("Sub-theme extraction failed")?;
 
         self.parse_sub_themes(&response)
     }
@@ -1102,12 +1164,7 @@ impl AIOrchestrator {
             return trimmed.to_string();
         }
 
-        trimmed
-            .lines()
-            .next()
-            .unwrap_or(trimmed)
-            .trim()
-            .to_string()
+        trimmed.lines().next().unwrap_or(trimmed).trim().to_string()
     }
 
     fn summary_from_response_with_files(&self, response: &str, files: &[FilePath]) -> String {
@@ -1245,11 +1302,23 @@ impl AIOrchestrator {
         }
     }
 
-    fn fallback_themes_from_summaries(&self, summaries: &[ChunkSummary], trace: bool) -> Vec<Theme> {
+    fn fallback_themes_from_summaries(
+        &self,
+        summaries: &[ChunkSummary],
+        trace: bool,
+    ) -> Vec<Theme> {
         if trace {
-            ui::print_trace(&format!("generating fallback themes from {} summaries", summaries.len()));
+            ui::print_trace(&format!(
+                "generating fallback themes from {} summaries",
+                summaries.len()
+            ));
             for (i, summary) in summaries.iter().enumerate() {
-                ui::print_trace(&format!("  [{}] {} files: {}", i, summary.files.len(), &summary.summary[..std::cmp::min(100, summary.summary.len())]));
+                ui::print_trace(&format!(
+                    "  [{}] {} files: {}",
+                    i,
+                    summary.files.len(),
+                    &summary.summary[..std::cmp::min(100, summary.summary.len())]
+                ));
             }
         }
         let total_files: usize = summaries.iter().map(|s| s.files.len()).sum();
@@ -1421,7 +1490,10 @@ impl AIOrchestrator {
         trace: bool,
     ) -> Result<(CommitMessage, bool, bool, Vec<String>)> {
         if trace {
-            ui::print_trace(&format!("starting reduce phase with {} themes", themes.len()));
+            ui::print_trace(&format!(
+                "starting reduce phase with {} themes",
+                themes.len()
+            ));
         }
         let builder = PromptBuilder::new().with_themes(themes);
 
@@ -1454,8 +1526,8 @@ impl AIOrchestrator {
             Some(commit_response_format()),
             &self.retry_policy,
         )
-            .await
-            .context("Reduce phase synthesis failed")?;
+        .await
+        .context("Reduce phase synthesis failed")?;
 
         let cleaned = self.commit_message_from_response(&response);
         if trace {

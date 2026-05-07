@@ -1,6 +1,6 @@
 //! Primitive terminal UI components for CLI applications.
 
-use console::{style, measure_text_width, Color, Style, Term};
+use console::{Color, Style, Term, measure_text_width, style};
 use dialoguer::theme::ColorfulTheme;
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -113,9 +113,7 @@ pub fn create_spinner(msg: &str) -> ProgressBar {
     let spinner_style = ProgressStyle::default_spinner()
         .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
         .template("{spinner} {msg}")
-        .unwrap_or_else(|_| {
-            ProgressStyle::default_spinner().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
-        });
+        .unwrap_or_else(|_| ProgressStyle::default_spinner().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈"));
     pb.set_style(spinner_style);
     pb.set_message(msg.to_string());
     pb.enable_steady_tick(std::time::Duration::from_millis(120));
@@ -183,7 +181,11 @@ pub fn print_custom_line(
     indent: usize,
     to_stderr: bool,
 ) {
-    let term = if to_stderr { Term::stderr() } else { Term::stdout() };
+    let term = if to_stderr {
+        Term::stderr()
+    } else {
+        Term::stdout()
+    };
     let indent = " ".repeat(indent);
     let body = match text_style.as_ref() {
         Some(style) => format!("{}", style.apply_to(msg)),
@@ -200,7 +202,11 @@ pub fn print_custom_line(
 fn print_line_with(kind: LineKind, msg: &str, indent: usize, to_stderr: Option<bool>) {
     let style = line_style(kind);
     let to_stderr = to_stderr.unwrap_or(style.default_stderr);
-    let term = if to_stderr { Term::stderr() } else { Term::stdout() };
+    let term = if to_stderr {
+        Term::stderr()
+    } else {
+        Term::stdout()
+    };
     let indent = " ".repeat(indent);
     let body = match style.text_style.as_ref() {
         Some(style) => format!("{}", style.apply_to(msg)),
@@ -258,7 +264,9 @@ pub fn print_underlined_heading(title: &str, weight: RuleWeight) {
     let term = Term::stdout();
     let _ = term.write_line("");
     let _ = term.write_line(&format!("{}", header_style().apply_to(title)));
-    let underline = rule_glyph(weight).to_string().repeat(text_width(title).max(1));
+    let underline = rule_glyph(weight)
+        .to_string()
+        .repeat(text_width(title).max(1));
     let _ = term.write_line(&format!("{}", muted_style().apply_to(underline)));
     let _ = term.write_line("");
 }
@@ -266,7 +274,7 @@ pub fn print_underlined_heading(title: &str, weight: RuleWeight) {
 pub fn print_rule(weight: RuleWeight, length: RuleLength) {
     let term = Term::stdout();
     let width = term.size().1 as usize;
-    let max_width = width.min(MAX_RULE_WIDTH).max(1);
+    let max_width = width.clamp(1, MAX_RULE_WIDTH);
     let display_width = match length {
         RuleLength::Full => max_width,
         RuleLength::Half => (max_width / 2).max(1),
@@ -368,7 +376,7 @@ pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
         }
     }
 
-    let header_line = format_row(headers.iter().map(|s| *s).collect(), &widths);
+    let header_line = format_row(headers.iter().copied().collect(), &widths);
     let divider_line = widths
         .iter()
         .map(|width| "─".repeat(*width))
@@ -388,11 +396,7 @@ pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
 
 pub fn print_key_value(label: &str, value: &str) {
     let term = Term::stdout();
-    let _ = term.write_line(&format!(
-        "{}: {}",
-        muted_style().apply_to(label),
-        value
-    ));
+    let _ = term.write_line(&format!("{}: {}", muted_style().apply_to(label), value));
 }
 
 pub fn print_spacing(lines: usize) {
@@ -425,7 +429,7 @@ pub fn theme() -> ColorfulTheme {
     }
 }
 
-fn format_row<'a>(cells: Vec<&'a str>, widths: &[usize]) -> String {
+fn format_row(cells: Vec<&str>, widths: &[usize]) -> String {
     let mut pieces = Vec::with_capacity(widths.len());
     for (idx, width) in widths.iter().enumerate() {
         let text = cells.get(idx).copied().unwrap_or("");

@@ -224,7 +224,10 @@ async fn generate_commit_message_with_progress_impl(
         })?;
 
     if trace {
-        ui::print_trace(&format!("calculated message budget: {} tokens", message_budget));
+        ui::print_trace(&format!(
+            "calculated message budget: {} tokens",
+            message_budget
+        ));
     }
     let mut budget_warnings = Vec::new();
     let normalized_user_context = normalize_user_context(user_context);
@@ -269,7 +272,10 @@ async fn generate_commit_message_with_progress_impl(
         .map_err(|e| anyhow::anyhow!("Failed to calculate token limit: {}", e))?;
 
     if trace {
-        ui::print_trace(&format!("set token limit for diff processing: {} tokens", token_limit.get()));
+        ui::print_trace(&format!(
+            "set token limit for diff processing: {} tokens",
+            token_limit.get()
+        ));
     }
 
     let processor = DiffProcessor::new(Arc::clone(&tokenizer), token_limit)
@@ -425,9 +431,28 @@ async fn generate_commit_message_with_progress_impl(
     }
 
     if trace {
-        ui::print_trace(&format!("calling orchestrator to generate commit message with {} chunks", chunks.len()));
-        ui::print_trace(&format!("user context: {}", user_context.as_deref().map_or("none".to_string(), |ctx| format!("present ({} chars)", ctx.len()))));
-        ui::print_trace(&format!("history context: {}", history_context.as_ref().map_or("none".to_string(), |ctx| format!("present ({} chars)", ctx.len()))));
+        ui::print_trace(&format!(
+            "calling orchestrator to generate commit message with {} chunks",
+            chunks.len()
+        ));
+        ui::print_trace(&format!(
+            "user context: {}",
+            user_context
+                .as_deref()
+                .map_or("none".to_string(), |ctx| format!(
+                    "present ({} chars)",
+                    ctx.len()
+                ))
+        ));
+        ui::print_trace(&format!(
+            "history context: {}",
+            history_context
+                .as_ref()
+                .map_or("none".to_string(), |ctx| format!(
+                    "present ({} chars)",
+                    ctx.len()
+                ))
+        ));
     }
     let mut result = orchestrator
         .generate_commit_message_with_trace(
@@ -441,8 +466,14 @@ async fn generate_commit_message_with_progress_impl(
         .await?;
 
     if trace {
-        ui::print_trace(&format!("generation completed with {} failed chunks out of {}", result.failed_chunks, result.total_chunks));
-        ui::print_trace(&format!("intent fallback used: {}", result.intent_fallback_used));
+        ui::print_trace(&format!(
+            "generation completed with {} failed chunks out of {}",
+            result.failed_chunks, result.total_chunks
+        ));
+        ui::print_trace(&format!(
+            "intent fallback used: {}",
+            result.intent_fallback_used
+        ));
     }
 
     if !budget_warnings.is_empty() {
@@ -482,7 +513,6 @@ async fn generate_commit_message_with_progress_impl(
     Ok(result)
 }
 
-
 #[derive(Debug, Clone)]
 pub struct CommitInfo {
     pub sha: String,
@@ -510,11 +540,7 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
     let mut commits = Vec::new();
 
     // For shallow clones, cap at a lower limit since history is limited anyway
-    let effective_limit = if is_shallow {
-        limit.min(3)
-    } else {
-        limit
-    };
+    let effective_limit = if is_shallow { limit.min(3) } else { limit };
 
     for oid_result in revwalk {
         if commits.len() >= effective_limit {
@@ -608,8 +634,14 @@ mod tests {
         assert_eq!(profile.name, "active");
         assert_eq!(profile.provider, ProviderKind::Azure);
         assert_eq!(profile.model.as_str(), "gpt-4o");
-        assert_eq!(profile.max_input_tokens, TokenCount::new_at_least_one(256000));
-        assert_eq!(profile.max_output_tokens, TokenCount::new_at_least_one(8192));
+        assert_eq!(
+            profile.max_input_tokens,
+            TokenCount::new_at_least_one(256000)
+        );
+        assert_eq!(
+            profile.max_output_tokens,
+            TokenCount::new_at_least_one(8192)
+        );
         assert_eq!(profile.temperature, Some(0.7));
     }
 
@@ -790,10 +822,7 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         eprintln!("Actual error message: {}", error_msg); // Debug print
-        assert!(
-            error_msg
-                .contains("No processable diff content found")
-        );
+        assert!(error_msg.contains("No processable diff content found"));
     }
 
     #[test]

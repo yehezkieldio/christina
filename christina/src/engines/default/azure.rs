@@ -107,10 +107,7 @@ fn is_reasoning_model(model: &str) -> bool {
     }
 
     if let Some(rest) = m.strip_prefix('o') {
-        return rest
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit());
+        return rest.chars().next().is_some_and(|c| c.is_ascii_digit());
     }
 
     false

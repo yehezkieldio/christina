@@ -86,12 +86,12 @@ impl LlmRequest {
             ));
         }
 
-        if let Some(format) = &self.response_format {
-            if !format.schema.is_object() {
-                return Err(ProviderError::InvalidConfig(
-                    "response_format schema must be a JSON object".to_string(),
-                ));
-            }
+        if let Some(format) = &self.response_format
+            && !format.schema.is_object()
+        {
+            return Err(ProviderError::InvalidConfig(
+                "response_format schema must be a JSON object".to_string(),
+            ));
         }
 
         Ok(())

@@ -96,13 +96,13 @@ fn handle_list_with_config(config: &Config) {
         config.lockfile_token_limit.get()
     );
     println!("  model_temperature: {}", config.model_temperature);
-        println!(
-            "  reasoning_effort: {}",
-            config
-                .reasoning_effort
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "<not set>".to_string())
-        );
+    println!(
+        "  reasoning_effort: {}",
+        config
+            .reasoning_effort
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "<not set>".to_string())
+    );
     println!(
         "  commit_message_max_length: {}",
         config

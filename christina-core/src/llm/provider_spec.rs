@@ -63,7 +63,6 @@ pub enum ProviderEndpoint {
 mod tests {
     use super::*;
 
-
     #[test]
     fn validate_temperature_nan() {
         assert!(Temperature::try_new(f32::NAN).is_err());

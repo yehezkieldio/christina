@@ -9,15 +9,26 @@ fn main() {
     ui::print_rule(ui::RuleWeight::Light, ui::RuleLength::Full);
     ui::print_heading("UI primitives");
     ui::print_line(ui::LineKind::Info, "Starting demo output.");
-    ui::print_line(ui::LineKind::Warning, "Warnings show with a bold exclamation.");
+    ui::print_line(
+        ui::LineKind::Warning,
+        "Warnings show with a bold exclamation.",
+    );
     ui::print_line(ui::LineKind::Error, "Errors go to stderr with emphasis.");
     ui::print_line(ui::LineKind::Success, "Success messages use a muted check.");
-    ui::print_line(ui::LineKind::Trace, "Trace lines are muted and go to stderr.");
+    ui::print_line(
+        ui::LineKind::Trace,
+        "Trace lines are muted and go to stderr.",
+    );
     ui::print_line(ui::LineKind::Hint, "Hints can guide the next action.");
     ui::print_divider_half();
 
     ui::print_heading("Lists");
-    let files = vec!["src/main.rs", "src/primitive/mod.rs", "Cargo.toml", "README.md"];
+    let files = vec![
+        "src/main.rs",
+        "src/primitive/mod.rs",
+        "Cargo.toml",
+        "README.md",
+    ];
     ui::print_list(
         &files,
         ui::ListOptions {
@@ -155,7 +166,14 @@ fn main() {
     ui::print_badge(ui::BadgeKind::Info, "Info badge");
     ui::print_badge(ui::BadgeKind::Warning, "Warning badge");
     ui::print_badge(ui::BadgeKind::Error, "Error badge");
-    ui::print_custom_line("★", ui::accent_style(), None, "Accent style sample", 0, false);
+    ui::print_custom_line(
+        "★",
+        ui::accent_style(),
+        None,
+        "Accent style sample",
+        0,
+        false,
+    );
 
     let _accent = ui::accent_style();
     let _theme = ui::theme();

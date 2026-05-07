@@ -208,7 +208,12 @@ impl Provider {
                 temperature,
                 ..
             } => {
-                let req = request_from_messages(messages, *max_tokens, *temperature, response_format.clone());
+                let req = request_from_messages(
+                    messages,
+                    *max_tokens,
+                    *temperature,
+                    response_format.clone(),
+                );
                 let gen_id = req.id;
                 let span = tracing::info_span!(
                     "llm_generate",
@@ -235,7 +240,8 @@ impl Provider {
                     reasoning_effort,
                 } => {
                     // Trace logging is handled at higher levels in the orchestrator
-                    let request = request_from_messages(messages, *max_tokens, *temperature, response_format);
+                    let request =
+                        request_from_messages(messages, *max_tokens, *temperature, response_format);
                     let response = azure::execute_azure_request(
                         &request,
                         api_key.as_str(),
@@ -343,7 +349,6 @@ fn request_from_messages(
         response_format,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -547,7 +552,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_request_from_messages() {
         let messages = vec![
@@ -556,8 +560,12 @@ mod tests {
         ];
         let max_tokens = TokenCount::new_at_least_one(100);
 
-        let request =
-            request_from_messages(&messages, max_tokens, Temperature::try_new(0.7).unwrap(), None);
+        let request = request_from_messages(
+            &messages,
+            max_tokens,
+            Temperature::try_new(0.7).unwrap(),
+            None,
+        );
 
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.max_tokens, max_tokens);

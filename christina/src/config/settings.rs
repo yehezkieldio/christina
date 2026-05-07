@@ -118,7 +118,6 @@ pub struct Config {
     #[serde(default = "default_lockfile_token_limit")]
     pub lockfile_token_limit: TokenCount,
 
-
     /// Enable experimental settings (default: false)
     #[serde(default)]
     pub use_experimental: bool,

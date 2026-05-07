@@ -74,9 +74,7 @@ pub fn create_spinner(msg: &str) -> ProgressBar {
     let spinner_style = ProgressStyle::default_spinner()
         .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
         .template("{spinner} {msg}")
-        .unwrap_or_else(|_| {
-            ProgressStyle::default_spinner().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
-        });
+        .unwrap_or_else(|_| ProgressStyle::default_spinner().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈"));
     pb.set_style(spinner_style);
     pb.set_message(msg.to_string());
     pb.enable_steady_tick(std::time::Duration::from_millis(120));
@@ -151,9 +149,7 @@ pub fn select_action(actions: &[&str]) -> Result<usize, dialoguer::Error> {
         .interact()
 }
 
-pub fn edit_commit_message_inline(
-    initial_content: &str,
-) -> Result<Option<String>, std::io::Error> {
+pub fn edit_commit_message_inline(initial_content: &str) -> Result<Option<String>, std::io::Error> {
     if !Term::stdout().is_term() || !std::io::stdin().is_terminal() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
@@ -165,9 +161,8 @@ pub fn edit_commit_message_inline(
         .edit_mode(EditMode::Emacs)
         .auto_add_history(false)
         .build();
-    let mut editor = Editor::<(), DefaultHistory>::with_config(config).map_err(|err| {
-        std::io::Error::other(format!("Failed to initialize line editor: {err}"))
-    })?;
+    let mut editor = Editor::<(), DefaultHistory>::with_config(config)
+        .map_err(|err| std::io::Error::other(format!("Failed to initialize line editor: {err}")))?;
 
     bind_ctrl_word_navigation(&mut editor);
 
@@ -187,7 +182,7 @@ pub fn edit_commit_message_inline(
             Err(err) => {
                 return Err(std::io::Error::other(format!(
                     "Inline editing failed: {err}"
-                )))
+                )));
             }
         }
     }
@@ -221,11 +216,7 @@ pub fn print_commit_message(msg: &str) {
         if line.is_empty() {
             let _ = term.write_line(&format!("{}", muted_style().apply_to("│")));
         } else {
-            let _ = term.write_line(&format!(
-                "{} {}",
-                muted_style().apply_to("│"),
-                line
-            ));
+            let _ = term.write_line(&format!("{} {}", muted_style().apply_to("│"), line));
         }
     }
     let _ = term.write_line("");

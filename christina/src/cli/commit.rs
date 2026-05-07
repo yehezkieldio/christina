@@ -12,7 +12,7 @@ use git2::Repository;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
-use crate::generate::{generate_commit_message_with_progress_and_trace};
+use crate::generate::generate_commit_message_with_progress_and_trace;
 use crate::git::adapter;
 use crate::ui;
 use crate::ui::events::Event;
@@ -263,8 +263,15 @@ async fn generate_commit(
         }
     });
 
-    let generation_result =
-        generate_commit_message_with_progress_and_trace(config, diff, repo_path, progress_tx, context, trace_enabled).await;
+    let generation_result = generate_commit_message_with_progress_and_trace(
+        config,
+        diff,
+        repo_path,
+        progress_tx,
+        context,
+        trace_enabled,
+    )
+    .await;
 
     let _ = progress_handle.await;
     spinner.finish_and_clear();
