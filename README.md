@@ -27,14 +27,30 @@ stage changes, run `christina`, review the message, commit.
 
 ## Pipeline
 
-Each run follows a fixed sequence:
+Each `christina` invocation runs through a fixed sequence of stages:
 
-1. **Read Git state**: Open the current repository, verify staged changes, and build the staged diff.
-2. **Load configuration**: Merge global config, safe local overrides from `./christina.toml`, active profile values, and `CHRISTINA_*` environment overrides.
-3. **Prepare context**: Collect staged file names, optional user context, and recent commit history if enabled.
-4. **Generate**: Send the diff directly for small inputs or split large diffs into chunks, summarize them concurrently, and synthesize a final message.
-5. **Review**: Show the generated message and let the operator accept, edit, regenerate, or cancel.
-6. **Commit**: Create the Git commit unless `--dry-run` was supplied.
+1. **Read**: Christina opens the current Git repository, verifies that the index
+   contains staged changes, and builds a staged diff. Unstaged files are ignored
+   completely, so the generated message matches exactly what Git is about to
+   commit.
+2. **Configure**: Runtime settings are loaded from the global config, safe local
+   overrides, the active profile, and environment variables. Provider credentials
+   are resolved from literal values, environment references, or keyring
+   references before any model request is made.
+3. **Contextualize**: Staged file names, optional `--context` text, and recent
+   commit subjects are prepared as prompt context. User context and history are
+   trimmed against the token budget instead of being allowed to crowd out the
+   staged diff.
+4. **Analyze**: Small diffs are sent through the direct prompt path. Large diffs
+   are split into budgeted chunks, summarized concurrently, and reduced into a
+   final intent summary before message generation.
+5. **Validate**: The generated message is cleaned, checked against the configured
+   Conventional Commit validation mode, and constrained by the configured subject
+   length. Trace mode reports budget warnings and generation stages when the
+   pipeline needs inspection.
+6. **Commit**: The proposed message is shown for confirmation. The operator can
+   accept, edit inline, regenerate, decline, or use `--dry-run` to stop before
+   Git writes the commit.
 
 ## Building from Source
 
@@ -143,7 +159,7 @@ Selected environment overrides:
 
 A complete example lives in [`config.example.toml`](config.example.toml).
 
-## Christina-specific
+## Commit Workflow
 
 Christina only reads staged changes. It does not inspect unstaged work, and it
 will exit before contacting the model when the index is empty.
