@@ -244,12 +244,14 @@ impl Provider {
                         request_from_messages(messages, *max_tokens, *temperature, response_format);
                     let response = azure::execute_azure_request(
                         &request,
-                        api_key.as_str(),
-                        endpoint,
-                        deployment_id,
-                        api_version,
-                        model.as_str(),
-                        *reasoning_effort,
+                        azure::AzureRequestConfig {
+                            api_key: api_key.as_str(),
+                            endpoint,
+                            deployment_id,
+                            api_version,
+                            model: model.as_str(),
+                            reasoning_effort: *reasoning_effort,
+                        },
                     )
                     .await?;
                     // Trace logging is handled at higher levels in the orchestrator

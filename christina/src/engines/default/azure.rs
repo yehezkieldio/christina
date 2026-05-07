@@ -31,47 +31,38 @@ fn azure_client() -> &'static Client {
     })
 }
 
+pub struct AzureRequestConfig<'a> {
+    pub api_key: &'a str,
+    pub endpoint: &'a str,
+    pub deployment_id: &'a str,
+    pub api_version: &'a str,
+    pub model: &'a str,
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
 /// Execute an Azure OpenAI request with retry logic and exponential backoff.
 pub async fn execute_azure_request(
     request: &LlmRequest,
-    api_key: &str,
-    endpoint: &str,
-    deployment_id: &str,
-    api_version: &str,
-    model: &str,
-    reasoning_effort: Option<ReasoningEffort>,
+    config: AzureRequestConfig<'_>,
 ) -> Result<LlmResponse, CompletionError> {
-    execute_azure_request_with_retry(
-        request,
-        api_key,
-        endpoint,
-        deployment_id,
-        api_version,
-        model,
-        reasoning_effort,
-        &RetryPolicy::default(),
-    )
-    .await
+    execute_azure_request_with_retry(request, config, &RetryPolicy::default()).await
 }
 
 /// Execute an Azure OpenAI request with custom retry policy.
 pub async fn execute_azure_request_with_retry(
     request: &LlmRequest,
-    api_key: &str,
-    endpoint: &str,
-    deployment_id: &str,
-    api_version: &str,
-    model: &str,
-    reasoning_effort: Option<ReasoningEffort>,
+    config: AzureRequestConfig<'_>,
     retry_policy: &RetryPolicy,
 ) -> Result<LlmResponse, CompletionError> {
     let request = Arc::new(request.clone());
-    let api_key: Arc<str> = Arc::from(api_key);
-    let endpoint: Arc<str> = Arc::from(endpoint);
-    let deployment_id: Arc<str> = Arc::from(deployment_id);
-    let api_version: Arc<str> = Arc::from(api_version);
-    let model: Arc<str> = Arc::from(model);
-    let reasoning_effort = reasoning_effort.map(|value| Arc::from(value.as_str()));
+    let api_key: Arc<str> = Arc::from(config.api_key);
+    let endpoint: Arc<str> = Arc::from(config.endpoint);
+    let deployment_id: Arc<str> = Arc::from(config.deployment_id);
+    let api_version: Arc<str> = Arc::from(config.api_version);
+    let model: Arc<str> = Arc::from(config.model);
+    let reasoning_effort = config
+        .reasoning_effort
+        .map(|value| Arc::from(value.as_str()));
 
     retry_with_backoff(retry_policy, || {
         let request = Arc::clone(&request);
@@ -175,10 +166,10 @@ impl From<&StructuredOutputFormat> for AzureResponseFormat {
 }
 
 fn normalize_schema(mut schema: serde_json::Value) -> serde_json::Value {
-    if let Some(obj) = schema.as_object_mut() {
-        if !obj.contains_key("additionalProperties") {
-            obj.insert("additionalProperties".to_string(), serde_json::json!(false));
-        }
+    if let Some(obj) = schema.as_object_mut()
+        && !obj.contains_key("additionalProperties")
+    {
+        obj.insert("additionalProperties".to_string(), serde_json::json!(false));
     }
     schema
 }

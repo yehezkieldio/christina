@@ -927,8 +927,7 @@ impl AIOrchestrator {
             ));
         }
 
-        let batch_count =
-            (summaries.len() + MAX_SUMMARIES_PER_INTENT_BATCH - 1) / MAX_SUMMARIES_PER_INTENT_BATCH;
+        let batch_count = summaries.len().div_ceil(MAX_SUMMARIES_PER_INTENT_BATCH);
         if trace {
             ui::print_trace(&format!("Grouped into {} batches", batch_count));
         }
@@ -1555,10 +1554,10 @@ impl AIOrchestrator {
     fn clean_response(&self, response: &str) -> String {
         let mut message = response.trim();
 
-        if message.starts_with("```") {
-            if let Some(end) = message[3..].find("```") {
-                message = message[3..3 + end].trim();
-            }
+        if message.starts_with("```")
+            && let Some(end) = message[3..].find("```")
+        {
+            message = message[3..3 + end].trim();
         }
 
         const PREAMBLES: [&str; 4] = [
