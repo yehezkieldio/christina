@@ -17,13 +17,13 @@ stage changes, run `christina`, review the message, commit.
 
 ## Features
 
-- **Staged-diff workflow**: Only staged changes are considered. If nothing is staged, Christina exits before contacting the model.
-- **Conventional Commit output**: Generated messages are checked against configurable validation modes (`strict`, `soft`, or `disabled`) and a configurable subject length.
-- **Large-diff handling**: Oversized diffs are chunked with local `tiktoken` counting, summarized concurrently, and reduced into one final message.
-- **Commit history context**: Recent commit subjects can be included so the generated message follows the local repository style.
-- **Interactive confirmation**: Accept, edit, regenerate, decline, or run with `--yes` for non-interactive use.
-- **Secure profile storage**: Profiles support literal values, environment references (`env:NAME`), and keyring references (`keyring:NAME`) when the `keyring-support` feature is enabled.
-- **Trace mode**: `--trace` prints generation stages and summary stats for debugging token budgets, provider behavior, and commit creation.
+- **Staged-Diff Workflow**: Only staged changes are considered. If nothing is staged, Christina exits before contacting the model.
+- **Conventional Commit Validation**: Generated messages are checked against configurable validation modes (`strict`, `soft`, or `disabled`) and a configurable subject length.
+- **Large-Diff Chunking**: Oversized diffs are budgeted with local `tiktoken` counting, summarized concurrently, and reduced into one final message.
+- **Commit History Context**: Recent commit subjects can be included so the generated message follows the local repository style.
+- **Interactive Confirmation**: Accept, edit, regenerate, decline, or run with `--yes` for non-interactive use.
+- **Secure Profile Storage**: Profiles support literal values, environment references (`env:NAME`), and keyring references (`keyring:NAME`) when the `keyring-support` feature is enabled.
+- **Diagnostic Trace Mode**: `--trace` prints generation stages and summary stats for debugging token budgets, provider behavior, and commit creation.
 
 ## Pipeline
 
