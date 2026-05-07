@@ -3,6 +3,9 @@ use std::path::Path;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "jsonschema")]
+use std::borrow::Cow;
+
 /// Relative file path within a Git repository.
 ///
 /// WHY CompactString: Most repository file paths are short (≤16 bytes on average:
@@ -20,20 +23,15 @@ pub struct FilePath(CompactString);
 
 #[cfg(feature = "jsonschema")]
 impl schemars::JsonSchema for FilePath {
-    fn schema_name() -> String {
-        "FilePath".to_string()
+    fn schema_name() -> Cow<'static, str> {
+        "FilePath".into()
     }
 
-    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
-        schemars::schema::SchemaObject {
-            instance_type: Some(schemars::schema::InstanceType::String.into()),
-            metadata: Some(Box::new(schemars::schema::Metadata {
-                description: Some("Relative file path within a Git repository".to_string()),
-                ..Default::default()
-            })),
-            ..Default::default()
-        }
-        .into()
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "Relative file path within a Git repository"
+        })
     }
 }
 

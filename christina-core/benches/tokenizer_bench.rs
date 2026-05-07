@@ -1,7 +1,8 @@
 #![allow(unused_crate_dependencies, clippy::unwrap_used, clippy::expect_used)]
 
 use christina_core::{Tokenizer, types::tokens::TokenCount};
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 
 // Placeholder uses for dev-dependencies not used in this benchmark
 use anyhow as _;

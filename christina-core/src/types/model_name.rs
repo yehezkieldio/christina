@@ -1,6 +1,9 @@
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "jsonschema")]
+use std::borrow::Cow;
+
 /// LLM model identifier.
 ///
 /// WHY CompactString: Model names like "gpt-4", "claude-3-opus" are typically short
@@ -13,22 +16,15 @@ pub struct ModelName(CompactString);
 
 #[cfg(feature = "jsonschema")]
 impl schemars::JsonSchema for ModelName {
-    fn schema_name() -> String {
-        "ModelName".to_string()
+    fn schema_name() -> Cow<'static, str> {
+        "ModelName".into()
     }
 
-    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
-        schemars::schema::SchemaObject {
-            instance_type: Some(schemars::schema::InstanceType::String.into()),
-            metadata: Some(Box::new(schemars::schema::Metadata {
-                description: Some(
-                    "LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')".to_string(),
-                ),
-                ..Default::default()
-            })),
-            ..Default::default()
-        }
-        .into()
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "LLM model identifier (e.g., 'gpt-4', 'claude-3-opus')"
+        })
     }
 }
 
