@@ -140,10 +140,9 @@ christina --trace
 
 Configuration is loaded in ascending priority:
 
-1. Global config: `~/.config/christina/config.toml` on Linux and macOS, or the platform equivalent.
-2. Local repository override: `./christina.toml` for safe repository-local settings.
-3. Active profile values.
-4. Environment variables.
+1. User config: `~/.config/christina/config.toml` on Linux and macOS, or the platform equivalent.
+2. Active profile values.
+3. Environment variables.
 
 Selected environment overrides:
 
@@ -174,10 +173,9 @@ will exit before contacting the model when the index is empty.
 The current provider surface is Azure OpenAI. The config model and profile CLI are
 provider-shaped, but this checkout only has the Azure backend wired in.
 
-Local repository config is intentionally narrower than global config. Use
-`./christina.toml` for safe project-level behavior such as ignored files and
-validation settings; keep provider credentials in the global config, environment,
-or keyring.
+Christina does not read repository-local config. Keep persistent settings in the
+user config path printed by `christina config path`, and use environment
+variables for invocation-specific overrides.
 
 Additional notes live under [`docs/`](docs/), including the generation pipeline,
 design notes, benchmarks, advanced configuration, and contribution notes.

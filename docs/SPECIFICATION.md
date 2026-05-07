@@ -31,8 +31,8 @@ Configuration is stored in TOML format. A formal JSON Schema is available at `co
 ### Precedence
 Precedence is applied strictly in this order (highest to lowest):
 1.  Environment variables (e.g., `CHRISTINA_MODEL`).
-2.  Local project file (`./christina.toml`).
-3.  User global file (`~/.config/christina/config.toml`).
+2.  Active profile values.
+3.  User config file (`~/.config/christina/config.toml`, or the platform equivalent).
 4.  Hardcoded defaults.
 
 ## Git Diff Requirements

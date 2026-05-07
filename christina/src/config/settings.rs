@@ -25,18 +25,6 @@ use url::Url;
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
 
-/// Local config values allowed for per-repo overrides without secrets.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-struct LocalConfigSafe {
-    ignore_files: Option<Vec<String>>,
-    lockfile_token_limit: Option<TokenCount>,
-    commit_message_max_length: Option<usize>,
-    commit_message_validation_mode: Option<ValidationMode>,
-    use_commit_history: Option<bool>,
-    commit_history_depth: Option<usize>,
-}
-
 /// Default schema version for config files
 fn default_schema_version() -> u32 {
     2
@@ -64,8 +52,8 @@ fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {
 ///
 /// Precedence (highest to lowest):
 /// 1. Environment variables (CHRISTINA_*)
-/// 2. Local config file (./christina.toml) - ONLY safe fields (security)
-/// 3. Global config file (~/.config/christina/config.toml)
+/// 2. Active profile values
+/// 3. User config file (~/.config/christina/config.toml, or platform equivalent)
 /// 4. Default values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -204,16 +192,6 @@ impl Config {
 
         // Fix profile names after deserialization (HashMap keys become names)
         config.profiles.fix_names();
-
-        // Local config is intentionally limited to non-sensitive fields.
-        let local_path = std::path::Path::new("./christina.toml");
-        if local_path.exists() {
-            let local_content = std::fs::read_to_string(local_path)
-                .context("Failed to read local config (christina.toml)")?;
-            let local_safe: LocalConfigSafe = toml::from_str(&local_content)
-                .context("Failed to parse local config (christina.toml)")?;
-            config.apply_local_safe_overrides(local_safe);
-        }
 
         // Create default profile if no profiles exist
         // Preserve token limits from current config (which may include env var overrides)
@@ -754,32 +732,6 @@ impl Config {
                 None
             }
         };
-    }
-
-    fn apply_local_safe_overrides(&mut self, local: LocalConfigSafe) {
-        if let Some(ignore_files) = local.ignore_files {
-            self.ignore_files = ignore_files;
-        }
-
-        if let Some(limit) = local.lockfile_token_limit {
-            self.lockfile_token_limit = limit;
-        }
-
-        if let Some(max_len) = local.commit_message_max_length {
-            self.commit_message_max_length = Some(max_len);
-        }
-
-        if let Some(mode) = local.commit_message_validation_mode {
-            self.commit_message_validation_mode = mode;
-        }
-
-        if let Some(use_history) = local.use_commit_history {
-            self.use_commit_history = use_history;
-        }
-
-        if let Some(depth) = local.commit_history_depth {
-            self.commit_history_depth = depth.clamp(0, 50);
-        }
     }
 
     pub fn load_active_profile(&mut self) {
