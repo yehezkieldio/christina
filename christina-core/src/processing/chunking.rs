@@ -328,22 +328,20 @@ fn truncate_to_token_limit_fallback(
     limit: TokenCount,
     tokenizer: &dyn Tokenizer,
 ) -> String {
-    let lines: Vec<&str> = content.lines().collect();
     let mut truncated = String::new();
 
-    for line in lines {
-        let mut candidate = truncated.clone();
-        candidate.push_str(line);
-        candidate.push('\n');
+    for line in content.lines() {
+        let previous_len = truncated.len();
+        truncated.push_str(line);
+        truncated.push('\n');
 
         // Verify actual token count to handle BPE boundary effects
-        let candidate_tokens = tokenizer.count_tokens(&candidate);
+        let candidate_tokens = tokenizer.count_tokens(&truncated);
 
         if candidate_tokens.get() > limit.get() {
+            truncated.truncate(previous_len);
             break;
         }
-
-        truncated = candidate;
     }
 
     truncated
@@ -479,16 +477,17 @@ pub fn split_by_lines(
 ) -> Vec<DiffChunk> {
     let mut chunks = Vec::new();
     let mut buffer = acquire_buffer();
+    let mut line_buffer = String::new();
     let mut current_tokens = 0u32;
 
     for line in content.lines() {
         // Count tokens with line + newline
-        // Temporarily build line in a separate buffer to count tokens
+        // Temporarily build line in a reusable buffer to count tokens.
         let line_token_count = {
-            let mut temp = String::with_capacity(line.len() + 1);
-            temp.push_str(line);
-            temp.push('\n');
-            tokenizer.count_tokens(&temp).get()
+            line_buffer.clear();
+            line_buffer.push_str(line);
+            line_buffer.push('\n');
+            tokenizer.count_tokens(&line_buffer).get()
         };
 
         // If a single line exceeds the limit, use smart slicing

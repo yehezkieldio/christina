@@ -201,47 +201,26 @@ impl Provider {
         messages: &[ChatMessage],
         response_format: Option<christina_core::llm::StructuredOutputFormat>,
     ) -> Result<String, CompletionError> {
-        let request = match self {
+        match self {
             Provider::Azure {
                 model,
+                api_key,
+                endpoint,
+                api_version,
+                deployment_id,
                 max_tokens,
                 temperature,
-                ..
+                reasoning_effort,
             } => {
-                let req = request_from_messages(
-                    messages,
-                    *max_tokens,
-                    *temperature,
-                    response_format.clone(),
-                );
-                let gen_id = req.id;
+                let request =
+                    request_from_messages(messages, *max_tokens, *temperature, response_format);
                 let span = tracing::info_span!(
                     "llm_generate",
-                    generation_id = %gen_id,
+                    generation_id = %request.id,
                     model = %model.as_str(),
                     provider = ?self.provider_kind()
                 );
-                Some((req, span))
-            }
-            #[cfg(test)]
-            _ => None,
-        };
-
-        let generate_impl = async {
-            match self {
-                Provider::Azure {
-                    model,
-                    api_key,
-                    endpoint,
-                    api_version,
-                    deployment_id,
-                    max_tokens,
-                    temperature,
-                    reasoning_effort,
-                } => {
-                    // Trace logging is handled at higher levels in the orchestrator
-                    let request =
-                        request_from_messages(messages, *max_tokens, *temperature, response_format);
+                async {
                     let response = azure::execute_azure_request(
                         &request,
                         azure::AzureRequestConfig {
@@ -254,36 +233,32 @@ impl Provider {
                         },
                     )
                     .await?;
-                    // Trace logging is handled at higher levels in the orchestrator
                     Ok(response.content)
                 }
-                #[cfg(test)]
-                Provider::Mock { response, delay_ms } => {
-                    tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
-                    Ok(response.clone())
-                }
-                #[cfg(test)]
-                Provider::MockSequence {
-                    responses,
-                    delay_ms,
-                } => {
-                    tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
-                    let mut guard = responses
-                        .lock()
-                        .map_err(|_| CompletionError::NetworkError("mock lock poisoned".into()))?;
-                    if guard.is_empty() {
-                        return Err(CompletionError::InvalidResponse(
-                            "mock sequence exhausted".into(),
-                        ));
-                    }
-                    guard.remove(0)
-                }
+                .instrument(span)
+                .await
             }
-        };
-
-        match request {
-            Some((_, span)) => generate_impl.instrument(span).await,
-            None => generate_impl.await,
+            #[cfg(test)]
+            Provider::Mock { response, delay_ms } => {
+                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+                Ok(response.clone())
+            }
+            #[cfg(test)]
+            Provider::MockSequence {
+                responses,
+                delay_ms,
+            } => {
+                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+                let mut guard = responses
+                    .lock()
+                    .map_err(|_| CompletionError::NetworkError("mock lock poisoned".into()))?;
+                if guard.is_empty() {
+                    return Err(CompletionError::InvalidResponse(
+                        "mock sequence exhausted".into(),
+                    ));
+                }
+                guard.remove(0)
+            }
         }
     }
 

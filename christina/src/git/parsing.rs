@@ -205,18 +205,13 @@ pub fn parse_git_diff_header(line: &str) -> Option<FilePath> {
 /// the header string mid-line.
 pub fn split_by_files(diff: &str, tokenizer: &dyn Tokenizer) -> Vec<FileDiff> {
     let mut positions = Vec::new();
+    let mut offset = 0usize;
 
-    if diff.trim_start().starts_with(FILE_HEADER) {
-        positions.push(0);
-    }
-
-    for (idx, byte) in diff.bytes().enumerate() {
-        if byte == b'\n' {
-            let start = idx + 1;
-            if start < diff.len() && diff[start..].trim_start().starts_with(FILE_HEADER) {
-                positions.push(start);
-            }
+    for line in diff.split_inclusive('\n') {
+        if line.trim_start().starts_with(FILE_HEADER) {
+            positions.push(offset);
         }
+        offset += line.len();
     }
 
     if positions.is_empty() {

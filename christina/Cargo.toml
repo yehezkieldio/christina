@@ -50,14 +50,13 @@ christina-core = { path = "../christina-core", features = ["test-helpers"] }
 proptest = "1.6.0"
 criterion = { workspace = true }
 
-# NOTE: Benches temporarily disabled during migration
-# [[bench]]
-# name = "chunking_bench"
-# harness = false
+[[bench]]
+name = "chunking_bench"
+harness = false
 
-# [[bench]]
-# name = "diff_processor_bench"
-# harness = false
+[[bench]]
+name = "diff_processor_bench"
+harness = false
 
 # [[bench]]
 # name = "tokenizer_service_bench"
