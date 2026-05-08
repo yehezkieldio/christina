@@ -21,12 +21,12 @@ pub mod git;
 use cap as _;
 use clap as _;
 use clap_complete as _;
-use config as _;
 use console as _;
 #[cfg(feature = "dhat-heap")]
 use dhat as _;
 use dialoguer as _;
 use directories as _;
+use figment as _;
 use fs2 as _;
 use indicatif as _;
 use mimalloc as _;

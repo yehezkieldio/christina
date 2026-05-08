@@ -899,7 +899,7 @@ impl AIOrchestrator {
                     ));
                     ui::print_trace(&format!(
                         "LLM response excerpt: {}",
-                        &response.chars().take(200).collect::<String>()
+                        response.chars().take(200).collect::<String>()
                     ));
                 }
                 debug!(

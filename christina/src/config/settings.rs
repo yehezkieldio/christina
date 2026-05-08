@@ -7,7 +7,12 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
+use figment::{
+    Figment,
+    providers::{Format, Serialized, Toml},
+};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Number, Value};
 use tracing;
 
 use crate::config::profiles::{Profiles, ProviderProfile};
@@ -24,6 +29,103 @@ use url::Url;
 
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
+
+#[derive(Debug, Clone)]
+struct ConfigSources {
+    config_file_contents: Option<String>,
+    process_env: Vec<(String, String)>,
+    persist_default_profile: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EnvBinding {
+    key: &'static str,
+    path: &'static [&'static str],
+}
+
+const LEGACY_ENV_BINDINGS: &[EnvBinding] = &[
+    EnvBinding {
+        key: "CHRISTINA_TOKENS_MAX_INPUT",
+        path: &["max_input_tokens"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_TOKENS_OUTPUT",
+        path: &["max_output_tokens"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_MODEL_PROVIDER",
+        path: &["model_provider"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_MODEL",
+        path: &["model"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_MODEL_API_KEY",
+        path: &["api_key"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_MODEL_API_URL",
+        path: &["model_api_url"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_AZURE_API_VERSION",
+        path: &["azure_api_version"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_AZURE_DEPLOYMENT_ID",
+        path: &["azure_deployment_id"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_MODEL_TEMPERATURE",
+        path: &["model_temperature"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_REASONING_EFFORT",
+        path: &["reasoning_effort"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_USE_COMMIT_HISTORY",
+        path: &["use_commit_history"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_COMMIT_HISTORY_DEPTH",
+        path: &["commit_history_depth"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_CONCURRENCY_LIMIT",
+        path: &["max_concurrent_requests"],
+    },
+    EnvBinding {
+        key: "CHRISTINA_MAX_FAILURE_RATE",
+        path: &["max_partial_failure_rate"],
+    },
+];
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+struct RuntimeEnvOverlay {
+    max_input_tokens: Option<TokenCount>,
+    max_output_tokens: Option<TokenCount>,
+    model_provider: Option<ProviderKind>,
+    model: Option<ModelName>,
+    api_key: Option<String>,
+    model_api_url: Option<Url>,
+    azure_api_version: Option<String>,
+    azure_deployment_id: Option<String>,
+    model_temperature: Option<f32>,
+    reasoning_effort: Option<ReasoningEffort>,
+    commit_message_max_length: Option<usize>,
+    commit_message_validation_mode: Option<ValidationMode>,
+    ignore_files: Option<Vec<String>>,
+    lockfile_token_limit: Option<TokenCount>,
+    use_experimental: Option<bool>,
+    use_commit_history: Option<bool>,
+    commit_history_depth: Option<usize>,
+    max_concurrent_requests: Option<usize>,
+    max_partial_failure_rate: Option<f64>,
+    prompt_failure_rate_threshold: Option<f64>,
+}
 
 /// Default schema version for config files
 fn default_schema_version() -> u32 {
@@ -177,20 +279,28 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Result<Self> {
+        let config_file_contents = if let Some(global_path) = Self::global_config_path() {
+            match std::fs::read_to_string(&global_path) {
+                Ok(contents) => Some(contents),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+                Err(err) => return Err(err).context("Failed to read global config"),
+            }
+        } else {
+            None
+        };
+
+        let sources = ConfigSources {
+            config_file_contents,
+            process_env: std::env::vars().collect(),
+            persist_default_profile: true,
+        };
+        Self::load_from_sources(sources)
+    }
+
+    fn load_from_sources(sources: ConfigSources) -> Result<Self> {
         let mut config = Config::default();
-
-        // Layer 3: Global config file
-        if let Some(global_path) = Self::global_config_path()
-            && global_path.exists()
-        {
-            let content =
-                std::fs::read_to_string(&global_path).context("Failed to read global config")?;
-            let config_file: ConfigFile =
-                toml::from_str(&content).context("Failed to parse global config")?;
-            config.apply_config_file(config_file);
-        }
-
-        // Fix profile names after deserialization (HashMap keys become names)
+        let config_file = extract_config_file(sources.config_file_contents.as_deref())?;
+        config.apply_config_file(config_file);
         config.profiles.fix_names();
 
         // Create default profile if no profiles exist
@@ -209,7 +319,9 @@ impl Config {
 
                     // Persist the default profile to global config to prevent recreation on next run
                     // This ensures user's API key and settings are not lost
-                    if let Err(e) = config.save_to_global() {
+                    if sources.persist_default_profile
+                        && let Err(e) = config.save_to_global()
+                    {
                         tracing::warn!(
                             "Failed to persist default profile (read-only config?): {}",
                             e
@@ -238,71 +350,8 @@ impl Config {
         // Load and apply active profile if set
         // This must happen BEFORE env vars so env vars can override the profile.
         config.load_active_profile();
-
-        // Layer 1: Environment variables (TRUSTED - can override all)
-        // Re-apply env vars as they have highest priority
-        if let Ok(env_val) = std::env::var("CHRISTINA_TOKENS_MAX_INPUT")
-            && let Ok(v) = env_val.parse()
-        {
-            config.max_input_tokens = v;
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_TOKENS_OUTPUT")
-            && let Ok(v) = env_val.parse()
-        {
-            config.max_output_tokens = v;
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_MODEL_PROVIDER") {
-            config.model_provider = env_val.parse().map_err(anyhow::Error::msg)?;
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_MODEL") {
-            config.model = ModelName::from(env_val.as_str());
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_MODEL_API_KEY") {
-            config.api_key = Some(env_val);
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_MODEL_API_URL") {
-            config.model_api_url = Some(Url::parse(&env_val)?);
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_AZURE_API_VERSION") {
-            config.azure_api_version = Some(env_val);
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_AZURE_DEPLOYMENT_ID") {
-            config.azure_deployment_id = Some(env_val);
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_MODEL_TEMPERATURE")
-            && let Ok(v) = env_val.parse()
-        {
-            config.model_temperature = v;
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_REASONING_EFFORT") {
-            match env_val.parse::<ReasoningEffort>() {
-                Ok(value) => config.reasoning_effort = Some(value),
-                Err(err) => {
-                    tracing::warn!("Invalid CHRISTINA_REASONING_EFFORT: {}", err);
-                    eprintln!("Warning: invalid CHRISTINA_REASONING_EFFORT: {}", err);
-                }
-            }
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_USE_COMMIT_HISTORY")
-            && let Ok(v) = env_val.parse()
-        {
-            config.use_commit_history = v;
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_COMMIT_HISTORY_DEPTH")
-            && let Ok(v) = env_val.parse::<usize>()
-        {
-            config.commit_history_depth = v.clamp(0, 50);
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_CONCURRENCY_LIMIT")
-            && let Ok(v) = env_val.parse::<usize>()
-        {
-            config.max_concurrent_requests = v.clamp(1, 20);
-        }
-        if let Ok(env_val) = std::env::var("CHRISTINA_MAX_FAILURE_RATE")
-            && let Ok(v) = env_val.parse::<f64>()
-        {
-            config.max_partial_failure_rate = v;
-        }
+        config.apply_env_overlay(build_nested_env_overlay(&sources.process_env)?);
+        config.apply_env_overlay(build_legacy_env_overlay(&sources.process_env)?);
 
         // Validate and clamp token values to hard limits after all configuration is loaded
         let warnings = config.validate();
@@ -337,6 +386,69 @@ impl Config {
         self.max_partial_failure_rate = file.advanced.max_partial_failure_rate;
         self.prompt_failure_rate_threshold = file.advanced.prompt_failure_rate_threshold;
         self.use_experimental = file.experimental.use_experimental;
+    }
+
+    fn apply_env_overlay(&mut self, overlay: RuntimeEnvOverlay) {
+        if let Some(value) = overlay.max_input_tokens {
+            self.max_input_tokens = value;
+        }
+        if let Some(value) = overlay.max_output_tokens {
+            self.max_output_tokens = value;
+        }
+        if let Some(value) = overlay.model_provider {
+            self.model_provider = value;
+        }
+        if let Some(value) = overlay.model {
+            self.model = value;
+        }
+        if let Some(value) = overlay.api_key {
+            self.api_key = Some(value);
+        }
+        if let Some(value) = overlay.model_api_url {
+            self.model_api_url = Some(value);
+        }
+        if let Some(value) = overlay.azure_api_version {
+            self.azure_api_version = Some(value);
+        }
+        if let Some(value) = overlay.azure_deployment_id {
+            self.azure_deployment_id = Some(value);
+        }
+        if let Some(value) = overlay.model_temperature {
+            self.model_temperature = value;
+        }
+        if let Some(value) = overlay.reasoning_effort {
+            self.reasoning_effort = Some(value);
+        }
+        if let Some(value) = overlay.commit_message_max_length {
+            self.commit_message_max_length = Some(value);
+        }
+        if let Some(value) = overlay.commit_message_validation_mode {
+            self.commit_message_validation_mode = value;
+        }
+        if let Some(value) = overlay.ignore_files {
+            self.ignore_files = value;
+        }
+        if let Some(value) = overlay.lockfile_token_limit {
+            self.lockfile_token_limit = value;
+        }
+        if let Some(value) = overlay.use_experimental {
+            self.use_experimental = value;
+        }
+        if let Some(value) = overlay.use_commit_history {
+            self.use_commit_history = value;
+        }
+        if let Some(value) = overlay.commit_history_depth {
+            self.commit_history_depth = value;
+        }
+        if let Some(value) = overlay.max_concurrent_requests {
+            self.max_concurrent_requests = value;
+        }
+        if let Some(value) = overlay.max_partial_failure_rate {
+            self.max_partial_failure_rate = value;
+        }
+        if let Some(value) = overlay.prompt_failure_rate_threshold {
+            self.prompt_failure_rate_threshold = value;
+        }
     }
 
     fn to_config_file(&self) -> ConfigFile {
@@ -427,6 +539,34 @@ impl Config {
             self.max_partial_failure_rate = clamped_failure_rate;
         }
         warnings.append(&mut failure_warnings);
+
+        let original_commit_history_depth = self.commit_history_depth;
+        self.commit_history_depth = self.commit_history_depth.clamp(0, 50);
+        if self.commit_history_depth != original_commit_history_depth {
+            warnings.push(format!(
+                "commit_history_depth clamped from {} to {}",
+                original_commit_history_depth, self.commit_history_depth
+            ));
+        }
+
+        let original_concurrency = self.max_concurrent_requests;
+        self.max_concurrent_requests = self.max_concurrent_requests.clamp(1, 20);
+        if self.max_concurrent_requests != original_concurrency {
+            warnings.push(format!(
+                "max_concurrent_requests clamped from {} to {}",
+                original_concurrency, self.max_concurrent_requests
+            ));
+        }
+
+        let original_prompt_failure_rate = self.prompt_failure_rate_threshold;
+        self.prompt_failure_rate_threshold = self.prompt_failure_rate_threshold.clamp(0.0, 1.0);
+        if (self.prompt_failure_rate_threshold - original_prompt_failure_rate).abs() > f64::EPSILON
+        {
+            warnings.push(format!(
+                "prompt_failure_rate_threshold clamped from {} to {}",
+                original_prompt_failure_rate, self.prompt_failure_rate_threshold
+            ));
+        }
 
         // Warn if provider is unknown (but don't fail - let provider selection handle it)
         warnings
@@ -763,6 +903,143 @@ impl Config {
             reasoning_effort: self.reasoning_effort,
         }
     }
+}
+
+fn extract_config_file(contents: Option<&str>) -> Result<ConfigFile> {
+    let mut figment = Figment::new().merge(Serialized::defaults(ConfigFile::default()));
+    if let Some(contents) = contents {
+        figment = figment.merge(Toml::string(contents));
+    }
+    figment
+        .extract()
+        .context("Failed to parse global config with Figment")
+}
+
+fn build_legacy_env_overlay(entries: &[(String, String)]) -> Result<RuntimeEnvOverlay> {
+    build_env_overlay(entries, legacy_env_path)
+}
+
+fn build_nested_env_overlay(entries: &[(String, String)]) -> Result<RuntimeEnvOverlay> {
+    build_env_overlay(entries, nested_env_path)
+}
+
+fn build_env_overlay(
+    entries: &[(String, String)],
+    path_for_key: fn(&str) -> Option<Vec<&'static str>>,
+) -> Result<RuntimeEnvOverlay> {
+    let mut root = Map::new();
+    let mut source_names = Vec::new();
+
+    for (key, raw_value) in entries {
+        let Some(path) = path_for_key(key) else {
+            continue;
+        };
+        if path.is_empty() {
+            continue;
+        }
+
+        source_names.push(key.clone());
+        insert_nested(&mut root, &path, parse_env_scalar(raw_value));
+    }
+
+    if root.is_empty() {
+        return Ok(RuntimeEnvOverlay::default());
+    }
+
+    let source_label = source_names.join(", ");
+    Figment::new()
+        .merge(Serialized::defaults(Value::Object(root)))
+        .extract()
+        .with_context(|| format!("Failed to parse environment override from {source_label}"))
+}
+
+fn legacy_env_path(key: &str) -> Option<Vec<&'static str>> {
+    let normalized = key.trim().to_ascii_uppercase();
+    LEGACY_ENV_BINDINGS
+        .iter()
+        .find(|binding| binding.key == normalized)
+        .map(|binding| binding.path.to_vec())
+}
+
+fn nested_env_path(key: &str) -> Option<Vec<&'static str>> {
+    let suffix = key
+        .trim()
+        .to_ascii_uppercase()
+        .strip_prefix("CHRISTINA_")?
+        .to_string();
+    if !suffix.contains("__") {
+        return None;
+    }
+
+    let path = match suffix.as_str() {
+        "STANDARD__COMMIT_MESSAGE_MAX_LENGTH" => &["commit_message_max_length"][..],
+        "STANDARD__COMMIT_MESSAGE_VALIDATION_MODE" => &["commit_message_validation_mode"],
+        "STANDARD__IGNORE_FILES" => &["ignore_files"],
+        "ADVANCED__LOCKFILE_TOKEN_LIMIT" => &["lockfile_token_limit"],
+        "ADVANCED__USE_COMMIT_HISTORY" => &["use_commit_history"],
+        "ADVANCED__COMMIT_HISTORY_DEPTH" => &["commit_history_depth"],
+        "ADVANCED__MAX_CONCURRENT_REQUESTS" => &["max_concurrent_requests"],
+        "ADVANCED__MAX_PARTIAL_FAILURE_RATE" => &["max_partial_failure_rate"],
+        "ADVANCED__PROMPT_FAILURE_RATE_THRESHOLD" => &["prompt_failure_rate_threshold"],
+        "EXPERIMENTAL__USE_EXPERIMENTAL" => &["use_experimental"],
+        _ => return None,
+    };
+
+    Some(path.to_vec())
+}
+
+fn insert_nested(root: &mut Map<String, Value>, path: &[&str], value: Value) {
+    let Some((head, tail)) = path.split_first() else {
+        return;
+    };
+
+    if tail.is_empty() {
+        root.insert((*head).to_string(), value);
+        return;
+    }
+
+    let entry = root
+        .entry((*head).to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !entry.is_object() {
+        *entry = Value::Object(Map::new());
+    }
+
+    if let Value::Object(child) = entry {
+        insert_nested(child, tail, value);
+    }
+}
+
+fn parse_env_scalar(raw_value: &str) -> Value {
+    let value = raw_value.trim();
+    if value.eq_ignore_ascii_case("true") {
+        return Value::Bool(true);
+    }
+    if value.eq_ignore_ascii_case("false") {
+        return Value::Bool(false);
+    }
+    if let Ok(parsed) = value.parse::<i64>() {
+        return Value::Number(parsed.into());
+    }
+    if let Ok(parsed) = value.parse::<u64>() {
+        return Value::Number(parsed.into());
+    }
+    if let Ok(parsed) = value.parse::<f64>()
+        && let Some(number) = Number::from_f64(parsed)
+    {
+        return Value::Number(number);
+    }
+    if value.contains(',') {
+        return Value::Array(
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| Value::String(part.to_string()))
+                .collect(),
+        );
+    }
+    Value::String(value.to_string())
 }
 
 fn render_config_file_with_comments(config: &ConfigFile) -> Result<String> {
@@ -1237,13 +1514,13 @@ mod tests {
     #[test]
     fn get_max_input_tokens() {
         let config = Config::default();
-        assert_eq!(config.get("max_input_tokens"), Some("4096".to_string()));
+        assert_eq!(config.get("max_input_tokens"), Some("256000".to_string()));
     }
 
     #[test]
     fn get_max_output_tokens() {
         let config = Config::default();
-        assert_eq!(config.get("max_output_tokens"), Some("500".to_string()));
+        assert_eq!(config.get("max_output_tokens"), Some("8192".to_string()));
     }
 
     #[test]
@@ -1262,10 +1539,195 @@ mod tests {
         assert_eq!(parsed.unwrap(), ProviderKind::Azure);
     }
 
+    fn test_sources(
+        config_file_contents: Option<&str>,
+        process_env: Vec<(&str, &str)>,
+    ) -> ConfigSources {
+        ConfigSources {
+            config_file_contents: config_file_contents.map(str::to_string),
+            process_env: process_env
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+            persist_default_profile: false,
+        }
+    }
+
+    #[test]
+    fn load_from_sources_supports_file_only_config() {
+        let config = Config::load_from_sources(test_sources(
+            Some(
+                r#"
+                [standard]
+                active_profile = "default"
+                ignore_files = ["Cargo.lock"]
+
+                [advanced]
+                commit_history_depth = 12
+                max_concurrent_requests = 3
+
+                [profiles.default]
+                name = "default"
+                provider = "azure"
+                model = "gpt-4.1-mini"
+                api_key = { value = "sk-file" }
+                max_input_tokens = 9000
+                max_output_tokens = 1000
+                "#,
+            ),
+            Vec::new(),
+        ))
+        .expect("file-only config should load");
+
+        assert_eq!(config.ignore_files, vec!["Cargo.lock"]);
+        assert_eq!(config.commit_history_depth, 12);
+        assert_eq!(config.max_concurrent_requests, 3);
+        assert_eq!(config.model, ModelName::from("gpt-4.1-mini"));
+        assert_eq!(config.api_key, Some("sk-file".to_string()));
+        assert_eq!(config.max_input_tokens.get(), 9000);
+        assert_eq!(config.max_output_tokens.get(), 1000);
+    }
+
+    #[test]
+    fn load_from_sources_supports_legacy_env_only_config() {
+        let config = Config::load_from_sources(test_sources(
+            None,
+            vec![
+                ("CHRISTINA_TOKENS_MAX_INPUT", "64000"),
+                ("CHRISTINA_TOKENS_OUTPUT", "4096"),
+                ("CHRISTINA_MODEL", "gpt-5-mini"),
+                ("CHRISTINA_MODEL_API_KEY", "sk-env"),
+                ("CHRISTINA_CONCURRENCY_LIMIT", "7"),
+                ("CHRISTINA_MODEL_TEMPERATURE", "0.7"),
+            ],
+        ))
+        .expect("legacy env-only config should load");
+
+        assert_eq!(config.max_input_tokens.get(), 64000);
+        assert_eq!(config.max_output_tokens.get(), 4096);
+        assert_eq!(config.model, ModelName::from("gpt-5-mini"));
+        assert_eq!(config.api_key, Some("sk-env".to_string()));
+        assert_eq!(config.max_concurrent_requests, 7);
+        assert_eq!(config.model_temperature, 0.7);
+    }
+
+    #[test]
+    fn load_from_sources_applies_file_profile_then_env_precedence() {
+        let config = Config::load_from_sources(test_sources(
+            Some(
+                r#"
+                [standard]
+                active_profile = "default"
+
+                [advanced]
+                max_concurrent_requests = 2
+
+                [profiles.default]
+                name = "default"
+                provider = "azure"
+                model = "gpt-profile"
+                api_key = { value = "sk-profile" }
+                max_input_tokens = 12000
+                max_output_tokens = 2000
+                "#,
+            ),
+            vec![
+                ("CHRISTINA_MODEL", "gpt-env"),
+                ("CHRISTINA_TOKENS_OUTPUT", "3000"),
+                ("CHRISTINA_ADVANCED__MAX_CONCURRENT_REQUESTS", "5"),
+            ],
+        ))
+        .expect("profile plus env config should load");
+
+        assert_eq!(config.model, ModelName::from("gpt-env"));
+        assert_eq!(config.api_key, Some("sk-profile".to_string()));
+        assert_eq!(config.max_input_tokens.get(), 12000);
+        assert_eq!(config.max_output_tokens.get(), 3000);
+        assert_eq!(config.max_concurrent_requests, 5);
+    }
+
+    #[test]
+    fn load_from_sources_legacy_env_wins_over_nested_env() {
+        let config = Config::load_from_sources(test_sources(
+            None,
+            vec![
+                ("CHRISTINA_ADVANCED__MAX_CONCURRENT_REQUESTS", "2"),
+                ("CHRISTINA_CONCURRENCY_LIMIT", "9"),
+            ],
+        ))
+        .expect("conflicting env config should load");
+
+        assert_eq!(config.max_concurrent_requests, 9);
+    }
+
+    #[test]
+    fn load_from_sources_reports_invalid_env_source() {
+        let err = Config::load_from_sources(test_sources(
+            None,
+            vec![("CHRISTINA_CONCURRENCY_LIMIT", "many")],
+        ))
+        .expect_err("invalid env should fail");
+
+        assert!(err.to_string().contains("CHRISTINA_CONCURRENCY_LIMIT"));
+    }
+
+    #[test]
+    fn load_from_sources_clamps_after_env_overlay() {
+        let config = Config::load_from_sources(test_sources(
+            None,
+            vec![
+                ("CHRISTINA_TOKENS_MAX_INPUT", "1000"),
+                ("CHRISTINA_TOKENS_OUTPUT", "2000"),
+                ("CHRISTINA_MODEL_TEMPERATURE", "3.5"),
+                ("CHRISTINA_ADVANCED__COMMIT_HISTORY_DEPTH", "99"),
+                ("CHRISTINA_CONCURRENCY_LIMIT", "30"),
+                ("CHRISTINA_MAX_FAILURE_RATE", "0.9"),
+            ],
+        ))
+        .expect("clamped env config should load");
+
+        assert!(config.max_output_tokens < config.max_input_tokens);
+        assert_eq!(config.model_temperature, 2.0);
+        assert_eq!(config.commit_history_depth, 50);
+        assert_eq!(config.max_concurrent_requests, 20);
+        assert_eq!(config.max_partial_failure_rate, MAX_PARTIAL_FAILURE_RATE);
+    }
+
+    #[test]
+    #[allow(unsafe_code)]
+    fn load_from_sources_resolves_profile_secret_env_reference() {
+        unsafe {
+            std::env::set_var("CHRISTINA_TEST_PROFILE_SECRET", "sk-secret");
+        }
+        let config = Config::load_from_sources(test_sources(
+            Some(
+                r#"
+                [standard]
+                active_profile = "default"
+
+                [profiles.default]
+                name = "default"
+                provider = "azure"
+                model = "gpt-profile"
+                api_key = { env = "CHRISTINA_TEST_PROFILE_SECRET" }
+                max_input_tokens = 12000
+                max_output_tokens = 2000
+                "#,
+            ),
+            Vec::new(),
+        ))
+        .expect("profile secret env reference should load");
+        unsafe {
+            std::env::remove_var("CHRISTINA_TEST_PROFILE_SECRET");
+        }
+
+        assert_eq!(config.api_key, Some("sk-secret".to_string()));
+    }
+
     #[test]
     fn get_model() {
         let config = Config::default();
-        assert_eq!(config.get("model"), Some("gpt-4.1-mini".to_string()));
+        assert_eq!(config.get("model"), Some("gpt-4o".to_string()));
     }
 
     #[test]
@@ -1374,8 +1836,8 @@ mod tests {
         );
         assert_eq!(
             config.max_output_tokens.get(),
-            MAX_OUTPUT,
-            "should clamp output tokens to hard limit"
+            MAX_INPUT - 1,
+            "should leave output below input after hard-limit clamping"
         );
         assert!(warnings.iter().any(|w| w.contains("max_input_tokens")));
         assert!(warnings.iter().any(|w| w.contains("max_output_tokens")));
@@ -1429,7 +1891,7 @@ mod tests {
         let mut config = Config::default();
         config.apply_config_file(config_file);
         assert_eq!(config.ignore_files, vec!["test.lock"]);
-        assert_eq!(config.max_input_tokens.get(), 4096);
+        assert_eq!(config.max_input_tokens.get(), 256000);
     }
 
     #[test]
