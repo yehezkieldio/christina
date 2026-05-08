@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+#[cfg(test)]
 use tracing::info;
 
 use christina_core::git::stage::BINARY_EXTENSIONS;
@@ -16,7 +17,7 @@ use christina_core::{
 };
 use memchr::memchr;
 
-use crate::git::parsing::{self, safe_truncate};
+use crate::git::parsing;
 
 /// Processor for splitting large diffs into manageable chunks.
 pub struct DiffProcessor {
@@ -98,6 +99,7 @@ impl DiffProcessor {
     }
 
     /// Process a diff string into chunks that fit within the token budget.
+    #[cfg(test)]
     pub fn process(&self, diff: &str) -> Vec<DiffChunk> {
         if diff.is_empty() {
             return Vec::new();
@@ -111,12 +113,13 @@ impl DiffProcessor {
         self.process_borrowed(diff)
     }
 
+    #[cfg(test)]
     fn process_borrowed(&self, diff: &str) -> Vec<DiffChunk> {
         if diff.len() > self.max_diff_size {
             let file_diffs = parsing::split_by_files(diff, self.tokenizer.as_ref());
 
             if file_diffs.is_empty() {
-                let truncated = safe_truncate(diff, self.max_diff_size);
+                let truncated = parsing::safe_truncate(diff, self.max_diff_size);
                 let files = parsing::extract_file_paths(truncated);
                 info!(
                     "Diff truncated for size: {} bytes (max {})",

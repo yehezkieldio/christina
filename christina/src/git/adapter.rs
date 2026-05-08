@@ -29,6 +29,7 @@ fn get_delta_path(delta: &git2::DiffDelta) -> Option<String> {
     .map(|p| p.to_string_lossy().to_string())
 }
 
+#[cfg(test)]
 fn collect_files_from_diff(diff: &git2::Diff) -> Result<Vec<GitFile>> {
     // Collect file metadata first
     let mut files = Vec::new();
@@ -138,21 +139,6 @@ where
     }
 }
 
-pub async fn get_staged_files_with_timeout(repo_path: impl AsRef<Path>) -> Result<Vec<GitFile>> {
-    let repo_path = repo_path.as_ref().to_path_buf();
-    run_with_git_timeout(repo_path, "get staged files", get_staged_files).await
-}
-
-pub async fn has_staged_changes_with_timeout(repo_path: impl AsRef<Path>) -> Result<bool> {
-    let repo_path = repo_path.as_ref().to_path_buf();
-    run_with_git_timeout(repo_path, "check staged changes", has_staged_changes).await
-}
-
-pub async fn build_staged_diff_with_timeout(repo_path: impl AsRef<Path>) -> Result<String> {
-    let repo_path = repo_path.as_ref().to_path_buf();
-    run_with_git_timeout(repo_path, "build staged diff", build_staged_diff).await
-}
-
 pub async fn collect_staged_changes_with_timeout(
     repo_path: impl AsRef<Path>,
 ) -> Result<StagedChanges> {
@@ -173,6 +159,7 @@ pub async fn create_commit_with_timeout(
 }
 
 /// Get staged files (changes between HEAD and index)
+#[cfg(test)]
 pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     let head_tree = match repo.head() {
         Ok(head) => Some(head.peel_to_tree()?),
@@ -503,6 +490,7 @@ fn is_noninteractive_gpg_error(stderr: &str) -> bool {
 }
 
 /// Check if there are staged changes
+#[cfg(test)]
 pub fn has_staged_changes(repo: &Repository) -> Result<bool> {
     let head_tree = match repo.head() {
         Ok(head) => Some(head.peel_to_tree()?),
@@ -536,6 +524,7 @@ pub fn validate_for_commit(repo: &Repository) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 pub fn build_staged_diff(repo: &Repository) -> Result<String> {
     if repo.state() != git2::RepositoryState::Clean {
         return Err(anyhow::anyhow!("Repository is in {:?} state", repo.state()));
