@@ -155,6 +155,25 @@ You are allowed and expected to:
 
 Stability is secondary to **correctness, clarity, and performance**.
 
+## Comment Hygiene
+
+Comments are part of the semantic contract, not narration.
+
+Do not explain syntax, restate names, or describe obvious control flow.
+Every comment must preserve reasoning, constraints, or invariants that would
+otherwise be lost during refactor.
+
+Add comments only when at least one is true:
+
+- The code enforces a non-obvious invariant or business rule
+- Correctness depends on ordering, coupling, or hidden assumptions
+- Refactoring this without context would likely introduce bugs
+- There is a safety, concurrency, security, or performance implication
+- An alternative was considered and deliberately rejected
+
+Prefer comments that explain why, why not, or what must never change, not what
+happens.
+
 ## Philosophy
 
 Write Rust that reads like Rust.

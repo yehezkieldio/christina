@@ -4,8 +4,8 @@ cargo := "cargo"
 default:
     just --list
 
-# Run all checks (clippy, fmt, and tests)
-all: fmt clippy test
+# Run all checks (formatting, compile checks, clippy, and tests)
+all: fmt-check check clippy test
 
 # Check code for compilation errors
 check:

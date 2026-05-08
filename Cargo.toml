@@ -3,7 +3,8 @@ resolver = "3"
 
 members = [
     "christina",
-    "christina-core", "ui-extractable",
+    "christina-core",
+    "ui-extractable",
 ]
 
 [workspace.package]
