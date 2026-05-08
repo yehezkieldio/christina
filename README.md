@@ -163,8 +163,6 @@ Selected environment overrides:
 | `CHRISTINA_CONCURRENCY_LIMIT` | Concurrent map requests, clamped to 1-20. |
 | `CHRISTINA_MAX_FAILURE_RATE` | Allowed partial map failure rate before aborting. |
 
-A complete example lives in [`config.example.toml`](config.example.toml).
-
 ## Commit Workflow
 
 Christina only reads staged changes. It does not inspect unstaged work, and it
@@ -176,9 +174,6 @@ provider-shaped, but this checkout only has the Azure backend wired in.
 Christina does not read repository-local config. Keep persistent settings in the
 user config path printed by `christina config path`, and use environment
 variables for invocation-specific overrides.
-
-Additional maintained references live under [`docs/`](docs/), currently focused
-on advanced configuration, benchmark expectations, and domain boundary types.
 
 ## Development
 

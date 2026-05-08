@@ -251,7 +251,6 @@ pub struct Config {
     /// Failure rate threshold for prompting user confirmation (0.0-1.0, default: 0.05)
     #[serde(default)]
     pub prompt_failure_rate_threshold: f64,
-
 }
 
 #[derive(Debug, Clone)]
@@ -1002,6 +1001,16 @@ impl Config {
 fn extract_config_file(contents: Option<&str>) -> Result<ConfigFile> {
     let mut figment = Figment::new().merge(Serialized::defaults(ConfigFile::default()));
     if let Some(contents) = contents {
+        let value: toml::Value =
+            toml::from_str(contents).context("Failed to parse global config as TOML")?;
+        if value
+            .as_table()
+            .is_some_and(|table| table.contains_key("schema_version"))
+        {
+            anyhow::bail!(
+                "schema_version is no longer supported; remove it from the Christina config"
+            );
+        }
         figment = figment.merge(Toml::string(contents));
     }
     figment
@@ -1992,6 +2001,24 @@ mod tests {
         config.apply_config_file(config_file);
         assert_eq!(config.ignore_files, vec!["test.lock"]);
         assert_eq!(config.max_input_tokens.get(), 256000);
+    }
+
+    #[test]
+    fn config_rejects_schema_version() {
+        let err = extract_config_file(Some(
+            r#"
+            schema_version = 2
+
+            [standard]
+            ignore_files = []
+            "#,
+        ))
+        .expect_err("schema_version should be rejected");
+
+        assert!(
+            err.to_string()
+                .contains("schema_version is no longer supported")
+        );
     }
 
     #[test]
