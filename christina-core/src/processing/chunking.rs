@@ -555,6 +555,60 @@ fn split_oversized_line(
     token_limit: TokenCount,
     tokenizer: &dyn Tokenizer,
 ) -> Vec<DiffChunk> {
+    if let Some(chunks) = split_oversized_line_by_tokens(file_path, line, token_limit, tokenizer) {
+        return chunks;
+    }
+
+    split_oversized_line_by_search(file_path, line, token_limit, tokenizer)
+}
+
+fn split_oversized_line_by_tokens(
+    file_path: &FilePath,
+    line: &str,
+    token_limit: TokenCount,
+    tokenizer: &dyn Tokenizer,
+) -> Option<Vec<DiffChunk>> {
+    let tokens = tokenizer.encode(line);
+    let limit = token_limit.get() as usize;
+    if tokens.len() <= limit || limit == 0 {
+        return None;
+    }
+
+    let mut chunks = Vec::with_capacity(tokens.len().div_ceil(limit));
+    let mut byte_offset = 0usize;
+
+    for token_chunk in tokens.chunks(limit) {
+        let decoded = tokenizer.decode(token_chunk)?;
+        if decoded.is_empty() || !line[byte_offset..].starts_with(&decoded) {
+            return None;
+        }
+
+        let end = byte_offset + decoded.len();
+        if !line.is_char_boundary(end) {
+            return None;
+        }
+
+        chunks.push(DiffChunk::new(
+            Arc::from(&line[byte_offset..end]),
+            vec![file_path.clone()],
+            TokenCount::new_at_least_one(token_chunk.len() as u32),
+        ));
+        byte_offset = end;
+    }
+
+    if byte_offset == line.len() {
+        Some(chunks)
+    } else {
+        None
+    }
+}
+
+fn split_oversized_line_by_search(
+    file_path: &FilePath,
+    line: &str,
+    token_limit: TokenCount,
+    tokenizer: &dyn Tokenizer,
+) -> Vec<DiffChunk> {
     let mut chunks = Vec::new();
     let mut start = 0;
 

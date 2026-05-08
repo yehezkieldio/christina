@@ -65,12 +65,10 @@ pub trait Tokenizer: Send + Sync {
         while low < high {
             let mid = (low + high).div_ceil(2);
 
-            let boundary = text
-                .char_indices()
-                .take_while(|(i, _)| *i <= mid)
-                .last()
-                .map(|(i, c)| i + c.len_utf8())
-                .unwrap_or(0);
+            let mut boundary = mid.min(text.len());
+            while boundary > 0 && !text.is_char_boundary(boundary) {
+                boundary -= 1;
+            }
 
             let slice = &text[..boundary];
             let token_count = self.count_tokens(slice);

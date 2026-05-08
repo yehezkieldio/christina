@@ -13,6 +13,12 @@ use tokio::time;
 use christina_core::git::GitFile;
 use christina_core::types::MAX_DIFF_SIZE;
 
+#[derive(Debug)]
+pub struct StagedChanges {
+    pub files: Vec<GitFile>,
+    pub diff: String,
+}
+
 /// Get the appropriate path from a delta based on its status.
 /// For deletions, use old_file path; otherwise use new_file path.
 fn get_delta_path(delta: &git2::DiffDelta) -> Option<String> {
@@ -147,6 +153,13 @@ pub async fn build_staged_diff_with_timeout(repo_path: impl AsRef<Path>) -> Resu
     run_with_git_timeout(repo_path, "build staged diff", build_staged_diff).await
 }
 
+pub async fn collect_staged_changes_with_timeout(
+    repo_path: impl AsRef<Path>,
+) -> Result<StagedChanges> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    run_with_git_timeout(repo_path, "collect staged changes", collect_staged_changes).await
+}
+
 pub async fn create_commit_with_timeout(
     repo_path: impl AsRef<Path>,
     message: &str,
@@ -189,6 +202,70 @@ pub fn get_staged_files(repo: &Repository) -> Result<Vec<GitFile>> {
     diff.find_similar(Some(&mut find_opts))?;
 
     collect_files_from_diff(&diff)
+}
+
+pub fn collect_staged_changes(repo: &Repository) -> Result<StagedChanges> {
+    if repo.state() != git2::RepositoryState::Clean {
+        return Err(anyhow::anyhow!("Repository is in {:?} state", repo.state()));
+    }
+
+    let head_tree = match repo.head() {
+        Ok(head) => Some(head.peel_to_tree()?),
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(e) => return Err(e.into()),
+    };
+
+    let mut opts = DiffOptions::new();
+    opts.include_untracked(false)
+        .ignore_whitespace_change(false)
+        .context_lines(1)
+        .old_prefix("a/")
+        .new_prefix("b/");
+
+    let mut diff =
+        repo.diff_tree_to_index(head_tree.as_ref(), Some(&repo.index()?), Some(&mut opts))?;
+
+    let mut find_opts = git2::DiffFindOptions::new();
+    find_opts
+        .renames(true)
+        .copies(true)
+        .copies_from_unmodified(true)
+        .renames_from_rewrites(true)
+        .rename_threshold(40)
+        .copy_threshold(40);
+    diff.find_similar(Some(&mut find_opts))?;
+
+    let mut files = Vec::new();
+    diff.foreach(
+        &mut |delta, _| {
+            if let Some(path) = get_delta_path(&delta) {
+                let status = match delta.status() {
+                    git2::Delta::Added => "A",
+                    git2::Delta::Deleted => "D",
+                    git2::Delta::Modified => "M",
+                    git2::Delta::Renamed => "R",
+                    git2::Delta::Copied => "C",
+                    _ => "?",
+                };
+                files.push(GitFile::new(path, status.to_string(), String::new()));
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )?;
+
+    if files.is_empty() {
+        return Err(anyhow::anyhow!("No staged changes to process"));
+    }
+
+    let diff_string = format_patch_bounded(&diff)?;
+
+    Ok(StagedChanges {
+        files,
+        diff: diff_string,
+    })
 }
 
 #[cfg(test)]
@@ -479,6 +556,10 @@ pub fn build_staged_diff(repo: &Repository) -> Result<String> {
         .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
         .context("Failed to create diff")?;
 
+    format_patch_bounded(&diff)
+}
+
+fn format_patch_bounded(diff: &git2::Diff) -> Result<String> {
     let mut diff_string = String::new();
     let notice = "\n[diff truncated: max size reached]";
     let max_without_notice = MAX_DIFF_SIZE.saturating_sub(notice.len());

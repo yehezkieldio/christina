@@ -12,7 +12,7 @@ use christina_core::{
     Tokenizer,
     processing::chunking,
     types::tokens::TokenCount,
-    types::{DiffChunk, MAX_DIFF_SIZE},
+    types::{DiffChunk, FileDiff, MAX_DIFF_SIZE},
 };
 use memchr::memchr;
 
@@ -225,6 +225,35 @@ impl DiffProcessor {
         )
     }
 
+    fn process_file_diff(&self, file_diff: FileDiff) -> Vec<DiffChunk> {
+        if parsing::is_all_file_deletions(&file_diff.content)
+            || parsing::is_deletion_only(&file_diff.content)
+        {
+            let limit = if file_diff.content.len() >= 500 * 1024 {
+                100
+            } else {
+                50
+            };
+            return self.process_owned(parsing::truncate_deletion_diff(&file_diff.content, limit));
+        }
+
+        if file_diff.token_count <= self.token_limit {
+            return vec![DiffChunk::new(
+                Arc::clone(&file_diff.content),
+                vec![file_diff.path],
+                file_diff.token_count,
+            )];
+        }
+
+        chunking::split_recursive(
+            vec![file_diff],
+            self.token_limit,
+            &self.ignore_files,
+            self.lockfile_token_limit,
+            self.tokenizer.as_ref(),
+        )
+    }
+
     pub fn process_safe(&self, diff: &str) -> Vec<DiffChunk> {
         let mut truncation_notice = None;
         let mut diff_content = diff;
@@ -269,7 +298,7 @@ impl DiffProcessor {
                 ));
             } else {
                 has_text_content = true;
-                let file_chunks = self.process(&file_diff.content);
+                let file_chunks = self.process_file_diff(file_diff);
                 chunks.extend(file_chunks);
             }
         }

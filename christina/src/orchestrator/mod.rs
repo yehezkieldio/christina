@@ -699,7 +699,7 @@ impl AIOrchestrator {
         }
         let retry_policy = self.retry_policy.clone();
         let orchestrator = self;
-        let mut futures = stream::iter(chunks.iter().map(move |chunk| {
+        let mut futures = stream::iter(chunks.iter().enumerate().map(move |(index, chunk)| {
             let provider = Arc::clone(&self.provider);
             let limiter = self.limiter.clone();
             let content = Arc::clone(&chunk.content);
@@ -745,7 +745,7 @@ impl AIOrchestrator {
                 .await;
 
                 match result {
-                    Ok(summary) => Ok(ChunkSummary { summary, files }),
+                    Ok(summary) => Ok((index, ChunkSummary { summary, files })),
                     Err(err) => Err((err, files)),
                 }
             }
@@ -763,8 +763,8 @@ impl AIOrchestrator {
                     if trace {
                         ui::print_trace(&format!(
                             "generated summary for {} files: {}",
-                            summary.files.len(),
-                            &summary.summary[..std::cmp::min(100, summary.summary.len())]
+                            summary.1.files.len(),
+                            &summary.1.summary[..std::cmp::min(100, summary.1.summary.len())]
                         ));
                     }
                     successes.push(summary);
@@ -811,6 +811,12 @@ impl AIOrchestrator {
                     .join(", ")
             );
         }
+
+        successes.sort_unstable_by_key(|(index, _)| *index);
+        let successes = successes
+            .into_iter()
+            .map(|(_, summary)| summary)
+            .collect::<Vec<_>>();
 
         let total_chunks = successes.len() + failed_count;
         let failure_rate = failed_count as f64 / total_chunks as f64;

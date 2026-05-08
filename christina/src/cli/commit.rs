@@ -35,13 +35,8 @@ pub async fn run(
     if trace {
         ui::print_trace("validating repository state");
     }
-    let (repo_path, diff) = validate_repository().await?;
+    let (repo_path, files, diff) = validate_repository().await?;
     let diff = Arc::<str>::from(diff);
-
-    if trace {
-        ui::print_trace("collecting staged files");
-    }
-    let files = adapter::get_staged_files_with_timeout(&repo_path).await?;
 
     display_changes(&files);
 
@@ -168,7 +163,7 @@ pub async fn run(
     Ok(())
 }
 
-async fn validate_repository() -> Result<(PathBuf, String)> {
+async fn validate_repository() -> Result<(PathBuf, Vec<GitFile>, String)> {
     let repo = Repository::open(".").map_err(|err| {
         if err.code() == git2::ErrorCode::NotFound {
             anyhow::anyhow!(
@@ -184,12 +179,16 @@ async fn validate_repository() -> Result<(PathBuf, String)> {
         .map(PathBuf::from)
         .unwrap_or_else(|| repo.path().to_path_buf());
 
-    if !adapter::has_staged_changes_with_timeout(&repo_path).await? {
-        anyhow::bail!("No staged changes to commit. Stage your changes and try again.");
-    }
-
-    let diff = adapter::build_staged_diff_with_timeout(&repo_path).await?;
-    Ok((repo_path, diff))
+    let changes = adapter::collect_staged_changes_with_timeout(&repo_path)
+        .await
+        .map_err(|err| {
+            if err.to_string().contains("No staged changes") {
+                anyhow::anyhow!("No staged changes to commit. Stage your changes and try again.")
+            } else {
+                err
+            }
+        })?;
+    Ok((repo_path, changes.files, changes.diff))
 }
 
 fn display_changes(files: &[GitFile]) {
