@@ -2,12 +2,12 @@ use std::convert::TryFrom;
 use thiserror::Error;
 use url::Url;
 
-/// Azure OpenAI endpoint configuration parsed from a URL.
+/// Azure `OpenAI` endpoint configuration parsed from a URL.
 ///
-/// This newtype wraps the parsed components of an Azure OpenAI URL:
-/// - endpoint: The base URL (scheme + host)
-/// - deployment_id: The deployment name (e.g., "gpt-4")
-/// - api_version: The API version to use (defaults to "2024-12-01-preview")
+/// This newtype wraps the parsed components of an Azure `OpenAI` URL:
+/// - `endpoint`: The base URL (scheme + host)
+/// - `deployment_id`: The deployment name (e.g., "gpt-4")
+/// - `api_version`: The API version to use (defaults to "2024-12-01-preview")
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AzureEndpoint {
     pub endpoint: String,
@@ -56,11 +56,9 @@ impl TryFrom<Url> for AzureEndpoint {
             .strip_prefix("/openai/deployments/")
             .ok_or(AzureEndpointError::MissingDeploymentId)?;
 
-        let parts: Vec<&str> = path_after_prefix.split('/').collect();
-
-        // First part is the deployment ID
-        let deployment_id = parts
-            .first()
+        let deployment_id = path_after_prefix
+            .split('/')
+            .next()
             .ok_or(AzureEndpointError::MissingDeploymentId)?;
 
         if deployment_id.is_empty() {
@@ -81,8 +79,10 @@ impl TryFrom<Url> for AzureEndpoint {
         let api_version = url
             .query_pairs()
             .find(|(key, _)| key == "api-version")
-            .map(|(_, value)| value.to_string())
-            .unwrap_or_else(|| "2024-12-01-preview".to_string());
+            .map_or_else(
+                || "2024-12-01-preview".to_string(),
+                |(_, value)| value.to_string(),
+            );
 
         Ok(AzureEndpoint {
             endpoint,

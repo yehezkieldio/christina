@@ -1053,7 +1053,7 @@ impl AIOrchestrator {
                 all_sub_themes.len()
             ));
         }
-        let final_themes = self.aggregate_sub_themes(all_sub_themes, shutdown).await;
+        let final_themes = self.aggregate_sub_themes(all_sub_themes, shutdown);
 
         match final_themes {
             Ok(themes) => {
@@ -1111,7 +1111,7 @@ impl AIOrchestrator {
         self.parse_sub_themes(&response)
     }
 
-    async fn aggregate_sub_themes(
+    fn aggregate_sub_themes(
         &self,
         sub_themes: Vec<SubTheme>,
         shutdown: &CancellationToken,
@@ -2511,7 +2511,6 @@ This is not JSON at all, just plain text
 
         let themes = orchestrator
             .aggregate_sub_themes(sub_themes, &CancellationToken::new())
-            .await
             .expect("aggregation should succeed");
 
         assert_eq!(themes.len(), 2);
@@ -2569,7 +2568,6 @@ This is not JSON at all, just plain text
 
         let themes = orchestrator
             .aggregate_sub_themes(sub_themes, &CancellationToken::new())
-            .await
             .expect("aggregation should succeed");
 
         assert_eq!(themes.len(), 3);

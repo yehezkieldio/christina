@@ -23,7 +23,7 @@ impl<S> fmt::Debug for Secret<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Secret::Value(_) => f.write_str("[REDACTED:secret-value]"),
-            Secret::EnvVar(name) => f.write_fmt(format_args!("[REDACTED:env:{}]", name)),
+            Secret::EnvVar(name) => f.write_fmt(format_args!("[REDACTED:env:{name}]")),
         }
     }
 }
@@ -46,6 +46,7 @@ impl SecretRef {
     /// - `env:VAR_NAME`
     /// - `value:SECRET_VALUE`
     /// - Plain string (treated as literal)
+    #[must_use]
     pub fn parse(s: &str) -> Self {
         // Infallible parse keeps CLI/config parsing simple; invalid prefixes fall back to literal.
         if let Some(rest) = s.strip_prefix("env:") {
@@ -66,10 +67,12 @@ impl SecretRef {
 pub struct SecretString(String);
 
 impl SecretString {
+    #[must_use]
     pub fn new(s: String) -> Self {
         Self(s)
     }
 
+    #[must_use]
     pub fn expose_secret(&self) -> &str {
         &self.0
     }

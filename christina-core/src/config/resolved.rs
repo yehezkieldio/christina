@@ -1,6 +1,6 @@
 //! Runtime configuration after secret resolution.
 //!
-//! WHY separate from ConfigFile: runtime uses resolved secrets and concrete
+//! WHY separate from `ConfigFile`: runtime uses resolved secrets and concrete
 //! defaults so downstream code never handles `Option` or placeholder secrets.
 
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ pub struct ResolvedConfig {
     /// Active profile name
     pub active_profile: Option<String>,
 
-    /// Provider profiles (with SecretString for runtime)
+    /// Provider profiles with runtime-resolved secrets.
     pub profiles: HashMap<String, ProviderProfile<SecretString>>,
 
     /// Maximum commit message length
@@ -41,6 +41,7 @@ impl Default for ResolvedConfig {
 
 impl ResolvedConfig {
     /// Get the active profile, if any
+    #[must_use]
     pub fn get_active_profile(&self) -> Option<&ProviderProfile<SecretString>> {
         self.active_profile
             .as_ref()
@@ -48,6 +49,7 @@ impl ResolvedConfig {
     }
 
     /// Get a profile by name
+    #[must_use]
     pub fn get_profile(&self, name: &str) -> Option<&ProviderProfile<SecretString>> {
         self.profiles.get(name)
     }

@@ -240,7 +240,6 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 name = "christina"
 version = "0.1.0"
 dependencies = [
- "ahash",
  "anyhow",
  "cap",
  "christina-core",
@@ -259,14 +258,12 @@ dependencies = [
  "llm",
  "memchr",
  "mimalloc",
- "moka",
  "proptest",
  "reqwest 0.13.3",
  "rustyline",
  "serde",
  "serde_json",
  "thiserror",
- "tiktoken-rs",
  "tokio",
  "tokio-util",
  "toml 1.0.7+spec-1.1.0",
@@ -285,7 +282,6 @@ dependencies = [
  "compact_str",
  "criterion",
  "git2",
- "memchr",
  "moka",
  "proptest",
  "regex",

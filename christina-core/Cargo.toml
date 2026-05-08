@@ -14,7 +14,6 @@ ahash = { workspace = true }
 anyhow = { workspace = true }
 compact_str = { workspace = true }
 git2 = { workspace = true, optional = true }
-memchr = { workspace = true }
 moka = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
