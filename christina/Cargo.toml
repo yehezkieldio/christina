@@ -20,6 +20,7 @@ clap = { version = "4.5.55", default-features = false, features = ["std", "deriv
 clap_complete = "4.5"
 git2 = { workspace = true }
 tokio = { workspace = true }
+tokio-util = "0.7"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { version = "1.0.0", default-features = false, features = ["parse", "display", "serde"] }

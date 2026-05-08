@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::config::Config;
@@ -75,6 +76,7 @@ pub async fn generate_commit_message_with_progress_and_trace(
     progress_tx: mpsc::Sender<Event>,
     user_context: Option<String>,
     trace: bool,
+    shutdown: CancellationToken,
 ) -> Result<GenerationResult> {
     generate_commit_message_with_progress_impl(
         config,
@@ -84,10 +86,12 @@ pub async fn generate_commit_message_with_progress_and_trace(
         user_context,
         &GitCommitHistoryProvider,
         trace,
+        shutdown,
     )
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn generate_commit_message_with_progress_impl(
     config: Config,
     diff: Arc<str>,
@@ -96,7 +100,10 @@ async fn generate_commit_message_with_progress_impl(
     user_context: Option<String>,
     history_provider: &dyn CommitHistoryProvider,
     trace: bool,
+    shutdown: CancellationToken,
 ) -> Result<GenerationResult> {
+    ensure_not_cancelled(&shutdown)?;
+
     // Validate configuration before starting progress events
     let api_key = require_api_key(&config)?;
 
@@ -115,6 +122,7 @@ async fn generate_commit_message_with_progress_impl(
 
     let provider = Provider::from_profile(&config_to_profile(&config, api_key), api_key)?;
     let provider = Arc::new(provider);
+    ensure_not_cancelled(&shutdown)?;
 
     if trace {
         ui::print_trace("created AI provider");
@@ -146,6 +154,7 @@ async fn generate_commit_message_with_progress_impl(
     if trace {
         ui::print_trace("initialized orchestrator");
     }
+    ensure_not_cancelled(&shutdown)?;
 
     let history_context = if config.use_commit_history {
         if trace {
@@ -455,13 +464,14 @@ async fn generate_commit_message_with_progress_impl(
         ));
     }
     let mut result = orchestrator
-        .generate_commit_message_with_trace(
+        .generate_commit_message_with_trace_and_cancellation(
             chunks,
             user_context.as_deref(),
             config.commit_message_validation_mode,
             config.commit_message_max_length,
             history_context,
             trace,
+            shutdown,
         )
         .await?;
 
@@ -511,6 +521,13 @@ async fn generate_commit_message_with_progress_impl(
     }
 
     Ok(result)
+}
+
+fn ensure_not_cancelled(shutdown: &CancellationToken) -> Result<()> {
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Generation cancelled");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -755,6 +772,7 @@ mod tests {
             None,
             &MockCommitHistoryProvider::empty(),
             false,
+            CancellationToken::new(),
         )
         .await;
 
@@ -784,6 +802,7 @@ mod tests {
             None,
             &MockCommitHistoryProvider::empty(),
             false,
+            CancellationToken::new(),
         )
         .await;
 
@@ -816,6 +835,7 @@ mod tests {
             None,
             &MockCommitHistoryProvider::empty(),
             false,
+            CancellationToken::new(),
         )
         .await;
 

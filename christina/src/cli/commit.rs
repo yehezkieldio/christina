@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use git2::Repository;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
 use crate::generate::generate_commit_message_with_progress_and_trace;
@@ -18,7 +19,13 @@ use crate::ui;
 use crate::ui::events::Event;
 use christina_core::GitFile;
 
-pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -> Result<()> {
+pub async fn run(
+    yes: bool,
+    context: Option<&str>,
+    dry_run: bool,
+    trace: bool,
+    shutdown: CancellationToken,
+) -> Result<()> {
     // Only allocate trace stats when explicitly enabled.
     // std::sync::Mutex is fine here: locks are short-lived and never held across .await.
     let trace_stats = trace.then(|| Arc::new(Mutex::new(TraceStats::new(dry_run))));
@@ -68,6 +75,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
             repo_path.clone(),
             trace,
             trace_stats.as_ref().cloned(),
+            shutdown.child_token(),
         )
         .await?;
         let mut message_state = MessageState::Proposed;
@@ -110,6 +118,7 @@ pub async fn run(yes: bool, context: Option<&str>, dry_run: bool, trace: bool) -
                         repo_path.clone(),
                         trace,
                         trace_stats.as_ref().cloned(),
+                        shutdown.child_token(),
                     )
                     .await?;
                     message_state = MessageState::Regenerated;
@@ -201,6 +210,7 @@ async fn generate_commit(
     repo_path: PathBuf,
     trace: bool,
     trace_stats: Option<Arc<Mutex<TraceStats>>>,
+    shutdown: CancellationToken,
 ) -> Result<String> {
     let spinner = ui::create_spinner("analyzing changes");
     let config = Config::load_async().await?;
@@ -270,6 +280,7 @@ async fn generate_commit(
         progress_tx,
         context,
         trace_enabled,
+        shutdown,
     )
     .await;
 

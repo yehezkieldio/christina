@@ -29,6 +29,8 @@ use url::Url;
 
 const MIN_PARTIAL_FAILURE_RATE: f64 = 0.01;
 const MAX_PARTIAL_FAILURE_RATE: f64 = 0.50;
+const MAX_DEFAULT_CONCURRENT_REQUESTS: usize = 4;
+const MAX_CONFIGURED_CONCURRENT_REQUESTS: usize = 20;
 
 #[derive(Debug, Clone)]
 struct ConfigSources {
@@ -134,6 +136,18 @@ fn default_schema_version() -> u32 {
 
 fn default_lockfile_token_limit() -> TokenCount {
     TokenCount::new_at_least_one(100)
+}
+
+fn default_max_concurrent_requests() -> usize {
+    default_max_concurrent_requests_for(
+        std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(MAX_DEFAULT_CONCURRENT_REQUESTS),
+    )
+}
+
+fn default_max_concurrent_requests_for(available_parallelism: usize) -> usize {
+    available_parallelism.clamp(1, MAX_DEFAULT_CONCURRENT_REQUESTS)
 }
 
 fn clamp_partial_failure_rate(value: f64) -> (f64, Vec<String>) {
@@ -269,7 +283,7 @@ impl Default for Config {
             commit_message_validation_mode: ValidationMode::default(),
             use_commit_history: true,
             commit_history_depth: 5,
-            max_concurrent_requests: 4,
+            max_concurrent_requests: default_max_concurrent_requests(),
             max_partial_failure_rate: 0.10,
             prompt_failure_rate_threshold: 0.05,
             schema_version: default_schema_version(),
@@ -550,7 +564,9 @@ impl Config {
         }
 
         let original_concurrency = self.max_concurrent_requests;
-        self.max_concurrent_requests = self.max_concurrent_requests.clamp(1, 20);
+        self.max_concurrent_requests = self
+            .max_concurrent_requests
+            .clamp(1, MAX_CONFIGURED_CONCURRENT_REQUESTS);
         if self.max_concurrent_requests != original_concurrency {
             warnings.push(format!(
                 "max_concurrent_requests clamped from {} to {}",
@@ -1537,6 +1553,15 @@ mod tests {
         let parsed: Result<ProviderKind, _> = val.parse();
         assert!(parsed.is_ok());
         assert_eq!(parsed.unwrap(), ProviderKind::Azure);
+    }
+
+    #[test]
+    fn default_concurrency_uses_available_parallelism_conservatively() {
+        assert_eq!(default_max_concurrent_requests_for(0), 1);
+        assert_eq!(default_max_concurrent_requests_for(1), 1);
+        assert_eq!(default_max_concurrent_requests_for(2), 2);
+        assert_eq!(default_max_concurrent_requests_for(4), 4);
+        assert_eq!(default_max_concurrent_requests_for(64), 4);
     }
 
     fn test_sources(

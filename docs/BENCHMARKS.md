@@ -38,8 +38,3 @@ cargo bench --bench chunking_bench
 ## Regression Policy
 
 Changes to the core pipeline must not regress the `split_recursive` or `count_tokens` benchmarks by more than **5%** without explicit justification (e.g., a required accuracy improvement).
-
-## Cross-References
-
-- [Performance Optimization](PERFORMANCE_OPTIMIZATION.md): Technical details on how these baselines are achieved.
-- [Generation Pipeline](GENERATION_PIPELINE.md): Identifies the hot-paths under measurement.

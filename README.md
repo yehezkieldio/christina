@@ -177,8 +177,8 @@ Christina does not read repository-local config. Keep persistent settings in the
 user config path printed by `christina config path`, and use environment
 variables for invocation-specific overrides.
 
-Additional notes live under [`docs/`](docs/), including the generation pipeline,
-design notes, benchmarks, advanced configuration, and contribution notes.
+Additional maintained references live under [`docs/`](docs/), currently focused
+on advanced configuration and benchmark expectations.
 
 ## Development
 

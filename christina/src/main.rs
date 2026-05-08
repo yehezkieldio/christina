@@ -42,6 +42,7 @@ mod engines;
 mod generate;
 mod git;
 mod orchestrator;
+mod shutdown;
 mod telemetry;
 mod ui;
 
@@ -60,6 +61,9 @@ async fn main() -> std::process::ExitCode {
 
     telemetry::init(cli.verbose);
 
+    let shutdown_token = tokio_util::sync::CancellationToken::new();
+    let _shutdown_handle = shutdown::spawn_signal_handler(shutdown_token.clone());
+
     let result: Result<()> = match cli.command {
         Some(Commands::Config(cmd)) => cli::config::handle_config_command(cmd),
         Some(Commands::Profile(cmd)) => cli::profile::handle_profile_command(cmd),
@@ -68,7 +72,16 @@ async fn main() -> std::process::ExitCode {
             clap_complete::generate(shell, &mut cmd, "christina", &mut std::io::stdout());
             Ok(())
         }
-        None => cli::commit::run(cli.yes, cli.context.as_deref(), cli.dry_run, cli.trace).await,
+        None => {
+            cli::commit::run(
+                cli.yes,
+                cli.context.as_deref(),
+                cli.dry_run,
+                cli.trace,
+                shutdown_token,
+            )
+            .await
+        }
     };
 
     match result {

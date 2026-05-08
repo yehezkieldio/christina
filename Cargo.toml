@@ -32,18 +32,39 @@ memchr = "2.7"
 proptest = "1.6.0"
 
 [workspace.lints.rust]
+# Unsafe code must stay out of production code paths. Tests that need unsafe
+# std::env mutation opt in locally with a narrow allow.
 unsafe_code = "deny"
+
+# Dropped Results and Futures are usually lost work or lost failures in a CLI.
 unused_must_use = "warn"
+
+# Keep the dependency tree lean; unused crates slow CI and increase binary size.
 unused_crate_dependencies = "warn"
 
 [workspace.lints.clippy]
+# Avoid runtime crashes in production code. Tests can opt in locally when
+# panicking assertions make the case clearer.
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
+
+# Make shallow pointer clones explicit as Arc::clone/Rc::clone.
 clone_on_ref_ptr = "warn"
+
+# Large futures and enum variants can bloat stacks and async state machines.
 large_futures = "warn"
-unnecessary_wraps = "warn"
 large_enum_variant = "warn"
+
+# Warn on APIs that advertise failure without ever failing.
+unnecessary_wraps = "warn"
+
+# Temporary debug code should not slip into release builds.
+todo = "warn"
+dbg_macro = "warn"
+
+# Christina keeps descriptive type names in modules with broad public tests, so
+# Azalea's stricter setting would create churn without improving ownership.
 module_name_repetitions = "allow"
 
 [profile.dev]

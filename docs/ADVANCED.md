@@ -12,7 +12,7 @@ In the Map phase, some chunk summaries might fail (due to rate limits or malform
 - `prompt_failure_rate_threshold` (Default: `0.05`): If failure exceeds 5%, a warning is shown in the trace summary.
 
 ### Concurrency
-- `max_concurrent_requests` (Default: `4`): Controls parallel LLM calls. Increase this if you have high rate limits and want faster processing of massive (100+ file) commits. Capped at 10.
+- `max_concurrent_requests`: Controls parallel LLM calls. The default is hardware-aware and capped conservatively; explicit config and env overrides are clamped to `1..=20`.
 
 ## Secure Secret Management
 
@@ -60,8 +60,3 @@ max_output_tokens = 8192
 ```
 
 Christina will automatically scale its `HISTORY_BUDGET_FRACTION` (15% of input) to accommodate more style reference commits.
-
-## Cross-References
-
-- [Technical Specification](SPECIFICATION.md): Full list of configuration keys.
-- [Generation Pipeline](GENERATION_PIPELINE.md): Context for pipeline settings.

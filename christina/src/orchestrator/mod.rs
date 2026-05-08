@@ -33,6 +33,7 @@ use anyhow::{Context, Result};
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
 use crate::engines::Provider;
@@ -376,10 +377,12 @@ impl AIOrchestrator {
             max_length,
             history_context,
             false,
+            &CancellationToken::new(),
         )
         .await
     }
 
+    #[allow(dead_code)]
     pub async fn generate_commit_message_with_trace(
         &self,
         chunks: Vec<DiffChunk>,
@@ -389,6 +392,29 @@ impl AIOrchestrator {
         history_context: Option<String>,
         trace: bool,
     ) -> Result<GenerationResult> {
+        self.generate_commit_message_with_trace_and_cancellation(
+            chunks,
+            user_context,
+            validation_mode,
+            max_length,
+            history_context,
+            trace,
+            CancellationToken::new(),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn generate_commit_message_with_trace_and_cancellation(
+        &self,
+        chunks: Vec<DiffChunk>,
+        user_context: Option<&str>,
+        validation_mode: ValidationMode,
+        max_length: Option<usize>,
+        history_context: Option<String>,
+        trace: bool,
+        shutdown: CancellationToken,
+    ) -> Result<GenerationResult> {
         self.generate_commit_message_internal(
             chunks,
             user_context,
@@ -396,10 +422,12 @@ impl AIOrchestrator {
             max_length,
             history_context,
             trace,
+            &shutdown,
         )
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn generate_commit_message_internal(
         &self,
         chunks: Vec<DiffChunk>,
@@ -408,7 +436,9 @@ impl AIOrchestrator {
         max_length: Option<usize>,
         history_context: Option<String>,
         trace: bool,
+        shutdown: &CancellationToken,
     ) -> Result<GenerationResult> {
+        ensure_not_cancelled(shutdown)?;
         if chunks.is_empty() {
             anyhow::bail!("No diff chunks to process");
         }
@@ -436,6 +466,7 @@ impl AIOrchestrator {
                     max_length,
                     history_context.as_deref(),
                     trace,
+                    shutdown,
                 )
                 .await?;
             if let Some(start) = direct_start {
@@ -464,7 +495,9 @@ impl AIOrchestrator {
         } else {
             None
         };
-        let (summaries, failed_chunks, failed_files) = self.map_phase(&chunks, trace).await?;
+        let (summaries, failed_chunks, failed_files) =
+            self.map_phase(&chunks, trace, shutdown).await?;
+        ensure_not_cancelled(shutdown)?;
         if let Some(start) = map_start {
             debug!("map phase completed in {:?}", start.elapsed());
         }
@@ -513,7 +546,7 @@ impl AIOrchestrator {
                     summaries.len()
                 ));
             }
-            let result = self.extract_intent(&summaries, trace).await?;
+            let result = self.extract_intent(&summaries, trace, shutdown).await?;
             if trace {
                 ui::print_trace("completed intent extraction");
             }
@@ -542,6 +575,7 @@ impl AIOrchestrator {
                 max_length,
                 history_context.as_deref(),
                 trace,
+                shutdown,
             )
             .await?;
         if let Some(start) = reduce_start {
@@ -563,6 +597,7 @@ impl AIOrchestrator {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn direct_generation(
         &self,
         chunk: &DiffChunk,
@@ -571,7 +606,9 @@ impl AIOrchestrator {
         max_length: Option<usize>,
         history_context: Option<&str>,
         trace: bool,
+        shutdown: &CancellationToken,
     ) -> Result<(CommitMessage, bool, bool, Vec<String>)> {
+        ensure_not_cancelled(shutdown)?;
         if trace {
             ui::print_trace("starting direct generation");
         }
@@ -605,6 +642,7 @@ impl AIOrchestrator {
             &messages,
             Some(commit_response_format()),
             &self.retry_policy,
+            shutdown,
         )
         .await
         .context("Direct generation failed")?;
@@ -649,7 +687,9 @@ impl AIOrchestrator {
         &self,
         chunks: &[DiffChunk],
         trace: bool,
+        shutdown: &CancellationToken,
     ) -> Result<(Vec<ChunkSummary>, usize, Vec<FilePath>)> {
+        ensure_not_cancelled(shutdown)?;
         if trace {
             ui::print_trace(&format!("starting map phase with {} chunks", chunks.len()));
         }
@@ -665,10 +705,17 @@ impl AIOrchestrator {
             let content = Arc::clone(&chunk.content);
             let files = chunk.files.clone();
             let retry_policy = retry_policy.clone();
+            let shutdown = shutdown.clone();
 
             async move {
                 let result = async {
+                    if shutdown.is_cancelled() {
+                        return Err(MapError::Completion(CompletionError::Cancelled));
+                    }
                     let _permit = limiter.acquire().await;
+                    if shutdown.is_cancelled() {
+                        return Err(MapError::Completion(CompletionError::Cancelled));
+                    }
 
                     let builder = PromptBuilder::new().with_diff(content.as_ref());
                     let messages = vec![
@@ -687,6 +734,7 @@ impl AIOrchestrator {
                         &messages,
                         Some(summary_response_format()),
                         &retry_policy,
+                        &shutdown,
                     )
                     .await
                     .map_err(MapError::Completion)?;
@@ -709,6 +757,7 @@ impl AIOrchestrator {
         let mut failed_files: Vec<FilePath> = Vec::with_capacity(chunks.len());
 
         while let Some(result) = futures.next().await {
+            ensure_not_cancelled(shutdown)?;
             match result {
                 Ok(summary) => {
                     if trace {
@@ -824,7 +873,9 @@ impl AIOrchestrator {
         &self,
         summaries: &[ChunkSummary],
         trace: bool,
+        shutdown: &CancellationToken,
     ) -> Result<(Vec<Theme>, bool)> {
+        ensure_not_cancelled(shutdown)?;
         if trace {
             ui::print_trace(&format!(
                 "starting intent extraction with {} summaries",
@@ -837,7 +888,9 @@ impl AIOrchestrator {
             if trace {
                 ui::print_trace("using hierarchical intent extraction for large summary count");
             }
-            return self.extract_intent_hierarchical(summaries, trace).await;
+            return self
+                .extract_intent_hierarchical(summaries, trace, shutdown)
+                .await;
         }
 
         if trace {
@@ -864,6 +917,7 @@ impl AIOrchestrator {
             ui::print_trace("acquiring request permit for intent extraction");
         }
         let _permit = self.limiter.acquire().await;
+        ensure_not_cancelled(shutdown)?;
 
         if trace {
             ui::print_trace("calling LLM for intent extraction");
@@ -873,6 +927,7 @@ impl AIOrchestrator {
             &messages,
             Some(intent_response_format()),
             &self.retry_policy,
+            shutdown,
         )
         .await
         .context("Intent extraction failed after retries")?;
@@ -919,7 +974,9 @@ impl AIOrchestrator {
         &self,
         summaries: &[ChunkSummary],
         trace: bool,
+        shutdown: &CancellationToken,
     ) -> Result<(Vec<Theme>, bool)> {
+        ensure_not_cancelled(shutdown)?;
         if trace {
             ui::print_trace(&format!(
                 "Using hierarchical theme extraction for {} summaries",
@@ -937,7 +994,7 @@ impl AIOrchestrator {
                 .chunks(MAX_SUMMARIES_PER_INTENT_BATCH)
                 .enumerate()
                 .map(|(idx, batch)| async move {
-                    match self.extract_sub_themes(batch).await {
+                    match self.extract_sub_themes(batch, shutdown).await {
                         Ok(themes) => {
                             if trace {
                                 ui::print_trace(&format!(
@@ -968,6 +1025,7 @@ impl AIOrchestrator {
         let mut any_fallback = false;
 
         for result in sub_themes_results {
+            ensure_not_cancelled(shutdown)?;
             match result {
                 Ok(themes) => all_sub_themes.extend(themes),
                 Err(_) => {
@@ -989,7 +1047,7 @@ impl AIOrchestrator {
                 all_sub_themes.len()
             ));
         }
-        let final_themes = self.aggregate_sub_themes(all_sub_themes).await;
+        let final_themes = self.aggregate_sub_themes(all_sub_themes, shutdown).await;
 
         match final_themes {
             Ok(themes) => {
@@ -1011,7 +1069,12 @@ impl AIOrchestrator {
         }
     }
 
-    async fn extract_sub_themes(&self, batch: &[ChunkSummary]) -> Result<Vec<SubTheme>> {
+    async fn extract_sub_themes(
+        &self,
+        batch: &[ChunkSummary],
+        shutdown: &CancellationToken,
+    ) -> Result<Vec<SubTheme>> {
+        ensure_not_cancelled(shutdown)?;
         let summary_strings = self.format_summaries_for_prompt(batch);
         let builder = PromptBuilder::new().with_summaries(&summary_strings);
 
@@ -1027,12 +1090,14 @@ impl AIOrchestrator {
         ];
 
         let _permit = self.limiter.acquire().await;
+        ensure_not_cancelled(shutdown)?;
 
         let response = generate_with_retry(
             self.provider.as_ref(),
             &messages,
             Some(intent_response_format()),
             &self.retry_policy,
+            shutdown,
         )
         .await
         .context("Sub-theme extraction failed")?;
@@ -1040,7 +1105,12 @@ impl AIOrchestrator {
         self.parse_sub_themes(&response)
     }
 
-    async fn aggregate_sub_themes(&self, sub_themes: Vec<SubTheme>) -> Result<Vec<Theme>> {
+    async fn aggregate_sub_themes(
+        &self,
+        sub_themes: Vec<SubTheme>,
+        shutdown: &CancellationToken,
+    ) -> Result<Vec<Theme>> {
+        ensure_not_cancelled(shutdown)?;
         let mut scope_groups: std::collections::HashMap<Option<String>, Vec<SubTheme>> =
             std::collections::HashMap::new();
 
@@ -1479,6 +1549,7 @@ impl AIOrchestrator {
         None
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn reduce_phase(
         &self,
         themes: &[Theme],
@@ -1487,7 +1558,9 @@ impl AIOrchestrator {
         max_length: Option<usize>,
         history_context: Option<&str>,
         trace: bool,
+        shutdown: &CancellationToken,
     ) -> Result<(CommitMessage, bool, bool, Vec<String>)> {
+        ensure_not_cancelled(shutdown)?;
         if trace {
             ui::print_trace(&format!(
                 "starting reduce phase with {} themes",
@@ -1524,6 +1597,7 @@ impl AIOrchestrator {
             &messages,
             Some(commit_response_format()),
             &self.retry_policy,
+            shutdown,
         )
         .await
         .context("Reduce phase synthesis failed")?;
@@ -1622,30 +1696,38 @@ async fn generate_with_retry(
     messages: &[ChatMessage],
     response_format: Option<StructuredOutputFormat>,
     policy: &RetryPolicy,
+    shutdown: &CancellationToken,
 ) -> Result<String, CompletionError> {
     let mut last_error = None;
 
     for attempt in 0..=policy.max_retries {
+        if shutdown.is_cancelled() {
+            return Err(CompletionError::Cancelled);
+        }
         let timeout = timeout_for_attempt(attempt as u32);
-        let result = if let Some(format) = response_format.clone() {
-            tokio::time::timeout(
-                timeout,
-                provider.generate_with_format(messages, Some(format)),
-            )
-            .await
-        } else {
-            tokio::time::timeout(timeout, provider.generate(messages)).await
+        let provider_call = async {
+            if let Some(format) = response_format.clone() {
+                provider.generate_with_format(messages, Some(format)).await
+            } else {
+                provider.generate(messages).await
+            }
+        };
+        let result = tokio::select! {
+            () = shutdown.cancelled() => return Err(CompletionError::Cancelled),
+            result = tokio::time::timeout(timeout, provider_call) => result,
         };
 
         match result {
             Ok(Ok(result)) => return Ok(result),
             Ok(Err(err)) => {
                 if should_retry_without_schema(&err, response_format.as_ref()) {
-                    let fallback = tokio::time::timeout(
-                        timeout,
-                        provider.generate_with_format(messages, None),
-                    )
-                    .await;
+                    let fallback = tokio::select! {
+                        () = shutdown.cancelled() => return Err(CompletionError::Cancelled),
+                        result = tokio::time::timeout(
+                            timeout,
+                            provider.generate_with_format(messages, None),
+                        ) => result,
+                    };
                     if let Ok(Ok(result)) = fallback {
                         return Ok(result);
                     }
@@ -1672,7 +1754,10 @@ async fn generate_with_retry(
             .as_ref()
             .and_then(CompletionError::retry_after)
             .map_or(backoff, |retry_after| std::cmp::min(retry_after, backoff));
-        tokio::time::sleep(delay).await;
+        tokio::select! {
+            () = shutdown.cancelled() => return Err(CompletionError::Cancelled),
+            () = tokio::time::sleep(delay) => {}
+        }
     }
 
     // Fallback if all retries exhausted without recording an error (logic bug guard)
@@ -1681,6 +1766,13 @@ async fn generate_with_retry(
             "All retry attempts exhausted without error details".to_string(),
         )
     }))
+}
+
+fn ensure_not_cancelled(shutdown: &CancellationToken) -> Result<()> {
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Generation cancelled");
+    }
+    Ok(())
 }
 
 fn should_retry_without_schema(
@@ -1846,6 +1938,34 @@ mod tests {
             .unwrap_or_else(|e| panic!("generation should succeed: {}", e));
         assert_eq!(result.message.as_ref(), "feat(core): add pipeline");
         assert_eq!(result.total_chunks, 1);
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_generation_discards_work() {
+        let provider = Arc::new(Provider::mock("feat(core): should not run"));
+        let orchestrator = AIOrchestrator::new(provider);
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+
+        let result = orchestrator
+            .generate_commit_message_with_trace_and_cancellation(
+                vec![sample_chunk()],
+                None,
+                ValidationMode::default(),
+                None,
+                None,
+                false,
+                shutdown,
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Generation cancelled")
+        );
     }
 
     #[tokio::test]
@@ -2384,7 +2504,7 @@ This is not JSON at all, just plain text
         ];
 
         let themes = orchestrator
-            .aggregate_sub_themes(sub_themes)
+            .aggregate_sub_themes(sub_themes, &CancellationToken::new())
             .await
             .expect("aggregation should succeed");
 
@@ -2442,7 +2562,7 @@ This is not JSON at all, just plain text
         ];
 
         let themes = orchestrator
-            .aggregate_sub_themes(sub_themes)
+            .aggregate_sub_themes(sub_themes, &CancellationToken::new())
             .await
             .expect("aggregation should succeed");
 

@@ -31,6 +31,7 @@ use fs2 as _;
 use indicatif as _;
 use mimalloc as _;
 use tokio as _;
+use tokio_util as _;
 use toml as _;
 use tracing as _;
 use tracing_appender as _;

@@ -112,6 +112,10 @@ pub enum CompletionError {
     #[error("Invalid response: {0}")]
     InvalidResponse(String),
 
+    /// User-initiated cancellation.
+    #[error("Generation cancelled")]
+    Cancelled,
+
     /// Unknown or unclassified error
     #[error("Unknown error: {0}")]
     UnknownError(String),
