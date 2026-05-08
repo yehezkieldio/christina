@@ -12,7 +12,7 @@ use git2::Repository;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::config::Config;
+use crate::config::{Config, RuntimeConfig};
 use crate::generate::generate_commit_message_with_progress_and_trace;
 use crate::git::adapter;
 use crate::ui;
@@ -213,7 +213,7 @@ async fn generate_commit(
     shutdown: CancellationToken,
 ) -> Result<String> {
     let spinner = ui::create_spinner("analyzing changes");
-    let config = Config::load_async().await?;
+    let config = Config::load_runtime_async().await?;
 
     if trace {
         ui::print_trace("loading configuration");
@@ -467,11 +467,11 @@ impl TraceStats {
         }
     }
 
-    fn record_config(&mut self, config: &Config) {
-        self.provider = Some(config.model_provider);
-        self.model = Some(config.model.clone());
-        self.max_input_tokens = Some(config.max_input_tokens);
-        self.max_output_tokens = Some(config.max_output_tokens);
+    fn record_config(&mut self, config: &RuntimeConfig) {
+        self.provider = Some(config.provider_profile.provider);
+        self.model = Some(config.provider_profile.model.clone());
+        self.max_input_tokens = Some(config.max_input_tokens());
+        self.max_output_tokens = Some(config.max_output_tokens());
         self.use_commit_history = Some(config.use_commit_history);
         self.commit_history_depth = Some(config.commit_history_depth);
         self.max_concurrent_requests = Some(config.max_concurrent_requests);

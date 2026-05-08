@@ -16,7 +16,7 @@ use serde_json::{Map, Number, Value};
 use tracing;
 
 use crate::config::profiles::{Profiles, ProviderProfile};
-use crate::config::secrets::{Secret, resolve_secret};
+use crate::config::secrets::{Secret, SecretString, resolve_secret};
 use christina_core::{
     ConfigFile,
     types::{
@@ -262,6 +262,35 @@ pub struct Config {
     pub schema_version: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct RuntimeConfig {
+    pub provider_profile: ProviderProfile,
+    pub api_key: SecretString,
+    pub ignore_files: Vec<String>,
+    pub lockfile_token_limit: TokenCount,
+    pub commit_message_max_length: Option<usize>,
+    pub commit_message_validation_mode: ValidationMode,
+    pub use_commit_history: bool,
+    pub commit_history_depth: usize,
+    pub max_concurrent_requests: usize,
+    pub max_partial_failure_rate: f64,
+    pub prompt_failure_rate_threshold: f64,
+}
+
+impl RuntimeConfig {
+    pub fn api_key(&self) -> &str {
+        self.api_key.expose_secret()
+    }
+
+    pub fn max_input_tokens(&self) -> TokenCount {
+        self.provider_profile.max_input_tokens
+    }
+
+    pub fn max_output_tokens(&self) -> TokenCount {
+        self.provider_profile.max_output_tokens
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -378,10 +407,70 @@ impl Config {
     }
 
     /// Async-friendly configuration loader that offloads blocking work.
+    #[allow(dead_code)]
     pub async fn load_async() -> Result<Self> {
         tokio::task::spawn_blocking(Self::load)
             .await
             .map_err(|e| anyhow::anyhow!("Config load task failed: {}", e))?
+    }
+
+    pub fn load_runtime() -> Result<RuntimeConfig> {
+        Self::load()?.validate_and_resolve()
+    }
+
+    pub async fn load_runtime_async() -> Result<RuntimeConfig> {
+        tokio::task::spawn_blocking(Self::load_runtime)
+            .await
+            .map_err(|e| anyhow::anyhow!("Runtime config load task failed: {}", e))?
+    }
+
+    pub fn validate_and_resolve(mut self) -> Result<RuntimeConfig> {
+        let warnings = self.validate();
+        for warning in warnings {
+            tracing::warn!("{}", warning);
+            eprintln!("Warning: {}", warning);
+        }
+
+        let api_key = self
+            .api_key
+            .take()
+            .filter(|key| !key.is_empty())
+            .map(SecretString::new)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "API key not found in configuration. Add one with \
+                     `christina profile add <name> --provider <provider> --model <model> --api-key <key>` \
+                     or set `api_key` in your config file."
+                )
+            })?;
+
+        let provider_profile = ProviderProfile {
+            name: "active".to_string(),
+            provider: self.model_provider,
+            model: self.model,
+            api_url: self.model_api_url,
+            api_key: Secret::Value(api_key.expose_secret().to_string()),
+            max_input_tokens: self.max_input_tokens,
+            max_output_tokens: self.max_output_tokens,
+            azure_api_version: self.azure_api_version,
+            azure_deployment_id: self.azure_deployment_id,
+            temperature: Some(self.model_temperature),
+            reasoning_effort: self.reasoning_effort,
+        };
+
+        Ok(RuntimeConfig {
+            provider_profile,
+            api_key,
+            ignore_files: self.ignore_files,
+            lockfile_token_limit: self.lockfile_token_limit,
+            commit_message_max_length: self.commit_message_max_length,
+            commit_message_validation_mode: self.commit_message_validation_mode,
+            use_commit_history: self.use_commit_history,
+            commit_history_depth: self.commit_history_depth,
+            max_concurrent_requests: self.max_concurrent_requests,
+            max_partial_failure_rate: self.max_partial_failure_rate,
+            prompt_failure_rate_threshold: self.prompt_failure_rate_threshold,
+        })
     }
 
     fn apply_config_file(&mut self, file: ConfigFile) {
@@ -833,7 +922,7 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                self.max_concurrent_requests = parsed.clamp(1, 10);
+                self.max_concurrent_requests = parsed.clamp(1, MAX_CONFIGURED_CONCURRENT_REQUESTS);
             }
             "max_partial_failure_rate" => {
                 let parsed: f64 = value

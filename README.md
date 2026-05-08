@@ -178,7 +178,7 @@ user config path printed by `christina config path`, and use environment
 variables for invocation-specific overrides.
 
 Additional maintained references live under [`docs/`](docs/), currently focused
-on advanced configuration and benchmark expectations.
+on advanced configuration, benchmark expectations, and domain boundary types.
 
 ## Development
 

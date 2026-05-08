@@ -12,9 +12,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use crate::config::Config;
-use crate::config::profiles::ProviderProfile;
-use crate::config::secrets::Secret;
+use crate::config::RuntimeConfig;
 use crate::engines::Provider;
 use crate::git::{diff_processor::DiffProcessor, parsing};
 use crate::orchestrator::{AIOrchestrator, GenerationResult};
@@ -42,35 +40,8 @@ impl CommitHistoryProvider for GitCommitHistoryProvider {
     }
 }
 
-fn require_api_key(config: &Config) -> Result<&str> {
-    // Centralized check keeps user-facing error messages consistent across flows.
-    match config.api_key.as_deref().filter(|key| !key.is_empty()) {
-        Some(key) => Ok(key),
-        None => anyhow::bail!(
-            "API key not found in configuration. Add one with \
-             `christina profile add <name> --provider <provider> --model <model> --api-key <key>` \
-             or set `api_key` in your config file."
-        ),
-    }
-}
-
-fn config_to_profile(config: &Config, api_key: &str) -> ProviderProfile {
-    ProviderProfile {
-        name: "active".to_string(),
-        provider: config.model_provider,
-        model: config.model.clone(),
-        api_url: config.model_api_url.clone(),
-        api_key: Secret::Value(api_key.to_string()),
-        max_input_tokens: config.max_input_tokens,
-        max_output_tokens: config.max_output_tokens,
-        azure_api_version: config.azure_api_version.clone(),
-        azure_deployment_id: config.azure_deployment_id.clone(),
-        temperature: Some(config.model_temperature),
-        reasoning_effort: config.reasoning_effort,
-    }
-}
 pub async fn generate_commit_message_with_progress_and_trace(
-    config: Config,
+    config: RuntimeConfig,
     diff: Arc<str>,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
@@ -93,7 +64,7 @@ pub async fn generate_commit_message_with_progress_and_trace(
 
 #[allow(clippy::too_many_arguments)]
 async fn generate_commit_message_with_progress_impl(
-    config: Config,
+    config: RuntimeConfig,
     diff: Arc<str>,
     repo_path: PathBuf,
     progress_tx: mpsc::Sender<Event>,
@@ -103,9 +74,6 @@ async fn generate_commit_message_with_progress_impl(
     shutdown: CancellationToken,
 ) -> Result<GenerationResult> {
     ensure_not_cancelled(&shutdown)?;
-
-    // Validate configuration before starting progress events
-    let api_key = require_api_key(&config)?;
 
     if trace {
         ui::print_trace("starting commit message generation");
@@ -120,7 +88,7 @@ async fn generate_commit_message_with_progress_impl(
         anyhow::bail!("Progress receiver dropped, aborting generation");
     }
 
-    let provider = Provider::from_profile(&config_to_profile(&config, api_key), api_key)?;
+    let provider = Provider::from_profile(&config.provider_profile, config.api_key())?;
     let provider = Arc::new(provider);
     ensure_not_cancelled(&shutdown)?;
 
@@ -169,7 +137,7 @@ async fn generate_commit_message_with_progress_impl(
                     None
                 } else {
                     let budget_limit =
-                        orchestrator.calculate_history_budget(config.max_input_tokens.get());
+                        orchestrator.calculate_history_budget(config.max_input_tokens().get());
                     let original_count = commits.len();
                     commits.truncate(budget_limit);
 
@@ -219,16 +187,16 @@ async fn generate_commit_message_with_progress_impl(
     };
 
     let message_budget = config
-        .max_input_tokens
+        .max_input_tokens()
         .get()
-        .checked_sub(config.max_output_tokens.get())
+        .checked_sub(config.max_output_tokens().get())
         .and_then(|remaining| remaining.checked_sub(reserved_for_prompt.get()))
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Invalid token budget: max_output ({}) + reserved_for_prompt ({}) exceeds max_input ({})",
-                config.max_output_tokens.get(),
+                config.max_output_tokens().get(),
                 reserved_for_prompt.get(),
-                config.max_input_tokens.get()
+                config.max_input_tokens().get()
             )
         })?;
 
@@ -269,8 +237,8 @@ async fn generate_commit_message_with_progress_impl(
         TokenCount::new_at_least_one(user_context_tokens.saturating_add(history_tokens));
 
     let budget = TokenBudget::try_new(
-        config.max_input_tokens,
-        config.max_output_tokens,
+        config.max_input_tokens(),
+        config.max_output_tokens(),
         reserved_for_prompt,
         reserved_for_messages,
     )
@@ -601,6 +569,7 @@ fn get_commit_history_impl(repo_path: &Path, limit: usize) -> Result<Vec<CommitI
 #[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::config::Config;
     use christina_core::types::ProviderKind;
 
     struct MockCommitHistoryProvider {
@@ -634,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn test_config_to_profile_azure() {
+    fn test_config_resolves_runtime_profile() {
         let config = Config {
             model: "gpt-4o".into(),
             model_provider: ProviderKind::Azure,
@@ -645,8 +614,8 @@ mod tests {
             ..Default::default()
         };
 
-        let api_key = require_api_key(&config).unwrap();
-        let profile = config_to_profile(&config, api_key);
+        let runtime = config.validate_and_resolve().unwrap();
+        let profile = &runtime.provider_profile;
 
         assert_eq!(profile.name, "active");
         assert_eq!(profile.provider, ProviderKind::Azure);
@@ -660,10 +629,11 @@ mod tests {
             TokenCount::new_at_least_one(8192)
         );
         assert_eq!(profile.temperature, Some(0.7));
+        assert_eq!(runtime.api_key(), "test-key");
     }
 
     #[test]
-    fn test_config_to_profile_no_api_key() {
+    fn test_runtime_config_requires_api_key() {
         let config = Config {
             model: "gpt-4o".into(),
             model_provider: ProviderKind::Azure,
@@ -671,7 +641,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = require_api_key(&config);
+        let result = config.validate_and_resolve();
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("API key not found"));
@@ -751,38 +721,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_generate_with_missing_api_key() {
-        let config = Config {
-            model: "gpt-4o".into(),
-            model_provider: ProviderKind::Azure,
-            api_key: None,
-            ..Default::default()
-        };
-
-        let (tx, _rx) = mpsc::channel(10);
-        let diff = Arc::<str>::from("diff --git a/test.txt b/test.txt\n+new line\n");
-        let repo_path = PathBuf::from("/fake/repo");
-
-        let result = generate_commit_message_with_progress_impl(
-            config,
-            diff,
-            repo_path,
-            tx,
-            None,
-            &MockCommitHistoryProvider::empty(),
-            false,
-            CancellationToken::new(),
-        )
-        .await;
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("API key not found"));
-    }
-
-    #[tokio::test]
-    async fn test_generate_with_empty_api_key() {
+    #[test]
+    fn test_runtime_config_rejects_empty_api_key() {
         let config = Config {
             model: "gpt-4o".into(),
             model_provider: ProviderKind::Azure,
@@ -790,25 +730,14 @@ mod tests {
             ..Default::default()
         };
 
-        let (tx, _rx) = mpsc::channel(10);
-        let diff = Arc::<str>::from("diff --git a/test.txt b/test.txt\n+new line\n");
-        let repo_path = PathBuf::from("/fake/repo");
-
-        let result = generate_commit_message_with_progress_impl(
-            config,
-            diff,
-            repo_path,
-            tx,
-            None,
-            &MockCommitHistoryProvider::empty(),
-            false,
-            CancellationToken::new(),
-        )
-        .await;
-
+        let result = config.validate_and_resolve();
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("API key not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("API key not found")
+        );
     }
 
     #[tokio::test]
@@ -821,7 +750,9 @@ mod tests {
             max_output_tokens: TokenCount::new_at_least_one(8192),
             model_api_url: Some(url::Url::parse("https://test.openai.azure.com/").unwrap()),
             ..Default::default()
-        };
+        }
+        .validate_and_resolve()
+        .unwrap();
 
         let (tx, _rx) = mpsc::channel(10);
         let diff = Arc::<str>::from("");
