@@ -30,13 +30,6 @@
         "active": null
       }
     },
-    "schema_version": {
-      "description": "Schema version for config file format migrations",
-      "type": "integer",
-      "format": "uint32",
-      "default": 2,
-      "minimum": 0
-    },
     "standard": {
       "description": "Standard settings",
       "$ref": "#/$defs/StandardConfig",

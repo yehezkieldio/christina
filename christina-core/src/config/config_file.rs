@@ -65,11 +65,8 @@ pub struct ExperimentalConfig {
 /// On-disk configuration representation (serde-friendly)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ConfigFile {
-    /// Schema version for config file format migrations
-    pub schema_version: u32,
-
     /// Standard settings
     pub standard: StandardConfig,
 
@@ -86,8 +83,6 @@ pub struct ConfigFile {
 impl Default for ConfigFile {
     fn default() -> Self {
         Self {
-            // Version pins config migrations; bump only with a deliberate upgrade path.
-            schema_version: 2,
             standard: StandardConfig::default(),
             advanced: AdvancedConfig::default(),
             experimental: ExperimentalConfig::default(),
