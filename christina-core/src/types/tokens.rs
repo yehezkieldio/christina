@@ -2,11 +2,11 @@ use std::{num::NonZeroU32, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-// WHY these specific limits: MAX_INPUT reflects typical LLM context windows (256K tokens
-// is common for models like GPT-4 and Claude 3+). MAX_OUTPUT is conservative to prevent
-// runaway generation costs - commit messages should be concise, not essays.
-pub const MAX_INPUT: u32 = 500_000;
-pub const MAX_OUTPUT: u32 = 500_0002;
+// WHY these specific limits: MAX_INPUT reflects common large LLM context windows.
+// MAX_OUTPUT is intentionally conservative: commit messages should be concise,
+// not essays.
+pub const MAX_INPUT: u32 = 256_000;
+pub const MAX_OUTPUT: u32 = 4_096;
 
 /// Count of tokens in text, guaranteed to be non-zero.
 ///

@@ -609,8 +609,10 @@ mod tests {
             model_provider: ProviderKind::Azure,
             api_key: Some("test-key".to_string()),
             max_input_tokens: TokenCount::new_at_least_one(256000),
-            max_output_tokens: TokenCount::new_at_least_one(8192),
+            max_output_tokens: TokenCount::new_at_least_one(4096),
             model_temperature: 0.7,
+            azure_api_version: Some("2024-12-01-preview".to_string()),
+            azure_deployment_id: Some("gpt-4o".to_string()),
             ..Default::default()
         };
 
@@ -626,7 +628,7 @@ mod tests {
         );
         assert_eq!(
             profile.max_output_tokens,
-            TokenCount::new_at_least_one(8192)
+            TokenCount::new_at_least_one(4096)
         );
         assert_eq!(profile.temperature, Some(0.7));
         assert_eq!(runtime.api_key(), "test-key");
@@ -747,8 +749,10 @@ mod tests {
             model_provider: ProviderKind::Azure,
             api_key: Some("test-key".to_string()),
             max_input_tokens: TokenCount::new_at_least_one(256000),
-            max_output_tokens: TokenCount::new_at_least_one(8192),
+            max_output_tokens: TokenCount::new_at_least_one(4096),
             model_api_url: Some(url::Url::parse("https://test.openai.azure.com/").unwrap()),
+            azure_api_version: Some("2024-12-01-preview".to_string()),
+            azure_deployment_id: Some("gpt-4o".to_string()),
             ..Default::default()
         }
         .validate_and_resolve()

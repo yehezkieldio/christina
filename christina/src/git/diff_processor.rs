@@ -86,9 +86,10 @@ impl DiffProcessor {
         for word in first_line.split_whitespace() {
             if word.starts_with("a/") || word.starts_with("b/") {
                 let path = &word[2..];
+                let path_lower = path.to_ascii_lowercase();
                 if BINARY_EXTENSIONS
                     .iter()
-                    .any(|ext| path.to_lowercase().ends_with(ext))
+                    .any(|ext| path_lower.ends_with(ext))
                 {
                     return true;
                 }

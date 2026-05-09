@@ -3,16 +3,14 @@
 //! WHY custom HTTP: Azure's newer reasoning models require `max_completion_tokens`,
 //! which the shared llm crate does not yet expose for Azure.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use christina_core::error::CompletionError;
 use christina_core::llm::{LlmRequest, LlmResponse, Role, StructuredOutputFormat};
 use christina_core::types::ReasoningEffort;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-
-use crate::orchestrator::retry::{RetryPolicy, retry_with_backoff};
 
 fn azure_client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
@@ -40,52 +38,20 @@ pub struct AzureRequestConfig<'a> {
     pub reasoning_effort: Option<ReasoningEffort>,
 }
 
-/// Execute an Azure OpenAI request with retry logic and exponential backoff.
+/// Execute an Azure OpenAI request. Retry ownership stays in the orchestrator.
 pub async fn execute_azure_request(
     request: &LlmRequest,
     config: AzureRequestConfig<'_>,
 ) -> Result<LlmResponse, CompletionError> {
-    execute_azure_request_with_retry(request, config, &RetryPolicy::default()).await
-}
-
-/// Execute an Azure OpenAI request with custom retry policy.
-pub async fn execute_azure_request_with_retry(
-    request: &LlmRequest,
-    config: AzureRequestConfig<'_>,
-    retry_policy: &RetryPolicy,
-) -> Result<LlmResponse, CompletionError> {
-    let request = Arc::new(request.clone());
-    let api_key: Arc<str> = Arc::from(config.api_key);
-    let endpoint: Arc<str> = Arc::from(config.endpoint);
-    let deployment_id: Arc<str> = Arc::from(config.deployment_id);
-    let api_version: Arc<str> = Arc::from(config.api_version);
-    let model: Arc<str> = Arc::from(config.model);
-    let reasoning_effort = config
-        .reasoning_effort
-        .map(|value| Arc::from(value.as_str()));
-
-    retry_with_backoff(retry_policy, || {
-        let request = Arc::clone(&request);
-        let api_key = Arc::clone(&api_key);
-        let endpoint = Arc::clone(&endpoint);
-        let deployment_id = Arc::clone(&deployment_id);
-        let api_version = Arc::clone(&api_version);
-        let model = Arc::clone(&model);
-        let reasoning_effort = reasoning_effort.clone();
-
-        async move {
-            execute_azure_request_inner(
-                request.as_ref(),
-                api_key.as_ref(),
-                endpoint.as_ref(),
-                deployment_id.as_ref(),
-                api_version.as_ref(),
-                model.as_ref(),
-                reasoning_effort.as_deref(),
-            )
-            .await
-        }
-    })
+    execute_azure_request_inner(
+        request,
+        config.api_key,
+        config.endpoint,
+        config.deployment_id,
+        config.api_version,
+        config.model,
+        config.reasoning_effort.map(|value| value.as_str()),
+    )
     .await
 }
 
@@ -289,14 +255,17 @@ async fn execute_azure_request_inner(
     tracing::debug!("Azure OpenAI HTTP status: {status}");
 
     if !status.is_success() {
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_retry_after_header);
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| "<failed to read body>".to_string());
         tracing::warn!("Azure OpenAI error response: {error_text}");
-        return Err(CompletionError::InvalidResponse(format!(
-            "Response Format Error: OpenAI API returned error status: {status}. Raw response: {error_text}"
-        )));
+        return Err(classify_azure_status(status, retry_after, &error_text));
     }
 
     let resp_text = response
@@ -343,6 +312,24 @@ async fn execute_azure_request_inner(
         content,
         tokens_used: None,
     })
+}
+
+fn classify_azure_status(
+    status: StatusCode,
+    retry_after: Option<Duration>,
+    body: &str,
+) -> CompletionError {
+    let message = format!("Azure OpenAI returned {status}: {body}");
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => CompletionError::Unauthorized(message),
+        StatusCode::TOO_MANY_REQUESTS => CompletionError::RateLimited { retry_after },
+        status if status.is_server_error() => CompletionError::ServerError(message),
+        _ => CompletionError::InvalidResponse(message),
+    }
+}
+
+fn parse_retry_after_header(value: &str) -> Option<Duration> {
+    value.trim().parse::<u64>().ok().map(Duration::from_secs)
 }
 
 fn truncate_for_log(s: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {

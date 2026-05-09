@@ -408,14 +408,17 @@ pub fn split_by_hunks(
     }
 
     // Process each hunk
+    let mut candidate = String::new();
     for i in 0..hunk_positions.len() {
         let hunk_start = hunk_positions[i];
         let hunk_end = hunk_positions.get(i + 1).copied().unwrap_or(content.len());
         let hunk = &content[hunk_start..hunk_end];
-        let hunk_tokens = tokenizer.count_tokens(hunk);
-        let hunk_tokens_count = hunk_tokens.get();
 
         // If this single hunk exceeds limit, split by lines
+        candidate.clear();
+        candidate.push('\n');
+        candidate.push_str(hunk);
+        let hunk_tokens_count = tokenizer.count_tokens(&candidate).get();
         if hunk_tokens_count > token_limit.get() {
             if !buffer.is_empty() {
                 chunks.push(DiffChunk::new(
@@ -431,7 +434,13 @@ pub fn split_by_hunks(
         }
 
         // Check if adding this hunk would exceed limit
-        if current_tokens + hunk_tokens_count > token_limit.get() {
+        candidate.clear();
+        candidate.push_str(&buffer.content);
+        candidate.push('\n');
+        candidate.push_str(hunk);
+        let candidate_tokens = tokenizer.count_tokens(&candidate).get();
+
+        if candidate_tokens > token_limit.get() {
             if !buffer.is_empty() {
                 chunks.push(DiffChunk::new(
                     Arc::from(buffer.take_content()),
@@ -443,11 +452,11 @@ pub fn split_by_hunks(
             // Start new chunk with hunk only (no header deduplication)
             buffer.content_mut().push('\n');
             buffer.content_mut().push_str(hunk);
-            current_tokens = hunk_tokens_count + 1;
+            current_tokens = hunk_tokens_count;
         } else {
             buffer.content_mut().push('\n');
             buffer.content_mut().push_str(hunk);
-            current_tokens += hunk_tokens_count + 1;
+            current_tokens = candidate_tokens;
         }
     }
 
@@ -663,6 +672,10 @@ fn split_oversized_line_by_search(
 
         let chunk_content = &line[start..best];
         let token_count = tokenizer.count_tokens(chunk_content);
+        if token_count > token_limit {
+            start = best;
+            continue;
+        }
         chunks.push(DiffChunk::new(
             Arc::from(chunk_content),
             vec![file_path.clone()],

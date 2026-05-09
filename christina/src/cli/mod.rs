@@ -340,8 +340,8 @@ mod tests {
                 ..
             })) => {
                 assert_eq!(name, "my-profile");
-                assert_eq!(provider, Some("openai".to_string()));
-                assert_eq!(model, Some("gpt-4".to_string()));
+                assert_eq!(provider, Some("azure".to_string()));
+                assert_eq!(model, Some("gpt-4o".to_string()));
             }
             _ => panic!("Expected profile create command"),
         }

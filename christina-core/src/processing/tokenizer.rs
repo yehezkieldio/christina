@@ -14,7 +14,6 @@ use crate::{
     tokenizer::Tokenizer,
     types::tokens::TokenCount,
 };
-use ahash::RandomState;
 use moka::sync::Cache;
 use tiktoken_rs::CoreBPE;
 use tracing::warn;
@@ -109,9 +108,8 @@ const TOKEN_CACHE_CAPACITY: usize = 10_000;
 
 pub struct TokenizerService {
     bpe: CoreBPE,
-    /// LRU cache for token counts, keyed by content hash.
-    token_cache: Cache<u64, u32>,
-    hash_builder: RandomState,
+    /// LRU cache for token counts, keyed by exact content to avoid hash collision skew.
+    token_cache: Cache<String, u32>,
 }
 
 impl TokenizerService {
@@ -124,11 +122,7 @@ impl TokenizerService {
         )]
         let cap = NonZeroUsize::new(TOKEN_CACHE_CAPACITY).unwrap();
         let token_cache = Cache::builder().max_capacity(cap.get() as u64).build();
-        Ok(Self {
-            bpe,
-            token_cache,
-            hash_builder: RandomState::new(),
-        })
+        Ok(Self { bpe, token_cache })
     }
 
     #[inline]
@@ -148,8 +142,7 @@ impl TokenizerService {
             return count as u32;
         }
 
-        let hash = self.hash_builder.hash_one(text.as_bytes());
-        self.token_cache.get_with(hash, || {
+        self.token_cache.get_with(text.to_owned(), || {
             let count = self.bpe.encode_ordinary(text).len();
             count as u32
         })
@@ -325,11 +318,21 @@ impl Tokenizer for TokenizerService {
 
     fn slice_to_token_limit<'a>(&self, text: &'a str, limit: TokenCount) -> &'a str {
         let tokens = self.bpe.encode_ordinary(text);
-        if tokens.len() <= limit.get() as usize {
+        let limit = usize::from(limit);
+        if tokens.len() <= limit {
             return text;
         }
 
-        // Binary search for the right slice point
+        let prefix_tokens = &tokens[..limit];
+        if let Ok(decoded) = self.bpe.decode(prefix_tokens) {
+            let end = decoded.len();
+            if !decoded.is_empty() && text.starts_with(&decoded) && text.is_char_boundary(end) {
+                return prefer_line_boundary(text, end, limit, |slice| {
+                    self.bpe.encode_ordinary(slice).len()
+                });
+            }
+        }
+
         let mut low = 0;
         let mut high = text.len();
         let mut best = 0;
@@ -348,7 +351,7 @@ impl Tokenizer for TokenizerService {
             let slice = &text[..boundary];
             let token_count = self.bpe.encode_ordinary(slice).len();
 
-            if token_count <= limit.get() as usize {
+            if token_count <= limit {
                 best = boundary;
                 low = mid;
             } else {
@@ -356,18 +359,27 @@ impl Tokenizer for TokenizerService {
             }
         }
 
-        // Prefer ending at a line boundary for readability when it preserves most content.
-        let result = &text[..best];
-        if let Some(last_newline) = result.rfind('\n') {
-            let line_slice = &result[..=last_newline];
-            let line_tokens = self.bpe.encode_ordinary(line_slice).len();
-            if line_tokens >= (limit.get() as usize * 4) / 5 {
-                return line_slice;
-            }
-        }
-
-        result
+        prefer_line_boundary(text, best, limit, |slice| {
+            self.bpe.encode_ordinary(slice).len()
+        })
     }
+}
+
+fn prefer_line_boundary(
+    text: &str,
+    end: usize,
+    limit: usize,
+    count_tokens: impl Fn(&str) -> usize,
+) -> &str {
+    let result = &text[..end];
+    if let Some(last_newline) = result.rfind('\n') {
+        let line_slice = &result[..=last_newline];
+        if count_tokens(line_slice) >= (limit * 4) / 5 {
+            return line_slice;
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]

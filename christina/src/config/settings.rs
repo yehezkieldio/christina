@@ -286,7 +286,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             max_input_tokens: TokenCount::new_at_least_one(256000),
-            max_output_tokens: TokenCount::new_at_least_one(8192),
+            max_output_tokens: TokenCount::new_at_least_one(MAX_OUTPUT),
             model_provider: ProviderKind::Azure,
             model: ModelName::from("gpt-4o"),
             api_key: None,
@@ -685,9 +685,21 @@ impl Config {
         std::fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
 
         let config_path = config_dir.join("config.toml");
-        let temp_path = config_dir.join("config.toml.tmp");
+        let lock_path = config_dir.join("config.lock");
+        let temp_path = config_dir.join(format!("config.toml.{}.tmp", std::process::id()));
 
         let toml_content = self.render_config_toml()?;
+
+        let lock_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .context("Failed to open config lock file")?;
+        lock_file
+            .lock_exclusive()
+            .context("Failed to acquire exclusive lock on config file")?;
 
         {
             let mut temp_file =
@@ -699,17 +711,6 @@ impl Config {
                 .sync_all()
                 .context("Failed to sync temporary config file")?;
         }
-
-        let target_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&config_path)
-            .context("Failed to open target config file for locking")?;
-        target_file
-            .lock_exclusive()
-            .context("Failed to acquire exclusive lock on config file")?;
 
         // Atomic replace avoids partially-written configs on crash.
         std::fs::rename(&temp_path, &config_path)
@@ -821,7 +822,7 @@ impl Config {
                     .context("Invalid number")?;
                 let hard_limit = TokenCount::new_at_least_one(MAX_INPUT);
                 self.max_input_tokens = parsed.min(hard_limit);
-                update_active_profile(key, value)?;
+                update_active_profile(key, &self.max_input_tokens.get().to_string())?;
             }
             "max_output_tokens" => {
                 let parsed: TokenCount = value
@@ -830,7 +831,7 @@ impl Config {
                     .context("Invalid number")?;
                 let hard_limit = TokenCount::new_at_least_one(MAX_OUTPUT);
                 self.max_output_tokens = parsed.min(hard_limit);
-                update_active_profile(key, value)?;
+                update_active_profile(key, &self.max_output_tokens.get().to_string())?;
             }
             "model_provider" => {
                 self.model_provider = value.parse().map_err(anyhow::Error::msg)?;
@@ -1310,7 +1311,7 @@ mod tests {
     fn default_config() {
         let config = Config::default();
         assert_eq!(config.max_input_tokens.get(), 256000);
-        assert_eq!(config.max_output_tokens.get(), 8192);
+        assert_eq!(config.max_output_tokens.get(), MAX_OUTPUT);
         assert_eq!(config.model_provider, ProviderKind::Azure);
         assert_eq!(config.model, ModelName::from("gpt-4o"));
         assert!(config.api_key.is_none());
@@ -1620,7 +1621,10 @@ mod tests {
     #[test]
     fn get_max_output_tokens() {
         let config = Config::default();
-        assert_eq!(config.get("max_output_tokens"), Some("8192".to_string()));
+        assert_eq!(
+            config.get("max_output_tokens"),
+            Some(MAX_OUTPUT.to_string())
+        );
     }
 
     #[test]
@@ -1945,8 +1949,8 @@ mod tests {
         );
         assert_eq!(
             config.max_output_tokens.get(),
-            MAX_INPUT - 1,
-            "should leave output below input after hard-limit clamping"
+            MAX_OUTPUT,
+            "should clamp output tokens to hard limit"
         );
         assert!(warnings.iter().any(|w| w.contains("max_input_tokens")));
         assert!(warnings.iter().any(|w| w.contains("max_output_tokens")));
@@ -2063,7 +2067,7 @@ mod tests {
         config.model = ModelName::from("gpt-4o");
         config.api_key = Some("sk-azure-test".to_string());
         config.max_input_tokens = TokenCount::new_at_least_one(256000);
-        config.max_output_tokens = TokenCount::new_at_least_one(8192);
+        config.max_output_tokens = TokenCount::new_at_least_one(MAX_OUTPUT);
 
         let profile = config.to_profile("azure-profile".to_string());
 
@@ -2072,6 +2076,6 @@ mod tests {
         assert_eq!(profile.model, ModelName::from("gpt-4o"));
         assert_eq!(profile.api_key, Secret::Value("sk-azure-test".to_string()));
         assert_eq!(profile.max_input_tokens.get(), 256000);
-        assert_eq!(profile.max_output_tokens.get(), 8192);
+        assert_eq!(profile.max_output_tokens.get(), MAX_OUTPUT);
     }
 }

@@ -1759,7 +1759,7 @@ async fn generate_with_retry(
         let delay = last_error
             .as_ref()
             .and_then(CompletionError::retry_after)
-            .map_or(backoff, |retry_after| std::cmp::min(retry_after, backoff));
+            .map_or(backoff, |retry_after| std::cmp::max(retry_after, backoff));
         tokio::select! {
             () = shutdown.cancelled() => return Err(CompletionError::Cancelled),
             () = tokio::time::sleep(delay) => {}

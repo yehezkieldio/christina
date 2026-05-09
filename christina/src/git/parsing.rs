@@ -208,7 +208,7 @@ pub fn split_by_files(diff: &str, tokenizer: &dyn Tokenizer) -> Vec<FileDiff> {
     let mut offset = 0usize;
 
     for line in diff.split_inclusive('\n') {
-        if line.trim_start().starts_with(FILE_HEADER) {
+        if line.starts_with(FILE_HEADER) {
             positions.push(offset);
         }
         offset += line.len();
@@ -540,21 +540,21 @@ mod tests {
     #[test]
     fn split_diff_by_individual_files() {
         let diff = "\
- diff --git a/file1.txt b/file1.txt
- index 1234567..abcdefg 100644
- --- a/file1.txt
- +++ b/file1.txt
- @@ -1 +1 @@
- -old
- +new
- diff --git a/file2.txt b/file2.txt
- index 2345678..bcdefgh 100644
- --- a/file2.txt
- +++ b/file2.txt
- @@ -1 +1 @@
- -old2
- +new2
- ";
+diff --git a/file1.txt b/file1.txt
+index 1234567..abcdefg 100644
+--- a/file1.txt
++++ b/file1.txt
+@@ -1 +1 @@
+-old
++new
+diff --git a/file2.txt b/file2.txt
+index 2345678..bcdefgh 100644
+--- a/file2.txt
++++ b/file2.txt
+@@ -1 +1 @@
+-old2
++new2
+";
 
         let tokenizer = MockTokenizer;
         let files = split_by_files(diff, &tokenizer);
@@ -571,10 +571,25 @@ mod tests {
     #[test]
     fn split_by_files_ignores_inline_headers() {
         let diff = "\
- diff --git a/real.txt b/real.txt
- +Some content with diff --git a/fake.txt b/fake.txt embedded
- More content
- ";
+diff --git a/real.txt b/real.txt
++Some content with diff --git a/fake.txt b/fake.txt embedded
+More content
+";
+
+        let tokenizer = MockTokenizer;
+        let files = split_by_files(diff, &tokenizer);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, FilePath::from("real.txt"));
+    }
+
+    #[test]
+    fn split_by_files_ignores_indented_hunk_text_that_looks_like_header() {
+        let diff = "\
+diff --git a/real.txt b/real.txt
+@@ -1 +1 @@
+ diff --git a/fake.txt b/fake.txt
++new
+";
 
         let tokenizer = MockTokenizer;
         let files = split_by_files(diff, &tokenizer);

@@ -111,8 +111,7 @@ fn handle_profile_command_with_io(
             Ok(true)
         }
         ProfileCommands::Delete { name, force } => {
-            handle_delete(config, input, output, &name, force)?;
-            Ok(true)
+            handle_delete(config, input, output, &name, force)
         }
         ProfileCommands::Switch { name } => {
             handle_switch(config, output, &name)?;
@@ -257,11 +256,11 @@ fn handle_create(
     }
 
     if let Some(tokens) = max_input_tokens {
-        profile.max_input_tokens = TokenCount::new_at_least_one(tokens as u32);
+        profile.max_input_tokens = token_count_from_cli(tokens)?;
     }
 
     if let Some(tokens) = max_output_tokens {
-        profile.max_output_tokens = TokenCount::new_at_least_one(tokens as u32);
+        profile.max_output_tokens = token_count_from_cli(tokens)?;
     }
 
     if let Some(version) = azure_api_version {
@@ -320,11 +319,11 @@ fn handle_edit(
     }
 
     if let Some(tokens) = max_input_tokens {
-        profile.max_input_tokens = TokenCount::new_at_least_one(tokens as u32);
+        profile.max_input_tokens = token_count_from_cli(tokens)?;
     }
 
     if let Some(tokens) = max_output_tokens {
-        profile.max_output_tokens = TokenCount::new_at_least_one(tokens as u32);
+        profile.max_output_tokens = token_count_from_cli(tokens)?;
     }
 
     if let Some(version) = azure_api_version {
@@ -350,7 +349,7 @@ fn handle_delete(
     output: &mut dyn Write,
     name: &str,
     force: bool,
-) -> Result<()> {
+) -> Result<bool> {
     if !config.profiles.exists(name) {
         anyhow::bail!("Profile '{}' not found", name);
     }
@@ -365,7 +364,7 @@ fn handle_delete(
 
         if !response.trim().eq_ignore_ascii_case("y") {
             writeln!(output, "Cancelled.")?;
-            return Ok(());
+            return Ok(false);
         }
     }
 
@@ -373,7 +372,12 @@ fn handle_delete(
 
     writeln!(output, "Deleted profile: {}", name)?;
 
-    Ok(())
+    Ok(true)
+}
+
+fn token_count_from_cli(value: usize) -> Result<TokenCount> {
+    let value = u32::try_from(value).context("Token value exceeds u32 range")?;
+    TokenCount::try_from(value).map_err(anyhow::Error::msg)
 }
 
 fn handle_switch(config: &mut Config, output: &mut dyn Write, name: &str) -> Result<()> {

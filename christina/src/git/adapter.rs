@@ -566,7 +566,11 @@ fn format_patch_bounded(diff: &git2::Diff) -> Result<String> {
             line_len += 1;
         }
         if diff_string.len().saturating_add(line_len) > max_without_notice {
-            diff_string.truncate(max_without_notice);
+            let mut truncate_at = max_without_notice.min(diff_string.len());
+            while truncate_at > 0 && !diff_string.is_char_boundary(truncate_at) {
+                truncate_at -= 1;
+            }
+            diff_string.truncate(truncate_at);
             diff_string.push_str(notice);
             truncated = true;
             return false;

@@ -16,7 +16,9 @@ use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[cfg(test)]
 use christina_core::error::{CompletionError, IsTransient};
+#[cfg(test)]
 use tokio::time::sleep;
 
 /// Retry policy configuration.
@@ -30,10 +32,12 @@ pub struct RetryPolicy {
     pub with_jitter: bool,
 }
 
+#[cfg(test)]
 pub trait RetryAfter {
     fn retry_after(&self) -> Option<Duration>;
 }
 
+#[cfg(test)]
 impl RetryAfter for CompletionError {
     fn retry_after(&self) -> Option<Duration> {
         CompletionError::retry_after(self)
@@ -105,7 +109,8 @@ impl RetryPolicy {
 ///
 /// WHY check transient first: Fail fast on permanent errors (auth, validation). Avoids wasting
 /// time/delays on errors that will never succeed. Transient check is cheap (enum match).
-pub async fn retry_with_backoff<F, Fut, T, E>(policy: &RetryPolicy, operation: F) -> Result<T, E>
+#[cfg(test)]
+async fn retry_with_backoff<F, Fut, T, E>(policy: &RetryPolicy, operation: F) -> Result<T, E>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
@@ -128,7 +133,7 @@ where
                 let backoff = policy.calculate_delay(attempt as u32);
                 let delay = err
                     .retry_after()
-                    .map_or(backoff, |retry_after| std::cmp::min(retry_after, backoff));
+                    .map_or(backoff, |retry_after| std::cmp::max(retry_after, backoff));
                 sleep(delay).await;
                 attempt += 1;
             }
