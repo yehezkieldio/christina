@@ -9,6 +9,7 @@
 #![cfg(any(test, feature = "test-helpers"))]
 
 use std::path::Path;
+use std::vec::IntoIter;
 
 use crate::{config::ResolvedConfig, tokenizer::Tokenizer, types::tokens::TokenCount};
 
@@ -189,8 +190,7 @@ impl Tokenizer for DeterministicTokenizer {
 /// assert_eq!(mock.read_line(), None);
 /// ```
 pub struct MockStdin {
-    inputs: Vec<String>,
-    position: usize,
+    inputs: IntoIter<String>,
 }
 
 impl MockStdin {
@@ -201,20 +201,13 @@ impl MockStdin {
     /// * `inputs` - Vector of strings to return in sequence
     pub fn new(inputs: Vec<String>) -> Self {
         Self {
-            inputs,
-            position: 0,
+            inputs: inputs.into_iter(),
         }
     }
 
     /// Returns the next input string, or `None` if all inputs have been consumed.
     pub fn read_line(&mut self) -> Option<String> {
-        if self.position < self.inputs.len() {
-            let result = self.inputs[self.position].clone();
-            self.position += 1;
-            Some(result)
-        } else {
-            None
-        }
+        self.inputs.next()
     }
 }
 
