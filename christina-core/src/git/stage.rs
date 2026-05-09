@@ -53,21 +53,24 @@ impl GitFileStatus {
     }
 
     pub fn parse(s: &str) -> Self {
-        if s.len() == 1 {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "len()==1 guarantees chars().next() is Some"
-            )]
-            Self::from_char(s.chars().next().unwrap())
+        let mut chars = s.chars();
+        if let (Some(status), None) = (chars.next(), chars.next()) {
+            Self::from_char(status)
         } else {
-            match s.to_uppercase().as_str() {
-                "ADDED" => GitFileStatus::Added,
-                "MODIFIED" => GitFileStatus::Modified,
-                "DELETED" => GitFileStatus::Deleted,
-                "RENAMED" => GitFileStatus::Renamed,
-                "COPIED" => GitFileStatus::Copied,
-                "UNTRACKED" => GitFileStatus::Untracked,
-                _ => GitFileStatus::Unknown,
+            if s.eq_ignore_ascii_case("ADDED") {
+                Self::Added
+            } else if s.eq_ignore_ascii_case("MODIFIED") {
+                Self::Modified
+            } else if s.eq_ignore_ascii_case("DELETED") {
+                Self::Deleted
+            } else if s.eq_ignore_ascii_case("RENAMED") {
+                Self::Renamed
+            } else if s.eq_ignore_ascii_case("COPIED") {
+                Self::Copied
+            } else if s.eq_ignore_ascii_case("UNTRACKED") {
+                Self::Untracked
+            } else {
+                Self::Unknown
             }
         }
     }
@@ -95,16 +98,23 @@ pub struct GitFile {
 }
 
 impl GitFile {
-    pub fn new(path: String, status: String, diff_content: String) -> Self {
+    pub fn new(
+        path: impl Into<CompactString>,
+        status: impl Into<CompactString>,
+        diff_content: impl Into<String>,
+    ) -> Self {
+        let path = path.into();
+        let status = status.into();
+        let diff_content = diff_content.into();
         let status_enum = GitFileStatus::parse(&status);
         // Binary detection is intentionally conservative: any signal marks the file as binary.
-        let is_binary = status_enum.might_be_binary(&path)
+        let is_binary = status_enum.might_be_binary(path.as_str())
             || diff_content.contains("Binary files")
             || diff_content.bytes().any(|b| b == 0);
 
         Self {
             path: FilePath::from(path.as_str()),
-            status: CompactString::new(&status),
+            status,
             status_enum,
             diff_content,
             is_binary,
