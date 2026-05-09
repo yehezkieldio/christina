@@ -21,30 +21,40 @@ use tracing as _;
 use url as _;
 use zeroize as _;
 
+const SCHEMA_FILE_NAME: &str = "config.schema.json";
+
 fn main() -> Result<()> {
     let schema = schema_for!(ConfigFile);
     let schema_json =
         serde_json::to_string_pretty(&schema).context("Failed to serialize JSON schema")?;
 
-    let mut out_path = if let Some(arg) = env::args().nth(1) {
-        PathBuf::from(arg)
-    } else {
-        // Default to config.schema.json in the project root
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let project_root = manifest_dir
-            .parent()
-            .context("Failed to resolve project root directory")?;
-        project_root.join("config.schema.json")
-    };
-
-    // If out_path is a directory, append the default filename
-    if out_path.is_dir() {
-        out_path.push("config.schema.json");
-    }
+    let out_path = output_path(env::args().nth(1))?;
 
     println!("Generating JSON schema to {}...", out_path.display());
     fs::write(&out_path, schema_json)
         .with_context(|| format!("Failed to write schema file to {}", out_path.display()))?;
     println!("Done!");
     Ok(())
+}
+
+fn output_path(arg: Option<String>) -> Result<PathBuf> {
+    let mut path = match arg {
+        Some(path) => PathBuf::from(path),
+        None => default_schema_path()?,
+    };
+
+    if path.is_dir() {
+        path.push(SCHEMA_FILE_NAME);
+    }
+
+    Ok(path)
+}
+
+fn default_schema_path() -> Result<PathBuf> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let project_root = manifest_dir
+        .parent()
+        .context("Failed to resolve project root directory")?;
+
+    Ok(project_root.join(SCHEMA_FILE_NAME))
 }
