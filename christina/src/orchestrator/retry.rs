@@ -156,23 +156,20 @@ pub fn rand_jitter_with_seed(max: u64, seed: u64) -> u64 {
 
     // Special-case u64::MAX to avoid overflow when adding 1
     if max == u64::MAX {
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u64(seed);
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        hasher.write_u64(now.as_nanos() as u64);
-        return hasher.finish();
+        return jitter_entropy(seed);
     }
 
+    jitter_entropy(seed) % (max + 1)
+}
+
+fn jitter_entropy(seed: u64) -> u64 {
     let mut hasher = RandomState::new().build_hasher();
     hasher.write_u64(seed);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     hasher.write_u64(now.as_nanos() as u64);
-    let hash = hasher.finish();
-    hash % (max + 1)
+    hasher.finish()
 }
 
 #[cfg(test)]
