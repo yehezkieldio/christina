@@ -78,15 +78,7 @@ async fn generate_commit_message_with_progress_impl(
     if trace {
         ui::print_trace("starting commit message generation");
     }
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: "connecting to provider".to_string(),
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
+    send_generation_progress(&progress_tx, "connecting to provider").await?;
 
     let provider = Provider::from_profile(&config.provider_profile, config.api_key())?;
     let provider = Arc::new(provider);
@@ -95,15 +87,7 @@ async fn generate_commit_message_with_progress_impl(
     if trace {
         ui::print_trace("created AI provider");
     }
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: "processing diff".to_string(),
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
+    send_generation_progress(&progress_tx, "processing diff").await?;
 
     let tokenizer: Arc<dyn christina_core::Tokenizer> = get_tokenizer();
     if trace {
@@ -381,31 +365,16 @@ async fn generate_commit_message_with_progress_impl(
         ui::print_trace(&format!("total tokens in chunks: {}", total_tokens.get()));
     }
 
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: format!(
-                "analyzing {} chunk{}",
-                chunks.len(),
-                if chunks.len() == 1 { "" } else { "s" }
-            ),
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
+    let chunk_label = if chunks.len() == 1 { "" } else { "s" };
+    send_generation_progress(
+        &progress_tx,
+        format!("analyzing {} chunk{}", chunks.len(), chunk_label),
+    )
+    .await?;
 
     let user_context = effective_user_context;
 
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: "generating message".to_string(),
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
+    send_generation_progress(&progress_tx, "generating message").await?;
 
     if trace {
         ui::print_trace(&format!(
@@ -478,17 +447,21 @@ async fn generate_commit_message_with_progress_impl(
     if trace {
         ui::print_trace("finalizing generation result");
     }
-    if progress_tx
-        .send(Event::GenerationProgress {
-            stage: "finalizing".to_string(),
-        })
-        .await
-        .is_err()
-    {
-        anyhow::bail!("Progress receiver dropped, aborting generation");
-    }
+    send_generation_progress(&progress_tx, "finalizing").await?;
 
     Ok(result)
+}
+
+async fn send_generation_progress(
+    progress_tx: &mpsc::Sender<Event>,
+    stage: impl Into<String>,
+) -> Result<()> {
+    progress_tx
+        .send(Event::GenerationProgress {
+            stage: stage.into(),
+        })
+        .await
+        .map_err(|_| anyhow::anyhow!("Progress receiver dropped, aborting generation"))
 }
 
 fn ensure_not_cancelled(shutdown: &CancellationToken) -> Result<()> {
