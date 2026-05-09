@@ -6,6 +6,8 @@
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 
+const FORCED_SHUTDOWN_EXIT_CODE: i32 = 130;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShutdownSignal {
     CtrlC,
@@ -38,7 +40,7 @@ pub fn spawn_signal_handler(token: CancellationToken) -> tokio::task::JoinHandle
 
         if let Ok(signal) = wait_for_shutdown_signal().await {
             tracing::warn!(signal = signal.name(), "Forced shutdown requested");
-            std::process::exit(130);
+            std::process::exit(FORCED_SHUTDOWN_EXIT_CODE);
         }
     })
 }
