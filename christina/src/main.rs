@@ -61,10 +61,20 @@ async fn main() -> std::process::ExitCode {
 
     telemetry::init(cli.verbose);
 
+    match run(cli).await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(err) => {
+            ui::print_error(&format!("{err}"));
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run(cli: Cli) -> Result<()> {
     let shutdown_token = tokio_util::sync::CancellationToken::new();
     let _shutdown_handle = shutdown::spawn_signal_handler(shutdown_token.clone());
 
-    let result: Result<()> = match cli.command {
+    match cli.command {
         Some(Commands::Config(cmd)) => cli::config::handle_config_command(cmd),
         Some(Commands::Profile(cmd)) => cli::profile::handle_profile_command(cmd),
         Some(Commands::Completions { shell }) => {
@@ -81,14 +91,6 @@ async fn main() -> std::process::ExitCode {
                 shutdown_token,
             )
             .await
-        }
-    };
-
-    match result {
-        Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(err) => {
-            ui::print_error(&format!("{err}"));
-            std::process::ExitCode::FAILURE
         }
     }
 }
