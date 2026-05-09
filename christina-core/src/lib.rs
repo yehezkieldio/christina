@@ -33,12 +33,12 @@ pub use error::{
     AppError, CompletionError, DiffError, DiffResult, ErrorCategory, GitError, GitResult,
     ProviderError, TokenizerError, TokenizerResult,
 };
-pub use git::{GitFile, GitFileStatus, RepoRoot, RepoRootError};
+pub use git::{GitFile, GitFileStatus, RepoRoot, RepoRootError, RepoSnapshot};
 pub use llm::{
     ChatMessage, LlmRequest, LlmResponse, ProviderEndpoint, ProviderSpec, Role,
     StructuredOutputFormat,
 };
-pub use pipeline::LlmBackend;
+pub use pipeline::{LlmBackend, PipelineState};
 pub use profile::{Profiles, ProviderProfile};
 pub use tokenizer::Tokenizer;
 pub use types::backend_id::GenerationId;
