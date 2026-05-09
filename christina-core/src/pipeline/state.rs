@@ -35,6 +35,17 @@ impl PipelineState {
         }
     }
 
+    /// Return completed and total chunks when chunk analysis is active.
+    pub fn chunk_progress(&self) -> Option<(usize, usize)> {
+        match self {
+            Self::Analyzing {
+                total_chunks,
+                completed_chunks,
+            } => Some((*completed_chunks, *total_chunks)),
+            Self::Empty | Self::Synthesizing | Self::Complete | Self::Failed { .. } => None,
+        }
+    }
+
     /// Advance the analyzing state by one chunk.
     ///
     /// # Panics
@@ -59,18 +70,24 @@ impl PipelineState {
 
     /// Check if all chunks have been processed.
     pub fn all_chunks_done(&self) -> bool {
-        matches!(
-            self,
-            Self::Analyzing {
-                total_chunks,
-                completed_chunks,
-            } if completed_chunks == total_chunks
-        )
+        self.chunk_progress()
+            .is_some_and(|(completed_chunks, total_chunks)| completed_chunks == total_chunks)
     }
 
     /// Check if the pipeline is in a terminal state.
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Complete | Self::Failed { .. })
+    }
+
+    /// Move from analysis into final synthesis once all chunks are complete.
+    pub fn synthesize_when_ready(self) -> Self {
+        match self {
+            Self::Analyzing {
+                total_chunks,
+                completed_chunks,
+            } if completed_chunks == total_chunks => Self::Synthesizing,
+            state => state,
+        }
     }
 }
 
@@ -116,6 +133,26 @@ mod tests {
         assert!(!state.all_chunks_done());
         state.advance_chunk();
         assert!(state.all_chunks_done());
+    }
+
+    #[test]
+    fn chunk_progress_only_for_analyzing_state() {
+        let mut state = PipelineState::analyzing(3);
+        state.advance_chunk();
+
+        assert_eq!(state.chunk_progress(), Some((1, 3)));
+        assert_eq!(PipelineState::Empty.chunk_progress(), None);
+    }
+
+    #[test]
+    fn synthesize_when_ready_transitions_only_after_analysis_completes() {
+        let mut state = PipelineState::analyzing(2);
+
+        state.advance_chunk();
+        assert_eq!(state.clone().synthesize_when_ready(), state);
+
+        state.advance_chunk();
+        assert_eq!(state.synthesize_when_ready(), PipelineState::Synthesizing);
     }
 
     #[test]
