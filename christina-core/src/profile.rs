@@ -56,10 +56,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::Secret,
-    types::{
-        ModelName, ProviderKind, ReasoningEffort, TokenCount,
-        tokens::{MAX_INPUT, MAX_OUTPUT},
-    },
+    types::{ModelName, ProviderKind, ReasoningEffort, TokenCount},
 };
 
 /// Configuration for an LLM provider (API credentials, model, token limits).
@@ -90,14 +87,6 @@ impl<S> ProviderProfile<S> {
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
             return Err(anyhow!("Profile name cannot be empty"));
-        }
-
-        if self.max_input_tokens.get() > MAX_INPUT {
-            return Err(anyhow!("Max input tokens cannot exceed {}", MAX_INPUT));
-        }
-
-        if self.max_output_tokens.get() > MAX_OUTPUT {
-            return Err(anyhow!("Max output tokens cannot exceed {}", MAX_OUTPUT));
         }
 
         Ok(())

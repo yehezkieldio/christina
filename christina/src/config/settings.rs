@@ -22,7 +22,7 @@ use christina_core::{
     types::{
         ModelName, ProviderKind, ReasoningEffort,
         commit::ValidationMode,
-        tokens::{MAX_INPUT, MAX_OUTPUT, TokenCount},
+        tokens::{MAX_OUTPUT, TokenCount},
     },
 };
 use url::Url;
@@ -386,7 +386,7 @@ impl Config {
         config.apply_env_overlay(build_nested_env_overlay(&sources.process_env)?);
         config.apply_env_overlay(build_legacy_env_overlay(&sources.process_env)?);
 
-        // Validate and clamp token values to hard limits after all configuration is loaded
+        // Validate cross-field invariants after all configuration is loaded.
         let warnings = config.validate();
         for warning in warnings {
             tracing::warn!("{}", warning);
@@ -570,30 +570,9 @@ impl Config {
         }
     }
 
-    /// Validate and clamp token values to hard limits.
-    /// Also validates provider name against the registry.
+    /// Validate token budget relationships and provider name against the registry.
     fn validate(&mut self) -> Vec<String> {
         let mut warnings = Vec::new();
-        let max_input = TokenCount::new_at_least_one(MAX_INPUT);
-        let max_output = TokenCount::new_at_least_one(MAX_OUTPUT);
-
-        if self.max_input_tokens > max_input {
-            warnings.push(format!(
-                "max_input_tokens clamped from {} to {}",
-                self.max_input_tokens.get(),
-                max_input.get()
-            ));
-            self.max_input_tokens = max_input;
-        }
-
-        if self.max_output_tokens > max_output {
-            warnings.push(format!(
-                "max_output_tokens clamped from {} to {}",
-                self.max_output_tokens.get(),
-                max_output.get()
-            ));
-            self.max_output_tokens = max_output;
-        }
 
         if self.max_input_tokens <= self.max_output_tokens {
             let original_output = self.max_output_tokens;
@@ -761,8 +740,6 @@ impl Config {
     }
 
     /// Set a configuration value by key name.
-    /// Token values are clamped to hard limits to prevent misconfiguration.
-    ///
     /// Updates are also synchronized to the active profile to ensure persistence.
     pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
         // Helper to update the active profile
@@ -820,8 +797,7 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                let hard_limit = TokenCount::new_at_least_one(MAX_INPUT);
-                self.max_input_tokens = parsed.min(hard_limit);
+                self.max_input_tokens = parsed;
                 update_active_profile(key, &self.max_input_tokens.get().to_string())?;
             }
             "max_output_tokens" => {
@@ -829,8 +805,7 @@ impl Config {
                     .parse()
                     .map_err(anyhow::Error::msg)
                     .context("Invalid number")?;
-                let hard_limit = TokenCount::new_at_least_one(MAX_OUTPUT);
-                self.max_output_tokens = parsed.min(hard_limit);
+                self.max_output_tokens = parsed;
                 update_active_profile(key, &self.max_output_tokens.get().to_string())?;
             }
             "model_provider" => {
@@ -1336,17 +1311,13 @@ mod tests {
     }
 
     #[test]
-    fn set_max_input_tokens_clamping() {
+    fn set_max_input_tokens_preserves_large_value() {
         let mut config = Config::default();
-        let over_limit = (MAX_INPUT + 1).to_string();
+        let requested = "512000";
         config
-            .set("max_input_tokens", &over_limit)
-            .expect("should accept but clamp");
-        assert_eq!(
-            config.max_input_tokens.get(),
-            MAX_INPUT,
-            "should clamp to hard limit"
-        );
+            .set("max_input_tokens", requested)
+            .expect("should accept caller-provided token count");
+        assert_eq!(config.max_input_tokens.get(), 512000);
     }
 
     #[test]
@@ -1372,17 +1343,13 @@ mod tests {
     }
 
     #[test]
-    fn set_max_output_tokens_clamping() {
+    fn set_max_output_tokens_preserves_large_value() {
         let mut config = Config::default();
-        let over_limit = (MAX_OUTPUT + 1).to_string();
+        let requested = (MAX_OUTPUT + 1).to_string();
         config
-            .set("max_output_tokens", &over_limit)
-            .expect("should accept but clamp");
-        assert_eq!(
-            config.max_output_tokens.get(),
-            MAX_OUTPUT,
-            "should clamp to hard limit"
-        );
+            .set("max_output_tokens", &requested)
+            .expect("should accept caller-provided token count");
+        assert_eq!(config.max_output_tokens.get(), MAX_OUTPUT + 1);
     }
 
     #[test]
@@ -1785,7 +1752,7 @@ mod tests {
     }
 
     #[test]
-    fn load_from_sources_clamps_after_env_overlay() {
+    fn load_from_sources_validates_after_env_overlay() {
         let config = Config::load_from_sources(test_sources(
             None,
             vec![
@@ -1797,7 +1764,7 @@ mod tests {
                 ("CHRISTINA_MAX_FAILURE_RATE", "0.9"),
             ],
         ))
-        .expect("clamped env config should load");
+        .expect("env config should load");
 
         assert!(config.max_output_tokens < config.max_input_tokens);
         assert_eq!(config.model_temperature, 2.0);
@@ -1934,26 +1901,17 @@ mod tests {
     }
 
     #[test]
-    fn validate_clamps_token_limits() {
+    fn validate_preserves_large_token_limits() {
         let mut config = Config::default();
 
-        config.max_input_tokens = TokenCount::new_at_least_one(MAX_INPUT + 1000);
+        config.max_input_tokens = TokenCount::new_at_least_one(512000);
         config.max_output_tokens = TokenCount::new_at_least_one(MAX_OUTPUT + 1000);
 
         let warnings = config.validate();
 
-        assert_eq!(
-            config.max_input_tokens.get(),
-            MAX_INPUT,
-            "should clamp input tokens to hard limit"
-        );
-        assert_eq!(
-            config.max_output_tokens.get(),
-            MAX_OUTPUT,
-            "should clamp output tokens to hard limit"
-        );
-        assert!(warnings.iter().any(|w| w.contains("max_input_tokens")));
-        assert!(warnings.iter().any(|w| w.contains("max_output_tokens")));
+        assert_eq!(config.max_input_tokens.get(), 512000);
+        assert_eq!(config.max_output_tokens.get(), MAX_OUTPUT + 1000);
+        assert!(warnings.is_empty());
     }
 
     #[test]
