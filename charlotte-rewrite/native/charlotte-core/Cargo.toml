@@ -1,0 +1,37 @@
+[workspace]
+
+[package]
+name = "charlotte-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+git2 = { version = "0.21.0", default-features = false }
+tiktoken-rs = "0.11.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+
+[dev-dependencies]
+tempfile = "3.10.1"
+
+[lints.rust]
+# This crate's only job is the FFI boundary; every exported symbol needs
+# `#[unsafe(no_mangle)]`, so a blanket deny would fight the crate's purpose.
+unsafe_code = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+dbg_macro = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

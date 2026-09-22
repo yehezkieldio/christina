@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/config" },
+    { "path": "packages/native-core" },
+    { "path": "packages/orchestrator" },
+    { "path": "packages/providers" },
+    { "path": "packages/schemas" }
+  ]
+}

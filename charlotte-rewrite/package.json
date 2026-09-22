@@ -1,0 +1,27 @@
+{
+  "name": "charlotte",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "dev": "turbo run dev",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.85.0",
+    "turbo": "^2.5.8",
+    "typescript": "^7.0.2",
+    "ultracite": "^7.12.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.4.3"
+    }
+  }
+}

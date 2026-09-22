@@ -1,2 +1,5 @@
 target
 ignore
+node_modules
+dist
+.turbo
