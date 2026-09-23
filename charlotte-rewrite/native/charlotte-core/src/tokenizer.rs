@@ -47,18 +47,18 @@ fn bpe() -> &'static CoreBPE {
     BPE.get_or_init(|| {
         // `o200k_base` is the encoding GPT-4o and newer OpenAI models use;
         // matching Christina's choice keeps token counts comparable.
-        tiktoken_rs::o200k_base().unwrap_or_else(|_| {
-            // Loading a bundled, version-pinned encoding table cannot fail
-            // in practice; a failure here means the crate itself is broken.
-            panic!("failed to load the o200k_base tiktoken encoding")
-        })
+        #[allow(clippy::panic, reason = "loading a bundled, version-pinned encoding table cannot fail in practice; a failure here means the crate itself is broken, an invariant violation, not a recoverable error")]
+        tiktoken_rs::o200k_base().unwrap_or_else(|_| panic!("failed to load the o200k_base tiktoken encoding"))
     })
 }
 
 /// Plain token count for the FFI boundary (`02-native-core-and-ffi.md`
 /// exposes `count_tokens(text) -> number`, not the `TokenCount` newtype).
+/// Saturates at `u32::MAX` rather than truncating: a text that tokenizes to
+/// over four billion tokens is already far past any provider's context
+/// window, so the exact overflowed value would never be meaningful anyway.
 pub fn count_tokens(text: &str) -> u32 {
-    bpe().encode_ordinary(text).len() as u32
+    u32::try_from(bpe().encode_ordinary(text).len()).unwrap_or(u32::MAX)
 }
 
 pub fn encode(text: &str) -> Vec<u32> {
@@ -66,7 +66,7 @@ pub fn encode(text: &str) -> Vec<u32> {
 }
 
 pub fn decode(tokens: &[u32]) -> Option<String> {
-    bpe().decode(tokens.to_vec()).ok()
+    bpe().decode(tokens).ok()
 }
 
 #[cfg(test)]

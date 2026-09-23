@@ -26,7 +26,7 @@ fn has_binary_extension(path: &str) -> bool {
 
 fn has_nul_byte_in_sample(bytes: &[u8]) -> bool {
     let sample_len = bytes.len().min(SAMPLE_SIZE);
-    bytes[..sample_len].contains(&0)
+    bytes.get(..sample_len).is_some_and(|sample| sample.contains(&0))
 }
 
 /// Detects binary content by sampling up to 8 KB for a NUL byte, then

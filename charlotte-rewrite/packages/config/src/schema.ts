@@ -28,8 +28,10 @@ export const configSchema = z.object({
   temperature: clampedNumber(0, 2).default(1),
   reasoningEffort: reasoningEffortSchema.default("medium"),
 
-  maxTokens: budgetInt(),
-  lockfileTokenLimit: budgetInt(),
+  /** Matches Christina's `max_input_tokens` default. */
+  maxTokens: budgetInt().default(256_000),
+  /** Matches Christina's `default_lockfile_token_limit`. */
+  lockfileTokenLimit: budgetInt().default(100),
   ignorePatterns: z.array(z.string()).default([]),
 
   commitMessageMaxLength: budgetInt().default(72),

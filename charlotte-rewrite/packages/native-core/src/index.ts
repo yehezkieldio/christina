@@ -1,4 +1,4 @@
-import { CString, dlopen, FFIType, ptr } from "bun:ffi";
+import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { nativeCoreLibraryPath } from "./library-path";
 
 const { symbols } = dlopen(nativeCoreLibraryPath, {
@@ -48,7 +48,7 @@ type NativeResult<T> = T | { readonly error: string };
 /** Every JSON-returning native call follows this shape: clone the string
  * out of native memory, free the native allocation exactly once, then
  * parse. `charlotte_core_free_string` must run even when parsing throws. */
-function readJson<T>(rawPtr: number): T {
+function readJson<T>(rawPtr: Pointer): T {
   try {
     const text = new CString(rawPtr);
     const parsed = JSON.parse(text as unknown as string) as NativeResult<T>;
@@ -71,7 +71,7 @@ export function readStagedDiff(repoPath: string): StagedDiff {
   if (rawPtr === null) {
     throw new NativeCoreError("read_staged_diff returned a null pointer");
   }
-  return readJson<StagedDiff>(rawPtr as unknown as number);
+  return readJson<StagedDiff>(rawPtr);
 }
 
 export interface CommitSummary {
@@ -84,7 +84,7 @@ export function readCommitHistory(repoPath: string, depth: number): CommitSummar
   if (rawPtr === null) {
     throw new NativeCoreError("read_commit_history returned a null pointer");
   }
-  return readJson<CommitSummary[]>(rawPtr as unknown as number);
+  return readJson<CommitSummary[]>(rawPtr);
 }
 
 export function isBinaryContent(bytes: Uint8Array, path: string): boolean {
@@ -106,5 +106,5 @@ export function chunkDiff(diff: string, tokenLimit: number, lockfileTokenLimit: 
   if (rawPtr === null) {
     throw new NativeCoreError("chunk_diff returned a null pointer");
   }
-  return readJson<Chunk[]>(rawPtr as unknown as number);
+  return readJson<Chunk[]>(rawPtr);
 }

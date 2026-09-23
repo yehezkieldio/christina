@@ -22,12 +22,28 @@
 //! basenames directly, matching the spirit of Christina's "lockfile"
 //! special-casing without threading a pattern list across the FFI edge.
 
+// Offset/length arithmetic throughout this module operates on `usize`
+// lengths and indices of a diff already loaded into memory as a `String`
+// (bounded well under `usize::MAX` on every real target, and each
+// individual file's contribution is further capped by
+// `MAX_FILE_DIFF_SIZE`). Converting every `+`/`+=`/`-=` here to
+// `checked_add`/`saturating_sub` would triple the line count of the
+// binary-search and hunk-splitting logic below for a wraparound that is
+// not reachable from any real diff.
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "loop counters and offset math here index into an in-memory diff string well under usize::MAX; see module doc comment"
+)]
+
 use crate::tokenizer::{self, TokenCount};
 
 /// Matches Christina's `LOCKFILE_TOKEN_LIMIT` default: preserves the "a
 /// lockfile changed" signal without spending prompt budget on
-/// auto-generated noise.
-pub const DEFAULT_LOCKFILE_TOKEN_LIMIT: u32 = 100;
+/// auto-generated noise. `chunk_diff`'s FFI signature takes this value from
+/// the caller rather than defaulting it here — `@charlotte/config`'s schema
+/// owns the real default — so this constant only exists for tests below.
+#[cfg(test)]
+const DEFAULT_LOCKFILE_TOKEN_LIMIT: u32 = 100;
 
 const KNOWN_LOCKFILE_BASENAMES: &[&str] = &[
     "cargo.lock",
@@ -89,10 +105,6 @@ fn parse_git_diff_header(line: &str) -> Option<String> {
     let path_b = parts.next()?;
     let stripped = path_b.strip_prefix("b/").or_else(|| path_b.strip_prefix("a/")).unwrap_or(path_b);
     Some(stripped.to_string())
-}
-
-fn extract_file_paths(diff: &str) -> Vec<String> {
-    diff.lines().filter_map(parse_git_diff_header).collect()
 }
 
 fn split_by_files(diff: &str) -> Vec<FileDiff> {
@@ -225,7 +237,9 @@ fn truncate_to_token_limit(content: &str, limit: TokenCount) -> String {
         return content.to_string();
     }
 
-    let truncated_tokens = &tokens[..limit.get() as usize];
+    let Some(truncated_tokens) = tokens.get(..limit.get() as usize) else {
+        return content.to_string();
+    };
     match tokenizer::decode(truncated_tokens) {
         Some(mut result) => {
             if let Some(last_newline) = result.rfind('\n') {
@@ -386,7 +400,7 @@ fn split_oversized_line_by_tokens(file_path: &str, line: &str, token_limit: Toke
         byte_offset = end;
     }
 
-    if byte_offset == line.len() { Some(chunks) } else { None }
+    (byte_offset == line.len()).then_some(chunks)
 }
 
 fn split_oversized_line_by_search(file_path: &str, line: &str, token_limit: TokenCount) -> Vec<Chunk> {
@@ -449,28 +463,21 @@ fn split_oversized_line_by_search(file_path: &str, line: &str, token_limit: Toke
 
 /// Packs whole files into chunks by greedy first-fit, splitting a file that
 /// alone exceeds `token_limit` by hunk (then line, then raw token span).
-/// Ported from Christina's `split_recursive`.
-fn split_recursive(file_diffs: Vec<FileDiff>, token_limit: TokenCount, lockfile_token_limit: TokenCount) -> Vec<Chunk> {
+/// Ported from Christina's `split_recursive`. Callers must already have
+/// applied lockfile truncation to `file_diffs` (see [`chunk_diff`]) — this
+/// function only packs, it does not special-case any path by name.
+fn split_recursive(file_diffs: Vec<FileDiff>, token_limit: TokenCount) -> Vec<Chunk> {
     let mut chunks = Vec::new();
     let mut buffer_content = String::new();
     let mut buffer_files: Vec<String> = Vec::new();
     let mut current_tokens: Option<TokenCount> = None;
 
     for file_diff in file_diffs {
-        let lockfile = is_lockfile(&file_diff.path);
-        let effective_token_count = if lockfile { file_diff.token_count.min(lockfile_token_limit) } else { file_diff.token_count };
-
-        if effective_token_count.get() <= token_limit.get() {
-            let combined = current_tokens.map(|c| c.get()).unwrap_or(0) + effective_token_count.get();
+        if file_diff.token_count.get() <= token_limit.get() {
+            let combined = current_tokens.map(|c| c.get()).unwrap_or(0) + file_diff.token_count.get();
 
             if combined <= token_limit.get() {
-                if lockfile && file_diff.token_count.get() > lockfile_token_limit.get() {
-                    let truncated = truncate_to_token_limit(&file_diff.content, lockfile_token_limit);
-                    buffer_content.push_str(&truncated);
-                    buffer_content.push_str("\n[... truncated lockfile ...]\n");
-                } else {
-                    buffer_content.push_str(&file_diff.content);
-                }
+                buffer_content.push_str(&file_diff.content);
                 buffer_files.push(file_diff.path);
                 current_tokens = TokenCount::new(combined);
             } else {
@@ -480,17 +487,11 @@ fn split_recursive(file_diffs: Vec<FileDiff>, token_limit: TokenCount, lockfile_
                         file_paths: std::mem::take(&mut buffer_files),
                     });
                 }
-                if lockfile && file_diff.token_count.get() > lockfile_token_limit.get() {
-                    let mut truncated = truncate_to_token_limit(&file_diff.content, lockfile_token_limit);
-                    truncated.push_str("\n[... truncated lockfile ...]\n");
-                    buffer_content.push_str(&truncated);
-                } else {
-                    buffer_content.push_str(&file_diff.content);
-                }
+                buffer_content.push_str(&file_diff.content);
                 buffer_files.push(file_diff.path);
-                current_tokens = Some(effective_token_count);
+                current_tokens = Some(file_diff.token_count);
             }
-        } else if !lockfile {
+        } else {
             if !buffer_content.is_empty() {
                 chunks.push(Chunk {
                     content: std::mem::take(&mut buffer_content),
@@ -510,8 +511,17 @@ fn split_recursive(file_diffs: Vec<FileDiff>, token_limit: TokenCount, lockfile_
 }
 
 /// The native core's chunking entry point (`02-native-core-and-ffi.md`).
-/// Splits `diff` into files, applies the deletion-only truncation tier per
-/// file, then packs the results into token-bounded chunks.
+/// Splits `diff` into files, applies the deletion-only and lockfile
+/// truncation tiers per file, then packs the results into token-bounded
+/// chunks.
+///
+/// Truncation always runs before the whole-diff-fits-in-one-chunk check:
+/// a diff can sit under `token_limit` in total while still containing a
+/// lockfile whose own content exceeds `lockfile_token_limit`, and that
+/// lockfile still needs truncating even though no further chunk-splitting
+/// is required. An earlier version checked total size first and skipped
+/// per-file truncation whenever everything fit in one chunk, which left
+/// oversized lockfiles untruncated in exactly that case.
 pub fn chunk_diff(diff: &str, token_limit: u32, lockfile_token_limit: u32) -> Vec<Chunk> {
     if diff.is_empty() {
         return Vec::new();
@@ -520,12 +530,6 @@ pub fn chunk_diff(diff: &str, token_limit: u32, lockfile_token_limit: u32) -> Ve
     let token_limit = TokenCount::new_at_least_one(token_limit);
     let lockfile_token_limit = TokenCount::new_at_least_one(lockfile_token_limit);
 
-    let total_tokens = TokenCount::new_at_least_one(tokenizer::count_tokens(diff));
-    if total_tokens.get() <= token_limit.get() {
-        let files = extract_file_paths(diff);
-        return vec![Chunk { content: diff.to_string(), file_paths: files }];
-    }
-
     let mut file_diffs = split_by_files(diff);
     for file_diff in &mut file_diffs {
         if is_deletion_only(&file_diff.content) {
@@ -533,12 +537,29 @@ pub fn chunk_diff(diff: &str, token_limit: u32, lockfile_token_limit: u32) -> Ve
             file_diff.content = truncate_deletion_diff(&file_diff.content, limit);
             file_diff.token_count = TokenCount::new_at_least_one(tokenizer::count_tokens(&file_diff.content));
         }
+        if is_lockfile(&file_diff.path) && file_diff.token_count.get() > lockfile_token_limit.get() {
+            let mut truncated = truncate_to_token_limit(&file_diff.content, lockfile_token_limit);
+            truncated.push_str("\n[... truncated lockfile ...]\n");
+            file_diff.content = truncated;
+            file_diff.token_count = TokenCount::new_at_least_one(tokenizer::count_tokens(&file_diff.content));
+        }
     }
 
-    split_recursive(file_diffs, token_limit, lockfile_token_limit)
+    let total_tokens: u32 = file_diffs.iter().map(|f| f.token_count.get()).sum();
+    if total_tokens <= token_limit.get() {
+        let content = file_diffs.iter().map(|f| f.content.as_str()).collect::<String>();
+        let files = file_diffs.into_iter().map(|f| f.path).collect();
+        return vec![Chunk { content, file_paths: files }];
+    }
+
+    split_recursive(file_diffs, token_limit)
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "test fixtures build small, known-length vectors in the same test right before indexing them; a panic on out-of-bounds is exactly the desired test failure"
+)]
 mod tests {
     use super::*;
 

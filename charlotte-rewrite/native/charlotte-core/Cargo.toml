@@ -1,5 +1,175 @@
 [workspace]
 
+[workspace.lints.rust]
+# Unsafe code is denied at workspace boundary,
+# Rework the design instead of bypassing this lint if no other solution is possible.
+unsafe_code = "deny"
+
+# Catches visually ambiguous expressions where the
+# parsed expression can differ from the reader's intent.
+ambiguous_negative_literals = "warn"
+
+# Public and private exported structs should remain inspectable in diagnostics
+# and tests unless they deliberately choose to hide them.
+missing_debug_implementations = "warn"
+
+# Removes imports that no longer affect name resolution after refactor.
+redundant_imports = "warn"
+
+# Keeps signatures from accumulating explict lifetimes the compiler can infer.
+redundant_lifetimes = "warn"
+
+# Flags casts that do not change type, which are usually leftover refactor noise.
+trivial_numeric_casts = "warn"
+
+# Requires unsafe operations inside unsafe functions to stay inside explict
+# unsafe blocks, which is a good practice to avoid accidental unsafety.
+unsafe_op_in_unsafe_fn = "warn"
+
+# Catches lifetimes parameters that no longer constrain anything.
+unused_lifetimes = "warn"
+
+# Prevents the accidental ignoring of `Result` or `Future` types,
+# which often leads to silent failures or dropped asynchronous tasks.
+unused_must_use = "warn"
+
+[workspace.lints.clippy]
+# Broad clippy groups catch concrete correctness, performance, complexity,
+# style, and suspicious-code problems without enabling advisory churn groups.
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+
+# Prevents runtime crashes. Use 'match', 'if let', or '.get()'.
+# Tests should use Result-returning helpers or targeted fixtures instead.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
+# Forces clarity between deep and shallow clones. Use 'Arc::clone(&ptr)'
+# to make it explicit that you are just incrementing a reference count.
+clone_on_ref_ptr = "warn"
+
+# Huge enums or futures bloat the stack and degrade performance.
+# Alternative: Wrap large variants or state machines in 'Box::pin' or 'Box'.
+large_futures = "warn"
+large_enum_variant = "warn"
+
+# Prevents shipping temporary code or placeholders to production.
+# Use these only during local development; they must be resolved before merging.
+todo = "warn"
+dbg_macro = "warn"
+
+# Catches arithmetic that can overflow, wrap, or otherwise surprise at runtime.
+# Use checked, saturating, wrapping, or explicit invariant assertions instead.
+arithmetic_side_effects = "warn"
+
+# Catches lossy casts that can silently truncate large values.
+# Use checked conversions or prove the range before narrowing.
+cast_possible_truncation = "warn"
+
+# Catches casts that can be expressed as infallible conversions.
+# Prefer `From`/`Into` when the conversion cannot lose information.
+cast_lossless = "warn"
+
+# Warns when async is used without awaiting inside the function body.
+# Keep async at I/O boundaries instead of marking pure work as async.
+unused_async = "warn"
+
+# Requires `Default` when a public `new` has no required input state.
+# This keeps construction contracts obvious for zero-argument builders.
+new_without_default = "warn"
+
+# Encourages efficient heap usage. Avoid 'Rc<String>' or 'Rc<Vec<T>>'
+# in favor of 'Rc<str>' or 'Rc<[T]>' to eliminate a double indirection.
+rc_buffer = "warn"
+
+# Indexing (arr[i]) is a hidden panic point.
+# Use '.get(i)' for safe access or use iterators to eliminate bounds checks entirely.
+indexing_slicing = "warn"
+
+# Warns if a function returns Result/Option but never fails.
+# Keep fallible signatures tied to a real error path or boundary contract.
+unnecessary_wraps = "warn"
+
+# Forces lint suppressions to carry a reason.
+# Every exception should explain the invariant or tradeoff it protects.
+allow_attributes_without_reason = "warn"
+
+# Avoids raw pointer wildcard casts that obscure pointee intent.
+# Spell the pointee type so unsafe-adjacent code stays reviewable.
+as_pointer_underscore = "warn"
+
+# Prevents brittle tests that discard Result details.
+# Prefer unwrap/expect in tests when the failure payload matters.
+assertions_on_result_states = "warn"
+
+# Blocks mixed-script identifiers that are easy to spoof.
+# Keep source identifiers visually stable for code review and search.
+disallowed_script_idents = "warn"
+
+# Avoids slicing syntax as a hidden panic path.
+# Use direct dereference or safe access when a full slice is not needed.
+deref_by_slicing = "warn"
+
+# Empty Drop impls change drop-check behavior without cleanup.
+# Delete them unless the type has a real resource lifecycle.
+empty_drop = "warn"
+
+# Keeps empty enum variants in the idiomatic unit-variant form.
+# Avoid braces that imply fields or construction state exists.
+empty_enum_variants_with_brackets = "warn"
+
+# Keeps empty structs in the idiomatic unit-struct form.
+# Avoid braces that imply the type may grow hidden state.
+empty_structs_with_brackets = "warn"
+
+# Blocks accidental casts from function pointers to integers.
+# Such casts are non-portable and usually signal the wrong abstraction.
+fn_to_numeric_cast_any = "warn"
+
+# Prefer direct boolean-to-option helpers over verbose branching.
+# Use the compact form when it makes optional construction clearer.
+if_then_some_else_none = "warn"
+
+# Prevents losing upstream error details in map_err closures.
+# Preserve the original error or include it in the diagnostic context.
+map_err_ignore = "warn"
+
+# Removes type annotations that no longer help inference.
+# Keep annotations only when they clarify a boundary or avoid ambiguity.
+redundant_type_annotations = "warn"
+
+# Keeps trait impl parameter names aligned with the trait contract.
+# Divergent names make implementations harder to compare against traits.
+renamed_function_params = "warn"
+
+# Catches semicolons attached to blocks in surprising positions.
+# Avoid statement/expression ambiguity in control-flow heavy code.
+semicolon_outside_block = "warn"
+
+# Removes explicit field patterns when the field is not used.
+# Prefer `..` so ignored data stays obviously irrelevant.
+unneeded_field_pattern = "warn"
+
+# Prevents calling '.ok()' and then ignoring a Result failure.
+# Handle the error or explicitly document why it is irrelevant.
+unused_result_ok = "warn"
+
+# Any unsafe block must explain the invariant it relies on.
+# Safety reasoning must live next to the operation that needs it.
+undocumented_unsafe_blocks = "warn"
+
+# Removes safety comments when no unsafe block remains.
+# Stale safety claims are misleading once code becomes safe Rust.
+unnecessary_safety_comment = "warn"
+
+# Removes Safety sections from docs when the item is no longer unsafe.
+# Keep rustdoc safety contracts only on APIs that require caller obligations.
+unnecessary_safety_doc = "warn"
+
 [package]
 name = "charlotte-core"
 version = "0.1.0"
@@ -19,17 +189,8 @@ serde_json = "1.0.149"
 [dev-dependencies]
 tempfile = "3.10.1"
 
-[lints.rust]
-# This crate's only job is the FFI boundary; every exported symbol needs
-# `#[unsafe(no_mangle)]`, so a blanket deny would fight the crate's purpose.
-unsafe_code = "warn"
-
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
-todo = "warn"
-dbg_macro = "warn"
+[lints]
+workspace = true
 
 [profile.release]
 opt-level = 3

@@ -127,12 +127,12 @@ fn format_patch_bounded(diff: &git2::Diff) -> Result<String, GitError> {
         let content = String::from_utf8_lossy(line.content());
         let mut line_len = content.len();
         if matches!(origin, '+' | '-' | ' ') {
-            line_len += 1;
+            line_len = line_len.saturating_add(1);
         }
         if diff_string.len().saturating_add(line_len) > max_without_notice {
             let mut truncate_at = max_without_notice.min(diff_string.len());
             while truncate_at > 0 && !diff_string.is_char_boundary(truncate_at) {
-                truncate_at -= 1;
+                truncate_at = truncate_at.saturating_sub(1);
             }
             diff_string.truncate(truncate_at);
             diff_string.push_str(notice);
@@ -196,7 +196,12 @@ pub fn read_commit_history(repo_path: &str, depth: u32) -> Result<Vec<CommitSumm
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test fixtures build small, known-length vectors in the same test right before indexing them; a panic on out-of-bounds is exactly the desired test failure"
+)]
 mod tests {
     use super::*;
     use std::path::Path;
@@ -215,8 +220,8 @@ mod tests {
                 let mut config = repo.config().expect("repo config");
                 config.set_str("user.name", "Test User").expect("set user.name");
                 config.set_str("user.email", "test@example.com").expect("set user.email");
-                config.set_str("commit.gpgsign", "false").expect("disable gpgsign");
-            }
+                config.set_str("commit.gpgsign", "false").expect("disable gpgsign")
+            };
             Self { dir, repo }
         }
 
