@@ -310,16 +310,26 @@ fn split_by_hunks(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
             continue;
         }
 
-        let candidate = format!("{buffer}\n{hunk}");
-        let candidate_tokens = TokenCount::new_at_least_one(tokenizer::count_tokens(&candidate)).get();
+        // Append then measure, rolling back with `truncate` (O(1), no
+        // reallocation) instead of building a fresh `format!`-allocated
+        // candidate every hunk. The previous version copied the entire
+        // accumulated `buffer` on every iteration regardless of whether the
+        // candidate was kept, making a chunk group with `k` hunks O(k^2) in
+        // copying; this reuses `buffer`'s own growth, giving the same
+        // amortized O(k) that `split_recursive` already relies on elsewhere
+        // in this module.
+        let mark = buffer.len();
+        buffer.push('\n');
+        buffer.push_str(hunk);
+        let candidate_tokens = TokenCount::new_at_least_one(tokenizer::count_tokens(&buffer)).get();
 
         if candidate_tokens > token_limit.get() {
+            buffer.truncate(mark);
             if !buffer.is_empty() {
                 chunks.push(Chunk { content: std::mem::take(&mut buffer), file_paths: vec![file_path.to_string()] });
             }
-            buffer = format!("\n{hunk}");
-        } else {
-            buffer = candidate;
+            buffer.push('\n');
+            buffer.push_str(hunk);
         }
     }
 
