@@ -346,10 +346,16 @@ fn split_by_lines(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
     let mut chunks = Vec::new();
     let mut buffer = String::new();
     let mut current_tokens = 0u32;
+    // Reused across iterations instead of a per-line `format!` allocation:
+    // one malloc/free pair per changed line adds up on a large file, and
+    // `clear()` keeps the buffer's existing capacity between lines.
+    let mut scratch = String::new();
 
     for line in content.lines() {
-        let line_with_newline = format!("{line}\n");
-        let line_token_count = tokenizer::count_tokens(&line_with_newline);
+        scratch.clear();
+        scratch.push_str(line);
+        scratch.push('\n');
+        let line_token_count = tokenizer::count_tokens(&scratch);
 
         if line_token_count > token_limit.get() {
             if !buffer.is_empty() {
@@ -365,7 +371,7 @@ fn split_by_lines(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
             current_tokens = 0;
         }
 
-        buffer.push_str(&line_with_newline);
+        buffer.push_str(&scratch);
         current_tokens += line_token_count;
     }
 
