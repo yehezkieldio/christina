@@ -4,7 +4,16 @@ import {
   loadConfig,
 } from "@charlotte/config";
 import type { Config } from "@charlotte/config";
-import type { Command } from "commander";
+import {
+  argument,
+  command,
+  constant,
+  message,
+  object,
+  or,
+  string,
+} from "@optique/core";
+import type { InferValue } from "@optique/core";
 
 import { readToml, writeToml } from "../toml-io";
 
@@ -123,36 +132,61 @@ const handlePath = (): void => {
   console.log(configFilePath());
 };
 
-export const registerConfigCommand = (program: Command): void => {
-  const config = program
-    .command("config")
-    .description("Configuration management");
+export const configParser = command(
+  "config",
+  object({
+    action: or(
+      command(
+        "get",
+        object({
+          action: constant("get"),
+          key: argument(string({ metavar: "KEY" })),
+        }),
+        { description: message`Get a configuration value` }
+      ),
+      command(
+        "set",
+        object({
+          action: constant("set"),
+          key: argument(string({ metavar: "KEY" })),
+          value: argument(string({ metavar: "VALUE" })),
+        }),
+        { description: message`Set a configuration value` }
+      ),
+      command("list", object({ action: constant("list") }), {
+        description: message`List all configuration values`,
+      }),
+      command("path", object({ action: constant("path") }), {
+        description: message`Show configuration file path`,
+      })
+    ),
+    group: constant("config"),
+  }),
+  { description: message`Configuration management` }
+);
 
-  config
-    .command("get <key>")
-    .description("Get a configuration value")
-    .action(async (key: string) => {
-      await handleGet(key);
-    });
+export type ConfigAction = InferValue<typeof configParser>["action"];
 
-  config
-    .command("set <key> <value>")
-    .description("Set a configuration value")
-    .action(async (key: string, value: string) => {
-      await handleSet(key, value);
-    });
-
-  config
-    .command("list")
-    .description("List all configuration values")
-    .action(async () => {
+export const runConfigAction = async (action: ConfigAction): Promise<void> => {
+  switch (action.action) {
+    case "get": {
+      await handleGet(action.key);
+      return;
+    }
+    case "set": {
+      await handleSet(action.key, action.value);
+      return;
+    }
+    case "list": {
       await handleList();
-    });
-
-  config
-    .command("path")
-    .description("Show configuration file path")
-    .action(() => {
+      return;
+    }
+    case "path": {
       handlePath();
-    });
+      return;
+    }
+    default: {
+      action satisfies never;
+    }
+  }
 };

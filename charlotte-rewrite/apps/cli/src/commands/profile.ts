@@ -7,21 +7,20 @@ import {
 } from "@charlotte/config";
 import type { ProviderProfile } from "@charlotte/config";
 import { optional } from "@charlotte/providers";
-import type { Command } from "commander";
+import {
+  argument,
+  command,
+  constant,
+  message,
+  object,
+  optional as optionalParser,
+  option,
+  or,
+  string,
+} from "@optique/core";
+import type { InferValue } from "@optique/core";
 
 import { readToml, writeToml } from "../toml-io";
-
-interface ProfileOptions {
-  readonly provider?: string;
-  readonly model?: string;
-  readonly apiKey?: string;
-  readonly allowPlaintext?: boolean;
-  readonly apiUrl?: string;
-  readonly maxTokens?: string;
-  readonly lockfileTokenLimit?: string;
-  readonly azureApiVersion?: string;
-  readonly azureDeploymentId?: string;
-}
 
 const loadProfiles = async (): Promise<{
   active: string | null;
@@ -41,12 +40,24 @@ const warnPlaintextSecret = (apiKey: string, allowPlaintext: boolean): void => {
   }
 };
 
+interface ProfileOverrides {
+  readonly provider: string | undefined;
+  readonly model: string | undefined;
+  readonly apiKey: string | undefined;
+  readonly allowPlaintext: boolean;
+  readonly apiUrl: string | undefined;
+  readonly maxTokens: string | undefined;
+  readonly lockfileTokenLimit: string | undefined;
+  readonly azureApiVersion: string | undefined;
+  readonly azureDeploymentId: string | undefined;
+}
+
 const applyOverrides = (
   profile: ProviderProfile,
-  options: ProfileOptions
+  options: ProfileOverrides
 ): ProviderProfile => {
   if (options.apiKey !== undefined) {
-    warnPlaintextSecret(options.apiKey, options.allowPlaintext ?? false);
+    warnPlaintextSecret(options.apiKey, options.allowPlaintext);
   }
   return providerProfileSchema.parse({
     ...profile,
@@ -116,7 +127,7 @@ const handleShow = async (name: string): Promise<void> => {
 
 const handleCreate = async (
   name: string,
-  options: ProfileOptions
+  options: ProfileOverrides
 ): Promise<void> => {
   if (!(options.provider && options.model && options.apiKey)) {
     throw new Error(
@@ -128,7 +139,7 @@ const handleCreate = async (
     throw new Error(`Profile '${name}' already exists`);
   }
 
-  warnPlaintextSecret(options.apiKey, options.allowPlaintext ?? false);
+  warnPlaintextSecret(options.apiKey, options.allowPlaintext);
   const profile = providerProfileSchema.parse({
     apiKey: options.apiKey,
     apiUrl: options.apiUrl,
@@ -151,7 +162,7 @@ const handleCreate = async (
 
 const handleEdit = async (
   name: string,
-  options: ProfileOptions
+  options: ProfileOverrides
 ): Promise<void> => {
   const data = await loadProfiles();
   const existing = data.profiles[name];
@@ -224,73 +235,133 @@ const handleDuplicate = async (
   console.log(`Duplicated '${source}' to '${newName}'`);
 };
 
-const withProfileOptions = (command: Command): Command =>
-  command
-    .option("--provider <provider>", "Model provider")
-    .option("--model <model>", "Model name")
-    .option("--api-key <apiKey>", "API key")
-    .option(
-      "--allow-plaintext",
-      "Allow storing plaintext API keys in config",
-      false
-    )
-    .option("--api-url <apiUrl>", "API URL")
-    .option("--max-tokens <maxTokens>", "Max tokens")
-    .option(
-      "--lockfile-token-limit <lockfileTokenLimit>",
-      "Lockfile token limit"
-    )
-    .option("--azure-api-version <azureApiVersion>", "Azure API version")
-    .option("--azure-deployment-id <azureDeploymentId>", "Azure deployment ID");
+/** Shared option fields for `profile create`/`profile edit` — Optique has no
+ * imperative command builder to mutate and reuse the way `commander`'s
+ * `Command` did, so this is spread into each command's own `object({...})`
+ * instead. */
+const profileOverrideFields = {
+  allowPlaintext: option("--allow-plaintext", {
+    description: message`Allow storing plaintext API keys in config`,
+  }),
+  apiKey: optionalParser(option("--api-key", string())),
+  apiUrl: optionalParser(option("--api-url", string())),
+  azureApiVersion: optionalParser(option("--azure-api-version", string())),
+  azureDeploymentId: optionalParser(option("--azure-deployment-id", string())),
+  lockfileTokenLimit: optionalParser(
+    option("--lockfile-token-limit", string())
+  ),
+  maxTokens: optionalParser(option("--max-tokens", string())),
+  model: optionalParser(option("--model", string())),
+  provider: optionalParser(option("--provider", string())),
+};
 
-export const registerProfileCommand = (program: Command): void => {
-  const profile = program.command("profile").description("Profile management");
+export const profileParser = command(
+  "profile",
+  object({
+    action: or(
+      command("list", object({ action: constant("list") }), {
+        description: message`List all profiles`,
+      }),
+      command(
+        "show",
+        object({
+          action: constant("show"),
+          name: argument(string({ metavar: "NAME" })),
+        }),
+        { description: message`Show profile details` }
+      ),
+      command(
+        "create",
+        object({
+          action: constant("create"),
+          name: argument(string({ metavar: "NAME" })),
+          ...profileOverrideFields,
+        }),
+        { description: message`Create a new profile` }
+      ),
+      command(
+        "edit",
+        object({
+          action: constant("edit"),
+          name: argument(string({ metavar: "NAME" })),
+          ...profileOverrideFields,
+        }),
+        { description: message`Edit a profile` }
+      ),
+      command(
+        "delete",
+        object({
+          action: constant("delete"),
+          force: option("--force", {
+            description: message`Skip confirmation`,
+          }),
+          name: argument(string({ metavar: "NAME" })),
+        }),
+        { description: message`Delete a profile` }
+      ),
+      command(
+        "switch",
+        object({
+          action: constant("switch"),
+          name: argument(string({ metavar: "NAME" })),
+        }),
+        { description: message`Switch active profile` }
+      ),
+      command(
+        "duplicate",
+        // Field order here is the CLI's positional order (SOURCE before
+        // NEW_NAME) — alphabetizing these two `argument()` fields would
+        // silently swap what each positional token binds to.
+        // oxlint-disable-next-line sort-keys
+        object({
+          action: constant("duplicate"),
+          source: argument(string({ metavar: "SOURCE" })),
+          newName: argument(string({ metavar: "NEW_NAME" })),
+        }),
+        { description: message`Duplicate a profile` }
+      )
+    ),
+    group: constant("profile"),
+  }),
+  { description: message`Profile management` }
+);
 
-  profile
-    .command("list")
-    .description("List all profiles")
-    .action(async () => {
+export type ProfileAction = InferValue<typeof profileParser>["action"];
+
+export const runProfileAction = async (
+  action: ProfileAction
+): Promise<void> => {
+  switch (action.action) {
+    case "list": {
       await handleList();
-    });
-
-  profile
-    .command("show <name>")
-    .description("Show profile details")
-    .action(async (name: string) => {
-      await handleShow(name);
-    });
-
-  withProfileOptions(
-    profile.command("create <name>").description("Create a new profile")
-  ).action(async (name: string, options: ProfileOptions) => {
-    await handleCreate(name, options);
-  });
-
-  withProfileOptions(
-    profile.command("edit <name>").description("Edit a profile")
-  ).action(async (name: string, options: ProfileOptions) => {
-    await handleEdit(name, options);
-  });
-
-  profile
-    .command("delete <name>")
-    .description("Delete a profile")
-    .option("--force", "Skip confirmation", false)
-    .action(async (name: string, options: { force: boolean }) => {
-      await handleDelete(name, options.force);
-    });
-
-  profile
-    .command("switch <name>")
-    .description("Switch active profile")
-    .action(async (name: string) => {
-      await handleSwitch(name);
-    });
-
-  profile
-    .command("duplicate <source> <newName>")
-    .description("Duplicate a profile")
-    .action(async (source: string, newName: string) => {
-      await handleDuplicate(source, newName);
-    });
+      return;
+    }
+    case "show": {
+      await handleShow(action.name);
+      return;
+    }
+    case "create": {
+      await handleCreate(action.name, action);
+      return;
+    }
+    case "edit": {
+      await handleEdit(action.name, action);
+      return;
+    }
+    case "delete": {
+      await handleDelete(action.name, action.force);
+      return;
+    }
+    case "switch": {
+      await handleSwitch(action.name);
+      return;
+    }
+    case "duplicate": {
+      await handleDuplicate(action.source, action.newName);
+      return;
+    }
+    default: {
+      action satisfies never;
+    }
+  }
 };

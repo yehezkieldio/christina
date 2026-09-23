@@ -7,7 +7,8 @@ import {
 } from "@charlotte/session";
 import type { RunSummary } from "@charlotte/session";
 import { printInfo, printSection, printTable } from "@charlotte/ui";
-import type { Command } from "commander";
+import { command, constant, message, object } from "@optique/core";
+import type { InferValue } from "@optique/core";
 
 /** Reads every session file concurrently rather than one at a time: these
  * are independent filesystem reads with no shared state, so there is no
@@ -88,21 +89,43 @@ const handleSessionsClean = async (): Promise<void> => {
   );
 };
 
-export const registerStatsCommand = (program: Command): void => {
-  program
-    .command("stats")
-    .description("Show token usage grouped by day, provider, and model")
-    .action(async () => {
-      await handleStats();
-    });
+export const statsParser = command(
+  "stats",
+  object({ group: constant("stats") }),
+  {
+    description: message`Show token usage grouped by day, provider, and model`,
+  }
+);
 
-  const sessions = program
-    .command("sessions")
-    .description("Session transcript management");
-  sessions
-    .command("clean")
-    .description("Prune session files past the retention limit")
-    .action(async () => {
+export const sessionsParser = command(
+  "sessions",
+  object({
+    action: command(
+      "clean",
+      object({ action: constant("clean") }),
+      { description: message`Prune session files past the retention limit` }
+    ),
+    group: constant("sessions"),
+  }),
+  { description: message`Session transcript management` }
+);
+
+export type SessionsAction = InferValue<typeof sessionsParser>["action"];
+
+export const runStatsAction = async (): Promise<void> => {
+  await handleStats();
+};
+
+export const runSessionsAction = async (
+  action: SessionsAction
+): Promise<void> => {
+  switch (action.action) {
+    case "clean": {
       await handleSessionsClean();
-    });
+      return;
+    }
+    default: {
+      action.action satisfies never;
+    }
+  }
 };

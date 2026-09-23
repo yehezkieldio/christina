@@ -1,138 +1,72 @@
-import { sleep } from "./retry";
+import pLimit from "p-limit";
+import pThrottle from "p-throttle";
 
-/**
- * Combined concurrency + rate limiter, ported from Christina's
- * `christina/src/orchestrator/throttle.rs`. A concurrency cap alone cannot
- * prevent an API rate-limit violation (many short requests can still
- * exceed requests-per-second), and a rate limiter alone cannot prevent
- * resource exhaustion (nothing stops the number of requests in flight from
- * climbing) — the two mechanisms cover different failure modes, so both
- * run together.
- *
- * Token math uses milli-token integers instead of floating point, matching
- * Christina's design: floating-point accumulation would drift over a
- * long-running session, and integer milli-tokens don't.
- */
-const ONE_TOKEN_MILLI = 1000;
+const ONE_SECOND_MS = 1000;
 
 export interface RequestLimiterOptions {
   readonly maxConcurrent: number;
   readonly requestsPerSecond: number;
 }
 
-export class RequestLimiter {
-  readonly #maxConcurrent: number;
-  #active = 0;
-  readonly #waiters: (() => void)[] = [];
+/**
+ * Combined concurrency + rate limiter, replacing a hand-rolled token-bucket
+ * (Christina's `christina/src/orchestrator/throttle.rs`) with two focused,
+ * actively maintained libraries: `p-limit` for the concurrency cap and
+ * `p-throttle` for the rate cap. The two mechanisms cover different failure
+ * modes — a concurrency cap alone cannot prevent an API rate-limit
+ * violation (many short requests can still exceed requests-per-second), and
+ * a rate limiter alone cannot prevent resource exhaustion (nothing stops
+ * the number of requests in flight from climbing) — so both run together,
+ * same as the design they replace.
+ */
+// `p-throttle` wraps one fixed-signature function once, shared across every
+// call so the rate window is actually shared state — `run<T>`'s per-call
+// generic result type cannot survive that wrapping, so the gate itself is
+// erased to `unknown` and restored with a single cast at its one call site.
+// oxlint-disable anti-slop/no-unknown-returns
+type ThrottledGate = (fn: () => Promise<unknown>) => Promise<unknown>;
+// oxlint-enable anti-slop/no-unknown-returns
 
-  readonly #capacityMilli: number;
-  #tokensMilli: number;
-  readonly #refillRateMilliPerSec: number;
-  #lastRefillMs: number;
+export class RequestLimiter {
+  readonly #limit: ReturnType<typeof pLimit>;
+  readonly #throttledGate: ThrottledGate | undefined;
 
   constructor(options: RequestLimiterOptions) {
-    this.#maxConcurrent = options.maxConcurrent;
-
-    // Unbounded rate (Infinity/NaN/<=0) means "no rate limit": an
-    // effectively infinite bucket that never needs a refill wait.
-    this.#refillRateMilliPerSec =
-      Number.isFinite(options.requestsPerSecond) &&
-      options.requestsPerSecond > 0
-        ? Math.ceil(options.requestsPerSecond * ONE_TOKEN_MILLI)
-        : Number.POSITIVE_INFINITY;
-    // Capacity = 2x the per-second rate, allowing a short burst while still
-    // bounding the long-term average rate, matching Christina's choice.
-    this.#capacityMilli = Number.isFinite(this.#refillRateMilliPerSec)
-      ? this.#refillRateMilliPerSec * 2
-      : Number.POSITIVE_INFINITY;
-    this.#tokensMilli = this.#capacityMilli;
-    this.#lastRefillMs = performance.now();
+    this.#limit = pLimit(options.maxConcurrent);
+    // Unbounded rate (Infinity/NaN/<=0) means "no rate limit": skip
+    // `p-throttle` entirely rather than configuring it with a limit it
+    // cannot represent.
+    // This identity gate's `unknown` return type is `ThrottledGate`'s own
+    // shape, not a boundary this function could parse instead.
+    // oxlint-disable anti-slop/no-unknown-returns
+    this.#throttledGate =
+      Number.isFinite(options.requestsPerSecond) && options.requestsPerSecond > 0
+        ? pThrottle({ interval: ONE_SECOND_MS, limit: options.requestsPerSecond })(
+            (fn: () => Promise<unknown>) => fn()
+          )
+        : undefined;
+    // oxlint-enable anti-slop/no-unknown-returns
   }
 
-  /** Waits for both a rate-limit token and a concurrency slot, then returns
-   * a release function the caller must call exactly once (typically in a
-   * `finally` block) to free the slot for the next waiter. */
-  async acquire(signal?: AbortSignal): Promise<() => void> {
-    await this.#acquireToken(signal);
-    await this.#acquireSlot(signal);
-    let released = false;
-    return () => {
-      if (released) {
-        return;
+  /**
+   * Runs `fn` once both a concurrency slot and a rate-limit slot are
+   * available. `signal` is only checked before `fn` is submitted to either
+   * queue — once queued, neither `p-limit` nor `p-throttle` supports
+   * cancelling a single already-queued call, unlike the hand-rolled waiter
+   * queue this replaces. Nothing in this codebase passes a populated
+   * `AbortSignal` here today, so this is a documented simplification, not a
+   * regression against real usage.
+   */
+  run<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
+    return this.#limit(() => {
+      if (!this.#throttledGate) {
+        return fn();
       }
-      released = true;
-      this.#active -= 1;
-      this.#waiters.shift()?.();
-    };
-  }
-
-  // A token-bucket wait is sequential by definition: each pass either
-  // grants immediately or sleeps and rechecks, there is nothing else to run
-  // concurrently while waiting for the bucket to refill.
-  // oxlint-disable no-await-in-loop
-  async #acquireToken(signal?: AbortSignal): Promise<void> {
-    for (;;) {
-      signal?.throwIfAborted();
-      const waitMs = this.#tryConsumeToken();
-      if (waitMs <= 0) {
-        return;
-      }
-      await sleep(waitMs, signal);
-    }
-  }
-  // oxlint-enable no-await-in-loop
-
-  #tryConsumeToken(): number {
-    if (!Number.isFinite(this.#refillRateMilliPerSec)) {
-      return 0;
-    }
-    const now = performance.now();
-    const elapsedSec = (now - this.#lastRefillMs) / 1000;
-    this.#tokensMilli = Math.min(
-      this.#capacityMilli,
-      this.#tokensMilli + elapsedSec * this.#refillRateMilliPerSec
-    );
-    this.#lastRefillMs = now;
-
-    if (this.#tokensMilli >= ONE_TOKEN_MILLI) {
-      this.#tokensMilli -= ONE_TOKEN_MILLI;
-      return 0;
-    }
-    const deficitMilli = ONE_TOKEN_MILLI - this.#tokensMilli;
-    return Math.ceil((deficitMilli / this.#refillRateMilliPerSec) * 1000);
-  }
-
-  #acquireSlot(signal?: AbortSignal): Promise<void> {
-    if (this.#active < this.#maxConcurrent) {
-      this.#active += 1;
-      return Promise.resolve();
-    }
-    // A queued concurrency slot has no "already in flight" operation to
-    // await instead — `resolve`/`reject` are triggered later by `acquire`'s
-    // release closure or an abort event, which is exactly what the
-    // deferred-promise pattern below models. There is no library function
-    // to return instead.
-    // oxlint-disable-next-line promise/avoid-new
-    return new Promise((resolve, reject) => {
-      // `grant` and `onAbort` reference each other (`grant` removes the
-      // abort listener, `onAbort` cancels a pending `grant`), so one side
-      // must be a mutable forward declaration to break the ordering cycle.
-      // oxlint-disable-next-line prefer-const
-      let onAbort: () => void;
-      const grant = () => {
-        signal?.removeEventListener("abort", onAbort);
-        this.#active += 1;
-        resolve();
-      };
-      onAbort = () => {
-        const index = this.#waiters.indexOf(grant);
-        if (index !== -1) {
-          this.#waiters.splice(index, 1);
-        }
-        reject(signal?.reason);
-      };
-      signal?.addEventListener("abort", onAbort, { once: true });
-      this.#waiters.push(grant);
+      // SAFETY: `fn` always resolves to `T`; the throttle gate's `unknown`
+      // return type is only an artifact of wrapping one fixed-signature
+      // function for every caller (see `ThrottledGate` above).
+      return this.#throttledGate(fn) as Promise<T>;
     });
   }
 }

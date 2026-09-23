@@ -1,85 +1,103 @@
 #!/usr/bin/env bun
 import { optional } from "@charlotte/providers";
 import { printError } from "@charlotte/ui";
-import { Command } from "commander";
+import {
+  constant,
+  map,
+  message,
+  multiple,
+  object,
+  optional as optionalParser,
+  option,
+  or,
+  string,
+} from "@optique/core";
+import type { InferValue } from "@optique/core";
+import { run } from "@optique/run";
 
 import packageJson from "../package.json" with { type: "json" };
-import { registerCompletionsCommand } from "./commands/completions";
-import { registerConfigCommand } from "./commands/config";
+import { configParser, runConfigAction } from "./commands/config";
 import { runGenerate } from "./commands/generate";
-import { registerProfileCommand } from "./commands/profile";
-import { registerStatsCommand } from "./commands/stats";
+import { profileParser, runProfileAction } from "./commands/profile";
+import {
+  runSessionsAction,
+  runStatsAction,
+  sessionsParser,
+  statsParser,
+} from "./commands/stats";
 
-/** Commander accepts a repeated `-v` but not a stacked `-vvv` the way
- * clap's `ArgAction::Count` does — christina/src/cli/mod.rs relies on that
- * stacking, so expand it before Commander ever sees the token. */
-const expandStackedVerbosity = (argv: readonly string[]): string[] =>
-  argv.flatMap((arg) =>
-    /^-v{2,}$/u.test(arg) ? Array.from(arg.slice(1), () => "-v") : [arg]
-  );
+/**
+ * `-v`/`--verbose` is declared for parity with Christina's `ArgAction::Count`
+ * flag (`christina/src/cli/mod.rs`), but nothing downstream reads its value
+ * — matches the pre-migration `commander` CLI, which had the same gap.
+ */
+const generateParser = object({
+  context: optionalParser(option("-c", "--context", string())),
+  dryRun: option("--dry-run", {
+    description: message`Generate commit message without creating the commit (preview mode)`,
+  }),
+  group: constant("generate"),
+  trace: option("--trace", {
+    description: message`Enable full pipeline tracing with detailed telemetry output`,
+  }),
+  verbosity: map(multiple(option("-v", "--verbose")), (flags) => flags.length),
+  yes: option("--yes", {
+    description: message`Skip interactive confirmations (non-interactive mode)`,
+  }),
+});
 
-const program = new Command();
+const parser = or(
+  configParser,
+  profileParser,
+  statsParser,
+  sessionsParser,
+  generateParser
+);
 
-program
-  .name("charlotte")
-  .description("Automated Conventional Commit Generator Powered By LLMs")
-  .version(packageJson.version)
-  .option(
-    "-v, --verbose",
-    "increase logging verbosity (repeatable)",
-    (_value: string, previous: number) => previous + 1,
-    0
-  )
-  .option(
-    "--trace",
-    "enable full pipeline tracing with detailed telemetry output",
-    false
-  )
-  .option(
-    "--yes",
-    "skip interactive confirmations (non-interactive mode)",
-    false
-  )
-  .option(
-    "-c, --context <text>",
-    "additional user-provided context appended to prompts"
-  )
-  .option(
-    "--dry-run",
-    "generate commit message without creating the commit (preview mode)",
-    false
-  );
+type CliResult = InferValue<typeof parser>;
 
-registerConfigCommand(program);
-registerProfileCommand(program);
-registerStatsCommand(program);
-registerCompletionsCommand(program);
-
-/** `isDefault: true` is Commander's documented way to run a subcommand when
- * none is named on the command line (the deprecated `.command('*')` form
- * did the same thing pre-v8.3). Reading options off the closed-over
- * `program` reference, rather than off this action's own `this`, sidesteps
- * any question of whether a subcommand inherits the root's option values. */
-program
-  .command("generate", { hidden: true, isDefault: true })
-  .description("Generate a commit message from staged changes")
-  .action(async () => {
-    const options = program.opts<{
-      yes: boolean;
-      trace: boolean;
-      dryRun: boolean;
-      context?: string;
-    }>();
-    await runGenerate({
-      dryRun: options.dryRun,
-      trace: options.trace,
-      yes: options.yes,
-      ...optional("context", options.context),
-    });
-  });
+const dispatch = async (result: CliResult): Promise<void> => {
+  switch (result.group) {
+    case "config": {
+      await runConfigAction(result.action);
+      return;
+    }
+    case "profile": {
+      await runProfileAction(result.action);
+      return;
+    }
+    case "stats": {
+      await runStatsAction();
+      return;
+    }
+    case "sessions": {
+      await runSessionsAction(result.action);
+      return;
+    }
+    case "generate": {
+      await runGenerate({
+        dryRun: result.dryRun,
+        trace: result.trace,
+        yes: result.yes,
+        ...optional("context", result.context),
+      });
+      return;
+    }
+    default: {
+      result satisfies never;
+    }
+  }
+};
 
 try {
-  await program.parseAsync(expandStackedVerbosity(process.argv));
+  const result = run(parser, {
+    completion: "both",
+    description: message`Automated Conventional Commit Generator Powered By LLMs`,
+    help: "both",
+    programName: "charlotte",
+    version: packageJson.version,
+  });
+  await dispatch(result);
 } catch (error) {
   printError(error instanceof Error ? error.message : String(error));
   process.exit(1);

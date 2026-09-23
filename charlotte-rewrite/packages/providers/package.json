@@ -20,6 +20,8 @@
     "@charlotte/config": "workspace:*",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "ai": "^7.0.110",
+    "p-limit": "^7.3.3",
+    "p-throttle": "^8.1.1",
     "zod": "^4.6.5"
   }
 }
