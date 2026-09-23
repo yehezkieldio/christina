@@ -1,6 +1,9 @@
 import type { Chunk } from "@charlotte/native-core";
 import { generateStructured, optional } from "@charlotte/providers";
-import type { GenerateStructuredOptions } from "@charlotte/providers";
+import type {
+  GenerateStructuredOptions,
+  RequestLimiter,
+} from "@charlotte/providers";
 import { summaryResponseSchema } from "@charlotte/schemas";
 import type { ChunkSummary } from "@charlotte/schemas";
 
@@ -46,6 +49,7 @@ export interface MapPhaseOptions {
   readonly model: GenerateStructuredOptions<unknown>["model"];
   readonly concurrencyLimit: number;
   readonly maxPartialFailureRate: number;
+  readonly limiter: RequestLimiter;
   readonly signal?: AbortSignal;
 }
 
@@ -90,6 +94,7 @@ export const mapPhase = async (
       try {
         const prompt = `${buildSystemPrompt()}\n\n${buildChunkSummaryPrompt(chunk.content)}`;
         const result = await generateStructured({
+          limiter: options.limiter,
           model: options.model,
           prompt,
           schema: summaryResponseSchema,

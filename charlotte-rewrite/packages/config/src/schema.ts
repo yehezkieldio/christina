@@ -41,6 +41,10 @@ export const configSchema = z.object({
   partialFailureRate: clampedNumber(0.01, 0.5).default(0.2),
   provider: providerSchema,
   reasoningEffort: reasoningEffortSchema.default("medium"),
+  /** Bounds the same shared provider resource as `maxConcurrentRequests`, so
+   * it gets the same clamp treatment: a rate the provider cannot honor is
+   * not a budget the user can choose to exceed. */
+  requestsPerSecond: clampedNumber(1, 50).default(5),
   temperature: clampedNumber(0, 2).default(1),
 });
 

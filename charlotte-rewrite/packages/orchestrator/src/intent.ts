@@ -1,5 +1,8 @@
 import { generateStructured, optional } from "@charlotte/providers";
-import type { GenerateStructuredOptions } from "@charlotte/providers";
+import type {
+  GenerateStructuredOptions,
+  RequestLimiter,
+} from "@charlotte/providers";
 import { themeResponseSchema } from "@charlotte/schemas";
 import type {
   ChunkSummary,
@@ -140,6 +143,7 @@ export const aggregateSubThemes = (
 export interface IntentOptions {
   readonly model: GenerateStructuredOptions<unknown>["model"];
   readonly concurrencyLimit: number;
+  readonly limiter: RequestLimiter;
   readonly signal?: AbortSignal;
 }
 
@@ -162,6 +166,7 @@ const extractSubThemes = async (
   options.signal?.throwIfAborted();
   const prompt = `${buildSystemPrompt()}\n\n${buildIntentPrompt(batch)}`;
   const result = await generateStructured({
+    limiter: options.limiter,
     model: options.model,
     prompt,
     schema: themeResponseSchema,
@@ -262,6 +267,7 @@ export const extractIntent = async (
   try {
     const prompt = `${buildSystemPrompt()}\n\n${buildIntentPrompt(summaries)}`;
     const result = await generateStructured({
+      limiter: options.limiter,
       model: options.model,
       prompt,
       schema: themeResponseSchema,

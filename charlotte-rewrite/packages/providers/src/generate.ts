@@ -4,12 +4,13 @@ import type { z } from "zod";
 
 import { optional } from "./optional";
 import { createRetryPolicy, retryWithBackoff } from "./retry";
-import { RequestLimiter } from "./throttle";
+import type { RequestLimiter } from "./throttle";
 
 export interface GenerateStructuredOptions<T> {
   readonly model: LanguageModel;
   readonly schema: z.ZodType<T>;
   readonly prompt: string;
+  readonly limiter: RequestLimiter;
   readonly signal?: AbortSignal;
 }
 
@@ -27,21 +28,23 @@ const isTransient = (error: unknown): boolean =>
   error instanceof APICallError && error.isRetryable;
 
 const defaultRetryPolicy = createRetryPolicy();
-const defaultLimiter = new RequestLimiter({
-  maxConcurrent: 4,
-  requestsPerSecond: 5,
-});
 
 /**
  * Wraps the AI SDK's `generateObject` with retry (`retry.ts`) and
  * concurrency/rate throttling (`throttle.ts`). This is the one function
  * `@charlotte/orchestrator` calls for every structured model request, per
  * `06-providers-and-ai-sdk.md` and `07-orchestrator-pipeline.md`.
+ *
+ * `options.limiter` is caller-supplied rather than a module-level default:
+ * a shared singleton with hardcoded bounds cannot reflect a user's
+ * configured `maxConcurrentRequests`/`requestsPerSecond`, so the caller
+ * (`@charlotte/orchestrator`) builds one `RequestLimiter` per run from
+ * `ResolvedConfig` and threads it through every call in that run.
  */
 export const generateStructured = <T>(
   options: GenerateStructuredOptions<T>
 ): Promise<GenerateStructuredResult<T>> =>
-  defaultLimiter.run(
+  options.limiter.run(
     () =>
       retryWithBackoff(
         defaultRetryPolicy,

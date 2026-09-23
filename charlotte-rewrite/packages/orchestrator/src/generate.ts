@@ -1,7 +1,10 @@
 import type { CommitValidationMode } from "@charlotte/config";
 import type { Chunk } from "@charlotte/native-core";
 import { generateStructured, optional } from "@charlotte/providers";
-import type { GenerateStructuredOptions } from "@charlotte/providers";
+import type {
+  GenerateStructuredOptions,
+  RequestLimiter,
+} from "@charlotte/providers";
 import { commitResponseSchema } from "@charlotte/schemas";
 import type { Warning } from "@charlotte/schemas";
 
@@ -29,6 +32,7 @@ export interface GenerateCommitMessageOptions {
   readonly maxLength?: number;
   readonly concurrencyLimit: number;
   readonly maxPartialFailureRate: number;
+  readonly limiter: RequestLimiter;
   readonly signal?: AbortSignal;
 }
 
@@ -58,6 +62,7 @@ const directGeneration = async (
 
   const prompt = `${buildSystemPrompt()}\n\n${buildDirectPrompt(chunk.content, options.context)}`;
   const result = await generateStructured({
+    limiter: options.limiter,
     model: options.model,
     prompt,
     schema: commitResponseSchema,
@@ -108,6 +113,7 @@ export const generateCommitMessage = async (
 
   const mapResult = await mapPhase(chunks, {
     concurrencyLimit: options.concurrencyLimit,
+    limiter: options.limiter,
     maxPartialFailureRate: options.maxPartialFailureRate,
     model: options.model,
     ...optional("signal", options.signal),
@@ -127,6 +133,7 @@ export const generateCommitMessage = async (
   } else {
     intentResult = await extractIntent(mapResult.summaries, {
       concurrencyLimit: options.concurrencyLimit,
+      limiter: options.limiter,
       model: options.model,
       ...optional("signal", options.signal),
     });
@@ -134,6 +141,7 @@ export const generateCommitMessage = async (
   options.signal?.throwIfAborted();
 
   const reduceResult = await reducePhase(intentResult.themes, {
+    limiter: options.limiter,
     model: options.model,
     validationMode: options.validationMode,
     ...optional("context", options.context),

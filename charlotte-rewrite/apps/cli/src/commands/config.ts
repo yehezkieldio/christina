@@ -54,6 +54,7 @@ const FIELD_PARSERS = {
   // SAFETY: an out-of-range value is rejected downstream by
   // `configOverlaySchema`'s validation in `handleSet`, not by this parser.
   reasoningEffort: (raw) => raw as Config["reasoningEffort"],
+  requestsPerSecond: Number,
   temperature: Number,
 } satisfies { [K in keyof Config]: FieldParser<Config[K]> };
 

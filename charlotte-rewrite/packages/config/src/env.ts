@@ -69,6 +69,7 @@ const ENV_PARSERS = {
   // SAFETY: an out-of-range value is rejected downstream by
   // `configOverlaySchema`'s validation, not by this parser.
   reasoningEffort: (raw) => raw as Config["reasoningEffort"],
+  requestsPerSecond: Number,
   temperature: Number,
 } satisfies { [K in keyof Config]: EnvParser<Config[K]> };
 

@@ -10,7 +10,7 @@ import {
 import { NativeCommitHistoryProvider } from "@charlotte/native-core/native-commit-history-provider";
 import { generateCommitMessage } from "@charlotte/orchestrator";
 import type { GenerationResult } from "@charlotte/orchestrator";
-import { optional, resolveModel } from "@charlotte/providers";
+import { optional, RequestLimiter, resolveModel } from "@charlotte/providers";
 import type { PipelineStage, RunOutcome, Warning } from "@charlotte/schemas";
 import { SessionWriter } from "@charlotte/session";
 import {
@@ -196,6 +196,10 @@ const generateOnce = async (
   }
 
   const model = resolveModel(config);
+  const limiter = new RequestLimiter({
+    maxConcurrent: config.maxConcurrentRequests,
+    requestsPerSecond: config.requestsPerSecond,
+  });
 
   onProgress({ message: "generating commit message", stage: "analyze" });
   const result = await writeStage(ctx.writer, ctx.trace, "analyze", () =>
@@ -205,6 +209,7 @@ const generateOnce = async (
         ...optional("userContext", ctx.userContext),
         ...optional("historyContext", historyContext),
       },
+      limiter,
       maxLength: config.commitMessageMaxLength,
       maxPartialFailureRate: config.partialFailureRate,
       model,

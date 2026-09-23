@@ -1,6 +1,9 @@
 import type { CommitValidationMode } from "@charlotte/config";
 import { generateStructured, optional } from "@charlotte/providers";
-import type { GenerateStructuredOptions } from "@charlotte/providers";
+import type {
+  GenerateStructuredOptions,
+  RequestLimiter,
+} from "@charlotte/providers";
 import { commitResponseSchema } from "@charlotte/schemas";
 import type { ThemeItem } from "@charlotte/schemas";
 
@@ -52,6 +55,7 @@ export interface ReducePhaseOptions {
   readonly context?: PromptContext;
   readonly validationMode: CommitValidationMode;
   readonly maxLength?: number;
+  readonly limiter: RequestLimiter;
   readonly signal?: AbortSignal;
 }
 
@@ -72,6 +76,7 @@ export const reducePhase = async (
 
   const prompt = `${buildSystemPrompt()}\n\n${buildReducePrompt(themes, options.context)}`;
   const result = await generateStructured({
+    limiter: options.limiter,
     model: options.model,
     prompt,
     schema: commitResponseSchema,
