@@ -40,9 +40,7 @@ export async function editCommitMessageInline(initialContent: string): Promise<s
     message: "Edit commit message",
     initialValue: sanitizeInlineMessage(initialContent),
     validate(value) {
-      if (value.trim().length === 0) {
-        return "Commit message cannot be empty.";
-      }
+      return (value ?? "").trim().length === 0 ? "Commit message cannot be empty." : undefined;
     },
   });
   return isCancel(result) ? undefined : result.trim();

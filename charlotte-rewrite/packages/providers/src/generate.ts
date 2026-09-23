@@ -39,7 +39,7 @@ export async function generateStructured<T>(options: GenerateStructuredOptions<T
           model: options.model,
           schema: options.schema,
           prompt: options.prompt,
-          abortSignal: options.signal,
+          ...(options.signal !== undefined ? { abortSignal: options.signal } : {}),
         });
         return {
           object: result.object,
@@ -47,7 +47,7 @@ export async function generateStructured<T>(options: GenerateStructuredOptions<T
           completionTokens: result.usage.outputTokens ?? 0,
         };
       },
-      { isTransient, signal: options.signal },
+      { isTransient, ...(options.signal !== undefined ? { signal: options.signal } : {}) },
     );
   } finally {
     release();

@@ -12,23 +12,31 @@ import type { LanguageModel } from "ai";
  * one place in `@charlotte/providers` allowed to hold the plaintext key,
  * and only for the duration of this call.
  */
+/** `exactOptionalPropertyTypes` treats `{ baseURL: undefined }` as distinct
+ * from omitting `baseURL` entirely, and every AI SDK provider settings type
+ * declares `baseURL?: string` (no `| undefined`), so an absent `apiUrl` must
+ * spread to no key at all rather than an explicit `undefined` value. */
+function optional<K extends string, V>(key: K, value: V | undefined): { readonly [P in K]?: V } {
+  return value === undefined ? {} : ({ [key]: value } as { readonly [P in K]: V });
+}
+
 export function resolveModel(config: ResolvedConfig): LanguageModel {
   const apiKey = config.apiKey.reveal();
 
   switch (config.provider) {
     case "openai":
-      return createOpenAI({ apiKey, baseURL: config.apiUrl })(config.model);
+      return createOpenAI({ apiKey, ...optional("baseURL", config.apiUrl) })(config.model);
     case "azure-openai":
       return createAzure({
         apiKey,
-        baseURL: config.apiUrl,
-        apiVersion: config.azureApiVersion,
+        ...optional("baseURL", config.apiUrl),
+        ...optional("apiVersion", config.azureApiVersion),
         useDeploymentBasedUrls: config.azureDeploymentId !== undefined,
       })(config.azureDeploymentId ?? config.model);
     case "anthropic":
-      return createAnthropic({ apiKey, baseURL: config.apiUrl })(config.model);
+      return createAnthropic({ apiKey, ...optional("baseURL", config.apiUrl) })(config.model);
     case "google":
-      return createGoogle({ apiKey, baseURL: config.apiUrl })(config.model);
+      return createGoogle({ apiKey, ...optional("baseURL", config.apiUrl) })(config.model);
     case "openai-compatible": {
       if (!config.apiUrl) {
         throw new Error('provider "openai-compatible" requires apiUrl to be set');

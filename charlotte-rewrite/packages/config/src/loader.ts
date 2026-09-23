@@ -49,7 +49,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
 
   const envOverlay = readEnvOverlay(env);
 
-  const merged: Partial<Config> = { ...fileOverlay, ...profileOverlay, ...envOverlay };
+  const merged: ConfigOverlay = { ...fileOverlay, ...profileOverlay, ...envOverlay };
   const result = configSchema.safeParse(merged);
   if (!result.success) {
     throw new ConfigValidationError(result.error.issues);
@@ -64,7 +64,7 @@ function parseOverlay(raw: Record<string, unknown>): ConfigOverlay {
 }
 
 function deriveActiveProfile(env: Readonly<Record<string, string | undefined>>): string | undefined {
-  return env.CHARLOTTE_PROFILE;
+  return env["CHARLOTTE_PROFILE"];
 }
 
 async function readProfileOverlay(path: string, profileName: string): Promise<ConfigOverlay> {

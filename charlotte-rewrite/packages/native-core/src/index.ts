@@ -45,6 +45,18 @@ export class NativeCoreError extends Error {
 
 type NativeResult<T> = T | { readonly error: string };
 
+/** `bun:ffi` types a `ptr`-returning symbol as `Pointer | bigint | null`: a
+ * 64-bit address that overflows a safe JS number comes back as `bigint`
+ * instead of silently losing precision. Every real address from this
+ * crate's allocator fits in a JS number in practice, so normalizing to
+ * `Pointer` here is safe. */
+function assertPointer(raw: Pointer | bigint | null, errorMessage: string): Pointer {
+  if (raw === null) {
+    throw new NativeCoreError(errorMessage);
+  }
+  return (typeof raw === "bigint" ? Number(raw) : raw) as Pointer;
+}
+
 /** Every JSON-returning native call follows this shape: clone the string
  * out of native memory, free the native allocation exactly once, then
  * parse. `charlotte_core_free_string` must run even when parsing throws. */
@@ -67,10 +79,7 @@ export interface StagedDiff {
 }
 
 export function readStagedDiff(repoPath: string): StagedDiff {
-  const rawPtr = symbols.read_staged_diff(repoPath);
-  if (rawPtr === null) {
-    throw new NativeCoreError("read_staged_diff returned a null pointer");
-  }
+  const rawPtr = assertPointer(symbols.read_staged_diff(repoPath), "read_staged_diff returned a null pointer");
   return readJson<StagedDiff>(rawPtr);
 }
 
@@ -80,10 +89,7 @@ export interface CommitSummary {
 }
 
 export function readCommitHistory(repoPath: string, depth: number): CommitSummary[] {
-  const rawPtr = symbols.read_commit_history(repoPath, depth);
-  if (rawPtr === null) {
-    throw new NativeCoreError("read_commit_history returned a null pointer");
-  }
+  const rawPtr = assertPointer(symbols.read_commit_history(repoPath, depth), "read_commit_history returned a null pointer");
   return readJson<CommitSummary[]>(rawPtr);
 }
 
@@ -102,9 +108,6 @@ export interface Chunk {
 }
 
 export function chunkDiff(diff: string, tokenLimit: number, lockfileTokenLimit: number): Chunk[] {
-  const rawPtr = symbols.chunk_diff(diff, tokenLimit, lockfileTokenLimit);
-  if (rawPtr === null) {
-    throw new NativeCoreError("chunk_diff returned a null pointer");
-  }
+  const rawPtr = assertPointer(symbols.chunk_diff(diff, tokenLimit, lockfileTokenLimit), "chunk_diff returned a null pointer");
   return readJson<Chunk[]>(rawPtr);
 }
