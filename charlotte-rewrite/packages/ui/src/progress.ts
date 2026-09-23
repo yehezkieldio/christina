@@ -18,4 +18,7 @@ export type ProgressListener = (event: ProgressEvent) => void;
  * spinner and the persistent record." This only renders the spinner half;
  * writing the event to the session transcript is the caller's job
  * (`@charlotte/session`'s `SessionWriter`), not this package's. */
-export const bindSpinnerToProgress = (spinner: Spinner): ProgressListener => (event) => spinner.update(event.message);
+export const bindSpinnerToProgress =
+  (spinner: Spinner): ProgressListener =>
+  (event) =>
+    spinner.update(event.message);

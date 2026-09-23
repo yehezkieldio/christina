@@ -13,9 +13,10 @@ import { registerStatsCommand } from "./commands/stats";
 /** Commander accepts a repeated `-v` but not a stacked `-vvv` the way
  * clap's `ArgAction::Count` does — christina/src/cli/mod.rs relies on that
  * stacking, so expand it before Commander ever sees the token. */
-const expandStackedVerbosity = (argv: readonly string[]): string[] => argv.flatMap((arg) =>
-  /^-v{2,}$/.test(arg) ? Array.from(arg.slice(1), () => "-v") : [arg]
-);
+const expandStackedVerbosity = (argv: readonly string[]): string[] =>
+  argv.flatMap((arg) =>
+    /^-v{2,}$/u.test(arg) ? Array.from(arg.slice(1), () => "-v") : [arg]
+  );
 
 const program = new Command();
 

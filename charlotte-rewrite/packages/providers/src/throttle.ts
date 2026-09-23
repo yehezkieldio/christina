@@ -102,17 +102,22 @@ export class RequestLimiter {
     return Math.ceil((deficitMilli / this.#refillRateMilliPerSec) * 1000);
   }
 
-  // A queued concurrency slot has no "already in flight" operation to await
-  // instead — `resolve`/`reject` are triggered later by `acquire`'s release
-  // closure or an abort event, which is exactly what the deferred-promise
-  // pattern below models. There is no library function to return instead.
-  // oxlint-disable-next-line promise/avoid-new
   #acquireSlot(signal?: AbortSignal): Promise<void> {
     if (this.#active < this.#maxConcurrent) {
       this.#active += 1;
       return Promise.resolve();
     }
+    // A queued concurrency slot has no "already in flight" operation to
+    // await instead — `resolve`/`reject` are triggered later by `acquire`'s
+    // release closure or an abort event, which is exactly what the
+    // deferred-promise pattern below models. There is no library function
+    // to return instead.
+    // oxlint-disable-next-line promise/avoid-new
     return new Promise((resolve, reject) => {
+      // `grant` and `onAbort` reference each other (`grant` removes the
+      // abort listener, `onAbort` cancels a pending `grant`), so one side
+      // must be a mutable forward declaration to break the ordering cycle.
+      // oxlint-disable-next-line prefer-const
       let onAbort: () => void;
       const grant = () => {
         signal?.removeEventListener("abort", onAbort);

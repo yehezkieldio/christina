@@ -6,5 +6,10 @@
     "strictNullChecks": true
   },
   "include": ["src"],
-  "references": [{ "path": "../config" }]
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../config"
+    }
+  ]
 }

@@ -6,6 +6,7 @@ import {
   providerProfileSchema,
 } from "@charlotte/config";
 import type { ProviderProfile } from "@charlotte/config";
+import { optional } from "@charlotte/providers";
 import type { Command } from "commander";
 
 import { readToml, writeToml } from "../toml-io";
@@ -31,10 +32,7 @@ const saveProfiles = async (data: {
   active: string | null;
   profiles: Record<string, ProviderProfile>;
 }): Promise<void> => {
-  await writeToml(
-    profilesFilePath(),
-    profilesSchema.parse(data) as unknown as Record<string, unknown>
-  );
+  await writeToml(profilesFilePath(), profilesSchema.parse(data));
 };
 
 const warnPlaintextSecret = (apiKey: string, allowPlaintext: boolean): void => {
@@ -47,33 +45,30 @@ const applyOverrides = (
   profile: ProviderProfile,
   options: ProfileOptions
 ): ProviderProfile => {
-  const next: Record<string, unknown> = { ...profile };
-  if (options.provider !== undefined) {
-    next["provider"] = options.provider;
-  }
-  if (options.model !== undefined) {
-    next["model"] = options.model;
-  }
   if (options.apiKey !== undefined) {
     warnPlaintextSecret(options.apiKey, options.allowPlaintext ?? false);
-    next["apiKey"] = options.apiKey;
   }
-  if (options.apiUrl !== undefined) {
-    next["apiUrl"] = options.apiUrl;
-  }
-  if (options.maxTokens !== undefined) {
-    next["maxTokens"] = Math.trunc(Number(options.maxTokens));
-  }
-  if (options.lockfileTokenLimit !== undefined) {
-    next["lockfileTokenLimit"] = Math.trunc(Number(options.lockfileTokenLimit));
-  }
-  if (options.azureApiVersion !== undefined) {
-    next["azureApiVersion"] = options.azureApiVersion;
-  }
-  if (options.azureDeploymentId !== undefined) {
-    next["azureDeploymentId"] = options.azureDeploymentId;
-  }
-  return providerProfileSchema.parse(next);
+  return providerProfileSchema.parse({
+    ...profile,
+    ...optional("provider", options.provider),
+    ...optional("model", options.model),
+    ...optional("apiKey", options.apiKey),
+    ...optional("apiUrl", options.apiUrl),
+    ...optional(
+      "maxTokens",
+      options.maxTokens === undefined
+        ? undefined
+        : Math.trunc(Number(options.maxTokens))
+    ),
+    ...optional(
+      "lockfileTokenLimit",
+      options.lockfileTokenLimit === undefined
+        ? undefined
+        : Math.trunc(Number(options.lockfileTokenLimit))
+    ),
+    ...optional("azureApiVersion", options.azureApiVersion),
+    ...optional("azureDeploymentId", options.azureDeploymentId),
+  });
 };
 
 const handleList = async (): Promise<void> => {
@@ -246,10 +241,7 @@ const withProfileOptions = (command: Command): Command =>
       "Lockfile token limit"
     )
     .option("--azure-api-version <azureApiVersion>", "Azure API version")
-    .option(
-      "--azure-deployment-id <azureDeploymentId>",
-      "Azure deployment ID"
-    );
+    .option("--azure-deployment-id <azureDeploymentId>", "Azure deployment ID");
 
 export const registerProfileCommand = (program: Command): void => {
   const profile = program.command("profile").description("Profile management");

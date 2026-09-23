@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { mapWithConcurrency } from "./concurrency";
 
@@ -8,8 +9,8 @@ describe("mapWithConcurrency", () => {
     const results = await mapWithConcurrency(
       delays,
       4,
-      async (delay, index) => {
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      async (delayMs, index) => {
+        await delay(delayMs);
         return index;
       }
     );
@@ -24,7 +25,7 @@ describe("mapWithConcurrency", () => {
     await mapWithConcurrency(items, 3, async () => {
       active += 1;
       maxActive = Math.max(maxActive, active);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await delay(5);
       active -= 1;
     });
 
@@ -32,6 +33,9 @@ describe("mapWithConcurrency", () => {
   });
 
   test("handles an empty input", async () => {
+    // `mapWithConcurrency`'s callback must return a `Promise`; the input is
+    // empty here, so the callback is never actually invoked.
+    // oxlint-disable-next-line require-await
     const results = await mapWithConcurrency([], 4, async (x) => x);
     expect(results).toEqual([]);
   });

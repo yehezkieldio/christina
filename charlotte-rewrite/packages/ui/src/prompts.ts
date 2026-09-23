@@ -31,7 +31,8 @@ export const selectCommitAction = async (): Promise<
   return isCancel(choice) ? undefined : choice;
 };
 
-const sanitizeInlineMessage = (message: string): string => message.split("\n").join(" ");
+const sanitizeInlineMessage = (message: string): string =>
+  message.split("\n").join(" ");
 
 /**
  * Mirrors `edit_commit_message_inline` from `christina/src/ui/mod.rs`.

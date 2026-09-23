@@ -1,5 +1,16 @@
 import { styles } from "./styles";
 
+const padToWidth = (text: string, width: number): string =>
+  text.length >= width ? text : text + " ".repeat(width - text.length);
+
+const formatRow = (
+  cells: readonly string[],
+  widths: readonly number[]
+): string =>
+  widths
+    .map((width, index) => padToWidth(cells[index] ?? "", width))
+    .join("  ");
+
 /** Table rendering, folded in from `ui-extractable/src/primitive/mod.rs`'s
  * `print_table` per `09-cli-and-ui.md` — Charlotte does not keep a second
  * compiled artifact for this, so it lives alongside the rest of the
@@ -32,10 +43,3 @@ export const printTable = (
   }
   console.log("");
 };
-
-const formatRow = (cells: readonly string[],
-widths: readonly number[]): string => widths
-  .map((width, index) => padToWidth(cells[index] ?? "", width))
-  .join("  ");
-
-const padToWidth = (text: string, width: number): string => text.length >= width ? text : text + " ".repeat(width - text.length);

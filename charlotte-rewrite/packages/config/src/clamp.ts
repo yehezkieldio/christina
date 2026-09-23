@@ -15,6 +15,7 @@ import { z } from "zod";
  * Charlotte does not second-guess that choice. This mirrors commit
  * `9dcf41c`, which stopped clamping token limits for the same reason.
  */
-export const clampedNumber = (min: number, max: number) => z.number().min(min).max(max);
+export const clampedNumber = (min: number, max: number) =>
+  z.number().min(min).max(max);
 
 export const budgetInt = (min = 1) => z.number().int().min(min);

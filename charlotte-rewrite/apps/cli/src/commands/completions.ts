@@ -27,12 +27,10 @@ const generateScript = (shell: Shell): string => {
       return `#compdef charlotte\n_arguments '1: :(${words})'\n`;
     }
     case "fish": {
-      return (
-        TOP_LEVEL_COMMANDS.map(
-          (word) =>
-            `complete -c charlotte -n "__fish_use_subcommand" -a "${word}"`
-        ).join("\n") + "\n"
-      );
+      return `${TOP_LEVEL_COMMANDS.map(
+        (word) =>
+          `complete -c charlotte -n "__fish_use_subcommand" -a "${word}"`
+      ).join("\n")}\n`;
     }
     case "powershell": {
       return `Register-ArgumentCompleter -Native -CommandName charlotte -ScriptBlock {\n  param($wordToComplete)\n  @(${TOP_LEVEL_COMMANDS.map((word) => `'${word}'`).join(", ")}) | Where-Object { $_ -like "$wordToComplete*" }\n}\n`;
@@ -48,11 +46,14 @@ export const registerCompletionsCommand = (program: Command): void => {
     .command("completions <shell>")
     .description(`Generate shell completions (${SHELLS.join("|")})`)
     .action((shell: string) => {
+      // SAFETY: `SHELLS` is a `readonly Shell[]`; widening it here only lets
+      // `.includes` accept an arbitrary `string` for the containment check.
       if (!(SHELLS as readonly string[]).includes(shell)) {
         throw new Error(
           `Unsupported shell '${shell}'. Expected one of: ${SHELLS.join(", ")}`
         );
       }
+      // SAFETY: the `includes` check above proved `shell` is one of `SHELLS`.
       process.stdout.write(generateScript(shell as Shell));
     });
 };

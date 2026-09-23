@@ -32,12 +32,16 @@ export const buildDirectPrompt = (
   return appendContext(prompt, context);
 };
 
-export const buildChunkSummaryPrompt = (diffChunkContent: string): string => `Summarize the following diff chunk in one sentence, focused on what changed and why:\n\n${diffChunkContent}`;
+export const buildChunkSummaryPrompt = (diffChunkContent: string): string =>
+  `Summarize the following diff chunk in one sentence, focused on what changed and why:\n\n${diffChunkContent}`;
 
-export const formatSummariesForPrompt = (summaries: readonly ChunkSummary[]): string[] => summaries.map(
-  (summary) =>
-    `[${summary.files.length} files: ${summary.files.join(", ")}] ${summary.summary}`
-);
+export const formatSummariesForPrompt = (
+  summaries: readonly ChunkSummary[]
+): string[] =>
+  summaries.map(
+    (summary) =>
+      `[${summary.files.length} files: ${summary.files.join(", ")}] ${summary.summary}`
+  );
 
 export const buildIntentPrompt = (
   summaries: readonly ChunkSummary[]

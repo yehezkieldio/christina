@@ -2,13 +2,12 @@ import type {
   CommitHistoryProvider,
   CommitSummary,
 } from "./commit-history-provider";
-import { readCommitHistory } from "./index";
 
-export class NativeCommitHistoryProvider implements CommitHistoryProvider {
+export class FailingCommitHistoryProvider implements CommitHistoryProvider {
   // The interface requires an instance method regardless of whether this
   // implementation happens to use `this`.
   // oxlint-disable-next-line class-methods-use-this
-  getCommitHistory(repoPath: string, depth: number): CommitSummary[] {
-    return readCommitHistory(repoPath, depth);
+  getCommitHistory(): CommitSummary[] {
+    throw new Error("Failed to retrieve commit history");
   }
 }

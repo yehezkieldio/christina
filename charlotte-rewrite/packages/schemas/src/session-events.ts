@@ -132,6 +132,4 @@ export const assertSessionEventExhaustive = (event: never): never => {
 export const isSessionEventOfType = <T extends SessionEventType>(
   event: SessionEvent,
   type: T
-): event is SessionEventOfType<T> => {
-  return event.type === type;
-};
+): event is SessionEventOfType<T> => event.type === type;

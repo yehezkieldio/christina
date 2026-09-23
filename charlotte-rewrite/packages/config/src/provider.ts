@@ -32,9 +32,7 @@ export type ProviderExtraFields<P extends Provider> = P extends "azure-openai"
 
 export const requiresAzureFields = (
   provider: Provider
-): provider is "azure-openai" => {
-  return provider === "azure-openai";
-};
+): provider is "azure-openai" => provider === "azure-openai";
 
 export const describeProvider = (provider: Provider): string => {
   switch (provider) {

@@ -19,7 +19,8 @@ export type EnvKeyOf<K extends string> = `CHARLOTTE_${SplitCamel<K>}`;
  * one pass over the string, no backtracking, no intermediate match array. */
 const toEnvSuffix = (key: string): string => {
   let out = "";
-  for (let i = 0; i < key.length; i++) {
+  for (let i = 0; i < key.length; i += 1) {
+    // SAFETY: `i` is bounded by `key.length` in the loop condition above.
     const ch = key[i] as string;
     const upper = ch.toUpperCase();
     if (ch === upper && ch !== ch.toLowerCase()) {
@@ -33,9 +34,10 @@ const toEnvSuffix = (key: string): string => {
 
 export const toEnvKey = <K extends keyof Config & string>(
   key: K
-): EnvKeyOf<K> => {
-  return `CHARLOTTE_${toEnvSuffix(key)}` as EnvKeyOf<K>;
-};
+): EnvKeyOf<K> =>
+  // SAFETY: `toEnvSuffix` is the runtime mirror of the `SplitCamel` type,
+  // so its output is exactly `EnvKeyOf<K>`'s suffix by construction.
+  `CHARLOTTE_${toEnvSuffix(key)}` as EnvKeyOf<K>;
 
 type EnvParser<V> = (raw: string) => V;
 
@@ -52,16 +54,22 @@ const ENV_PARSERS = {
   azureDeploymentId: (raw) => raw,
   commitHistoryDepth: (raw) => Math.trunc(Number(raw)),
   commitMessageMaxLength: (raw) => Math.trunc(Number(raw)),
+  // SAFETY: an out-of-range value is rejected downstream by
+  // `configOverlaySchema`'s validation, not by this parser.
   commitValidationMode: (raw) => raw as Config["commitValidationMode"],
   ignorePatterns: (raw) => raw.split(",").map((pattern) => pattern.trim()),
   lockfileTokenLimit: (raw) => Math.trunc(Number(raw)),
   maxConcurrentRequests: (raw) => Math.trunc(Number(raw)),
   maxTokens: (raw) => Math.trunc(Number(raw)),
   model: (raw) => raw,
-  partialFailureRate: (raw) => Number(raw),
+  partialFailureRate: Number,
+  // SAFETY: an out-of-range value is rejected downstream by
+  // `configOverlaySchema`'s validation, not by this parser.
   provider: (raw) => raw as Config["provider"],
+  // SAFETY: an out-of-range value is rejected downstream by
+  // `configOverlaySchema`'s validation, not by this parser.
   reasoningEffort: (raw) => raw as Config["reasoningEffort"],
-  temperature: (raw) => Number.parseFloat(raw),
+  temperature: Number,
 } satisfies { [K in keyof Config]: EnvParser<Config[K]> };
 
 /**
@@ -73,14 +81,30 @@ const ENV_PARSERS = {
 export const readEnvOverlay = (
   env: Readonly<Record<string, string | undefined>> = process.env
 ): Partial<Config> => {
-  const overlay: Partial<Config> = {};
+  // `Config`'s fields have unrelated value types, so building a `Partial`
+  // from a dynamic key/parser pair inherently needs one boundary cast per
+  // field; `ENV_PARSERS`'s own `satisfies` clause is what keeps each parser
+  // honest against its field's real type.
+  // oxlint-disable anti-slop/no-known-value-widening
+  // oxlint-disable anti-slop/no-unsafe-dictionary-type
+  const overlay: Record<string, unknown> = {};
+  // SAFETY: `ENV_PARSERS`'s `satisfies` clause proves its keys are exactly
+  // `keyof Config`; `Object.keys` only widens that to `string[]` at the
+  // type level.
   for (const key of Object.keys(ENV_PARSERS) as (keyof Config)[]) {
     const raw = env[toEnvKey(key)];
     if (raw === undefined) {
       continue;
     }
+    // SAFETY: `key` is one of `ENV_PARSERS`'s own keys, so `ENV_PARSERS[key]`
+    // is always defined; the parser's specific input/output field types are
+    // erased here only to let one loop iterate over all of them.
     const parse = ENV_PARSERS[key] as EnvParser<unknown>;
-    (overlay as Record<string, unknown>)[key] = parse(raw);
+    overlay[key] = parse(raw);
   }
-  return overlay;
+  // oxlint-enable anti-slop/no-unsafe-dictionary-type
+  // oxlint-enable anti-slop/no-known-value-widening
+  // SAFETY: every assignment above went through a parser typed against its
+  // own `Config` field via `ENV_PARSERS`'s `satisfies` clause.
+  return overlay as Partial<Config>;
 };

@@ -57,6 +57,12 @@ const assertPointer = (
   if (raw === null) {
     throw new NativeCoreError(errorMessage);
   }
+  // `raw`'s two possible shapes come from `bun:ffi`'s own return type for a
+  // `ptr`-returning symbol, not from untrusted external input, so there is
+  // no schema to parse this against instead.
+  // SAFETY: see the doc comment above — every real address from this
+  // crate's allocator fits in a JS number.
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof
   return (typeof raw === "bigint" ? Number(raw) : raw) as Pointer;
 };
 
@@ -65,8 +71,14 @@ const assertPointer = (
  * parse. `charlotte_core_free_string` must run even when parsing throws. */
 const readJson = <T>(rawPtr: Pointer): T => {
   try {
-    const text = new CString(rawPtr);
-    const parsed = JSON.parse(text as unknown as string) as NativeResult<T>;
+    const text = new CString(rawPtr).toString();
+    // SAFETY: `text` is this crate's own JSON output (see `to_json_ptr` on
+    // the Rust side), which is always either `T` or `{ error: string }`.
+    const parsed = JSON.parse(text) as NativeResult<T>;
+    // `in` throws on a non-object operand; this narrows a value already
+    // trusted (see the SAFETY comment above) rather than validating
+    // untrusted input, so there is no schema to parse against instead.
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof
     if (parsed !== null && typeof parsed === "object" && "error" in parsed) {
       throw new NativeCoreError(parsed.error);
     }

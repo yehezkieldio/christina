@@ -19,7 +19,9 @@ export interface RetryPolicyOptions {
   readonly withJitter?: boolean;
 }
 
-export const createRetryPolicy = (options: RetryPolicyOptions = {}): RetryPolicy => ({
+export const createRetryPolicy = (
+  options: RetryPolicyOptions = {}
+): RetryPolicy => ({
   baseDelayMs: options.baseDelayMs ?? 1000,
   maxRetries: options.maxRetries ?? 3,
   withJitter: options.withJitter ?? true,
@@ -78,6 +80,9 @@ export const retryWithBackoff = async <T, E = unknown>(
     try {
       return await operation();
     } catch (error) {
+      // SAFETY: a `catch` clause's binding is always `unknown` at the
+      // language level; `isTransient` is the caller-supplied classifier for
+      // whatever `operation` can actually throw.
       if (!options.isTransient(error as E) || attempt >= policy.maxRetries) {
         throw error;
       }

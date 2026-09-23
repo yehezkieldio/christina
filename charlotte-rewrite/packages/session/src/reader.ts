@@ -27,9 +27,9 @@ const parseLine = (line: string): SessionEvent | undefined => {
 };
 
 export const readSessionFile = async (
-  path: string
+  filePath: string
 ): Promise<ReadSessionResult> => {
-  const file = Bun.file(path);
+  const file = Bun.file(filePath);
   if (!(await file.exists())) {
     return { events: [], malformedLines: 0 };
   }
@@ -67,6 +67,8 @@ export const listSessionFiles = async (
       .map((name) => path.join(target, name))
       .toSorted();
   } catch (error) {
+    // SAFETY: `readdir`'s rejection is always a Node `fs` error, which is
+    // always an `ErrnoException`; only its optional `code` is read here.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return [];
     }

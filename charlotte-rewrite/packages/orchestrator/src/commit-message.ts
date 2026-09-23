@@ -3,7 +3,7 @@ import type { CommitValidationMode } from "@charlotte/config";
 /** Matches Christina's `CONVENTIONAL_COMMIT_PATTERN`
  * (`christina-core/src/types/commit.rs`): `type(scope)?!?: description`. */
 const CONVENTIONAL_COMMIT_PATTERN =
-  /^[A-Za-z]+(\([A-Za-z0-9._/@-]+\))?!?:\s*\S.*$/;
+  /^[A-Za-z]+(?<scope>\([A-Za-z0-9._/@-]+\))?!?:\s*\S.*$/u;
 
 const DEFAULT_MAX_LENGTH = 72;
 

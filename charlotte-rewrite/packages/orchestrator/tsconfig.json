@@ -6,10 +6,19 @@
     "strictNullChecks": true
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
   "references": [
-    { "path": "../config" },
-    { "path": "../native-core" },
-    { "path": "../providers" },
-    { "path": "../schemas" }
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../native-core"
+    },
+    {
+      "path": "../providers"
+    },
+    {
+      "path": "../schemas"
+    }
   ]
 }

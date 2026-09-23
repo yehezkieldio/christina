@@ -34,12 +34,40 @@ export interface LoadConfigOptions {
   readonly profilesPath?: string;
 }
 
+// `readTomlFile`/`parseOverlay` sit at the true I/O boundary: raw parsed TOML
+// has no shape yet, and `configOverlaySchema`/`profilesSchema` are what give
+// it one a few lines below. A dictionary type here is the boundary itself,
+// not a shortcut around it.
+// oxlint-disable anti-slop/no-unsafe-dictionary-type
 const readTomlFile = async (path: string): Promise<Record<string, unknown>> => {
   const file = Bun.file(path);
   if (!(await file.exists())) {
     return {};
   }
+  // SAFETY: `TOML.parse` returns `any`; the result is validated immediately
+  // by every caller via `configOverlaySchema`/`profilesSchema`.
   return TOML.parse(await file.text()) as Record<string, unknown>;
+};
+
+const parseOverlay = (raw: Record<string, unknown>): ConfigOverlay =>
+  configOverlaySchema.parse(raw);
+// oxlint-enable anti-slop/no-unsafe-dictionary-type
+
+const deriveActiveProfile = (
+  env: Readonly<Record<string, string | undefined>>
+): string | undefined => env["CHARLOTTE_PROFILE"];
+
+const readProfileOverlay = async (
+  path: string,
+  profileName: string
+): Promise<ConfigOverlay> => {
+  const raw = await readTomlFile(path);
+  const parsed = profilesSchema.parse(raw);
+  const profile = parsed.profiles[profileName];
+  if (!profile) {
+    throw new Error(`profile "${profileName}" is not defined in ${path}`);
+  }
+  return profile;
 };
 
 /** Layers a config from lowest to highest precedence: zod schema defaults,
@@ -75,21 +103,4 @@ export const loadConfig = async (
 
   const { value: apiKey } = resolveSecret(result.data.apiKey, env);
   return { ...result.data, apiKey };
-};
-
-const parseOverlay = (raw: Record<string, unknown>): ConfigOverlay => configOverlaySchema.parse(raw);
-
-const deriveActiveProfile = (env: Readonly<Record<string, string | undefined>>): string | undefined => env["CHARLOTTE_PROFILE"];
-
-const readProfileOverlay = async (
-  path: string,
-  profileName: string
-): Promise<ConfigOverlay> => {
-  const raw = await readTomlFile(path);
-  const parsed = profilesSchema.parse(raw);
-  const profile = parsed.profiles[profileName];
-  if (!profile) {
-    throw new Error(`profile "${profileName}" is not defined in ${path}`);
-  }
-  return profile;
 };

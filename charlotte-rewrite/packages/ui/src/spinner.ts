@@ -8,9 +8,9 @@ import { spinner as clackSpinner } from "@clack/prompts";
  * did.
  */
 export interface Spinner {
-  start(message: string): void;
-  update(message: string): void;
-  stop(message?: string): void;
+  start: (message: string) => void;
+  update: (message: string) => void;
+  stop: (message?: string) => void;
 }
 
 export const createSpinner = (): Spinner => {

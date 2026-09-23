@@ -80,9 +80,12 @@ const writeStage = async <T>(
   return result;
 };
 
-const validateRepository = async (
-  repoPath: string
-): Promise<{ diff: string; files: string[] }> => {
+interface StagedChanges {
+  readonly diff: string;
+  readonly files: string[];
+}
+
+const validateRepository = (repoPath: string): StagedChanges => {
   let staged: ReturnType<typeof readStagedDiff>;
   try {
     staged = readStagedDiff(repoPath);
@@ -118,7 +121,9 @@ const displayChanges = (files: readonly string[]): void => {
  * through unchanged, rather than deleting the field, means the transcript
  * still records which of `apiKey`'s two shapes applied (unset vs. set)
  * without the writer needing special-case knowledge of this one field. */
-const summarizeConfig = (config: ResolvedConfig): Record<string, unknown> => ({ ...config });
+const summarizeConfig = (config: ResolvedConfig): ResolvedConfig => ({
+  ...config,
+});
 
 const HISTORY_PREVIEW_MAX = 50;
 
@@ -126,10 +131,10 @@ const HISTORY_PREVIEW_MAX = 50;
  * bearing, so a git-history read failure (e.g. an unborn branch some other
  * process already handled at the native layer) degrades to no context
  * instead of failing the whole run. */
-const buildHistoryContext = async (
+const buildHistoryContext = (
   repoPath: string,
   depth: number
-): Promise<string | undefined> => {
+): string | undefined => {
   if (depth <= 0) {
     return;
   }
@@ -142,7 +147,9 @@ const buildHistoryContext = async (
       ? undefined
       : commits.map((commit) => `${commit.sha} ${commit.subject}`).join("\n");
   } catch {
-    return;
+    // Best-effort: an unreadable history (e.g. an unborn branch) degrades
+    // to no context instead of failing the whole run.
+    return undefined;
   }
 };
 
@@ -171,13 +178,18 @@ const generateOnce = async (
     ctx.writer,
     ctx.trace,
     "contextualize",
-    async () => ({
-      chunks: chunkDiff(ctx.diff, config.maxTokens, config.lockfileTokenLimit),
-      historyContext: await buildHistoryContext(
-        ctx.repoPath,
-        config.commitHistoryDepth
-      ),
-    })
+    () =>
+      Promise.resolve({
+        chunks: chunkDiff(
+          ctx.diff,
+          config.maxTokens,
+          config.lockfileTokenLimit
+        ),
+        historyContext: buildHistoryContext(
+          ctx.repoPath,
+          config.commitHistoryDepth
+        ),
+      })
   );
   if (ctx.trace) {
     printTrace(`diff chunks: ${chunks.length}`);
@@ -271,8 +283,7 @@ const confirmLoop = async (
         break;
       }
       case "regenerate": {
-        const result = await generateOnce(ctx);
-        message = result.message;
+        ({ message } = await generateOnce(ctx));
         state = "regenerated";
         showMessage = true;
         break;
@@ -303,7 +314,7 @@ const executeCommit = async (
     new Response(proc.stderr).text(),
   ]);
   if (exitCode !== 0) {
-    if (/gpg/i.test(stderr)) {
+    if (/gpg/iu.test(stderr)) {
       printWarning(
         "GPG signing failed. Configure your GPG key/agent or disable signing with: git config commit.gpgsign false"
       );
@@ -339,7 +350,7 @@ export const runGenerate = async (options: GenerateOptions): Promise<void> => {
       writer,
       options.trace,
       "read",
-      () => validateRepository(repoPath)
+      () => Promise.resolve(validateRepository(repoPath))
     );
     const config = await writeStage(writer, options.trace, "configure", () =>
       loadConfig()

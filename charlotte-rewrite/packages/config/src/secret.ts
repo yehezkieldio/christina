@@ -1,3 +1,7 @@
+import { MissingSecretEnvVarError } from "./missing-secret-env-var-error";
+
+export { MissingSecretEnvVarError } from "./missing-secret-env-var-error";
+
 /**
  * A secret value that never leaks into `console.log`, `JSON.stringify`, or a
  * template literal by accident. `reveal()` is the one deliberate escape
@@ -20,6 +24,9 @@ export class SecretString {
     return this.#value;
   }
 
+  // These three methods are the class's entire reason for existing — every
+  // one of them must return the redaction marker regardless of `this`.
+  // oxlint-disable class-methods-use-this
   toString(): string {
     return SecretString.REDACTED;
   }
@@ -31,6 +38,7 @@ export class SecretString {
   [Symbol.for("nodejs.util.inspect.custom")](): string {
     return SecretString.REDACTED;
   }
+  // oxlint-enable class-methods-use-this
 }
 
 /**
@@ -50,21 +58,8 @@ export type ResolvedSecret =
       readonly value: SecretString;
     };
 
-const isSecretRef = (raw: string): raw is SecretRef => {
-  return raw.startsWith("env:") && raw.length > "env:".length;
-};
-
-export class MissingSecretEnvVarError extends Error {
-  readonly variableName: string;
-
-  constructor(variableName: string) {
-    super(
-      `environment variable "${variableName}" is not set for a secret reference`
-    );
-    this.name = "MissingSecretEnvVarError";
-    this.variableName = variableName;
-  }
-}
+const isSecretRef = (raw: string): raw is SecretRef =>
+  raw.startsWith("env:") && raw.length > "env:".length;
 
 /**
  * Resolve a raw config value into a redaction-safe secret. `env` defaults to

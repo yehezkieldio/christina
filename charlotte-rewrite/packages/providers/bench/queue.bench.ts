@@ -9,9 +9,13 @@
  * Run with: bun run packages/providers/bench/queue.bench.ts
  */
 
+// This file compares exactly the two candidate queue implementations named
+// in the header comment side by side; splitting them into separate files
+// would only make the comparison harder to read.
+// oxlint-disable max-classes-per-file
 interface Queue<T> {
-  push(value: T): void;
-  shift(): T | undefined;
+  push: (value: T) => void;
+  shift: () => T | undefined;
   get length(): number;
 }
 
@@ -36,7 +40,7 @@ class RingQueue<T> implements Queue<T> {
   #size = 0;
 
   constructor(initialCapacity = 16) {
-    this.#buffer = new Array(initialCapacity);
+    this.#buffer = Array.from({ length: initialCapacity });
   }
 
   push(value: T): void {
@@ -63,14 +67,17 @@ class RingQueue<T> implements Queue<T> {
   }
 
   #grow(): void {
-    const next = new Array<T | undefined>(this.#buffer.length * 2);
-    for (let i = 0; i < this.#size; i++) {
+    const next: (T | undefined)[] = Array.from({
+      length: this.#buffer.length * 2,
+    });
+    for (let i = 0; i < this.#size; i += 1) {
       next[i] = this.#buffer[(this.#head + i) % this.#buffer.length];
     }
     this.#buffer = next;
     this.#head = 0;
   }
 }
+// oxlint-enable max-classes-per-file
 
 /** Mirrors `RequestLimiter`'s real access pattern: push `depth` waiters
  * (build-up under contention), then interleave one push with one shift
@@ -82,11 +89,11 @@ const runPattern = (
   depth: number,
   iterations: number
 ): number => {
-  for (let i = 0; i < depth; i++) {
+  for (let i = 0; i < depth; i += 1) {
     queue.push(i);
   }
   let sink = 0;
-  for (let i = 0; i < iterations; i++) {
+  for (let i = 0; i < iterations; i += 1) {
     queue.push(i);
     sink += queue.shift() ?? 0;
   }
@@ -97,7 +104,7 @@ const bench = (label: string, fn: () => void, runs = 5): number => {
   // Warm up the JIT before timing, discard this run.
   fn();
   const samples: number[] = [];
-  for (let i = 0; i < runs; i++) {
+  for (let i = 0; i < runs; i += 1) {
     const start = performance.now();
     fn();
     samples.push(performance.now() - start);

@@ -57,8 +57,11 @@ describe("validateCommitMessage", () => {
 
 describe("tryExtractValidCommit", () => {
   test("finds a conventional-commit-shaped substring", () => {
-    const message =
-      "Sure, here you go: feat(ui): add dark mode toggle. Let me know if that works!";
+    // `tryExtractValidCommit` only looks back 50 characters from each colon
+    // (matching Christina's `try_extract_valid_commit`), so the padding here
+    // pushes the real colon past that window — otherwise the candidate slice
+    // still includes "Sure, here you go" and never matches.
+    const message = `Sure, here you go: ${" ".repeat(41)}feat(ui): add dark mode toggle. Let me know if that works!`;
     expect(tryExtractValidCommit(message, "strict")).toBe(
       "feat(ui): add dark mode toggle. Let me know if that works!"
     );
@@ -73,7 +76,10 @@ describe("tryExtractValidCommit", () => {
 
 describe("validateOrSalvage", () => {
   test("salvages a message wrapped in commentary", () => {
-    const result = validateOrSalvage("Sure! feat: add the thing", "strict");
+    // See the comment in the `tryExtractValidCommit` test above: the padding
+    // pushes the real colon past the 50-character look-back window.
+    const message = `Sure! ${" ".repeat(45)}feat: add the thing`;
+    const result = validateOrSalvage(message, "strict");
     expect(result.salvaged).toBe(true);
     expect(result.message).toBe("feat: add the thing");
   });

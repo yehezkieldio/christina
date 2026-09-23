@@ -102,6 +102,7 @@ export const generateCommitMessage = async (
   }
 
   if (chunks.length === 1) {
+    // SAFETY: `chunks.length === 1` was just checked above.
     return directGeneration(chunks[0] as Chunk, options);
   }
 

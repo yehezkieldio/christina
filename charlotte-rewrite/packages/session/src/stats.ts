@@ -13,11 +13,10 @@ export interface RunSummary {
 const findEvent = <T extends SessionEvent["type"]>(
   events: readonly SessionEvent[],
   type: T
-): Extract<SessionEvent, { type: T }> | undefined => {
-  return events.find(
+): Extract<SessionEvent, { type: T }> | undefined =>
+  events.find(
     (event): event is Extract<SessionEvent, { type: T }> => event.type === type
   );
-};
 
 /**
  * Reduces one run's transcript to the totals `charlotte stats` groups by.

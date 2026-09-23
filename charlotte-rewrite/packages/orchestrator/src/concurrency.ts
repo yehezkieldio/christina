@@ -23,6 +23,7 @@ export const mapWithConcurrency = async <T, R>(
       if (index >= items.length) {
         return;
       }
+      // SAFETY: `index < items.length` was just checked above.
       const item = items[index] as T;
       results[index] = await fn(item, index);
     }

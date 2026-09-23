@@ -13,19 +13,17 @@ export interface CommitSummary {
 }
 
 export interface CommitHistoryProvider {
-  getCommitHistory(repoPath: string, depth: number): CommitSummary[];
+  getCommitHistory: (repoPath: string, depth: number) => CommitSummary[];
 }
 
 export class FakeCommitHistoryProvider implements CommitHistoryProvider {
-  constructor(private readonly commits: readonly CommitSummary[] = []) {}
+  private readonly commits: readonly CommitSummary[];
+
+  constructor(commits: readonly CommitSummary[] = []) {
+    this.commits = commits;
+  }
 
   getCommitHistory(_repoPath: string, depth: number): CommitSummary[] {
     return this.commits.slice(0, depth);
-  }
-}
-
-export class FailingCommitHistoryProvider implements CommitHistoryProvider {
-  getCommitHistory(): CommitSummary[] {
-    throw new Error("Failed to retrieve commit history");
   }
 }

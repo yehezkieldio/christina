@@ -19,7 +19,12 @@ export interface GenerateStructuredResult<T> {
   readonly completionTokens: number;
 }
 
-const isTransient = (error: unknown): boolean => error instanceof APICallError && error.isRetryable;
+// `isTransient` classifies whatever `generateObject` can throw, which is not
+// bounded by a schema — `unknown` is the honest type for a catch-clause
+// classifier, not a shortcut around one.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
+const isTransient = (error: unknown): boolean =>
+  error instanceof APICallError && error.isRetryable;
 
 const defaultRetryPolicy = createRetryPolicy();
 const defaultLimiter = new RequestLimiter({

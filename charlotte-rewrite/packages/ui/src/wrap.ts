@@ -11,7 +11,7 @@ export const wrapText = (text: string, width: number): string[] => {
     }
 
     let current = "";
-    for (const word of rawLine.split(/\s+/).filter(Boolean)) {
+    for (const word of rawLine.split(/\s+/u).filter(Boolean)) {
       if (current.length === 0) {
         current = word;
         continue;

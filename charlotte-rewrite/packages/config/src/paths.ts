@@ -18,9 +18,13 @@ export const configDir = (
   );
 };
 
-export const configFilePath = (env?: Readonly<Record<string, string | undefined>>): string => path.join(configDir(env), "config.toml");
+export const configFilePath = (
+  env?: Readonly<Record<string, string | undefined>>
+): string => path.join(configDir(env), "config.toml");
 
-export const profilesFilePath = (env?: Readonly<Record<string, string | undefined>>): string => path.join(configDir(env), "profiles.toml");
+export const profilesFilePath = (
+  env?: Readonly<Record<string, string | undefined>>
+): string => path.join(configDir(env), "profiles.toml");
 
 /** OS-appropriate XDG-style data directory, for the session transcripts in
  * `08-session-storage-and-stats.md`: `~/.local/share/charlotte` on Linux. */
