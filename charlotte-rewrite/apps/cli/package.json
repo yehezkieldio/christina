@@ -1,0 +1,26 @@
+{
+  "name": "@charlotte/cli",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "charlotte": "src/cli.ts"
+  },
+  "dependencies": {
+    "@charlotte/config": "workspace:*",
+    "@charlotte/native-core": "workspace:*",
+    "@charlotte/orchestrator": "workspace:*",
+    "@charlotte/providers": "workspace:*",
+    "@charlotte/schemas": "workspace:*",
+    "@charlotte/session": "workspace:*",
+    "@charlotte/ui": "workspace:*",
+    "commander": "^15.0.0",
+    "smol-toml": "^1.9.0",
+    "zod": "^4.6.5"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  }
+}

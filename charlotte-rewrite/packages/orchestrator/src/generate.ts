@@ -37,6 +37,8 @@ export interface GenerationResult {
   readonly failedFiles: string[];
   readonly totalChunks: number;
   readonly warnings: Warning[];
+  readonly promptTokens: number;
+  readonly completionTokens: number;
 }
 
 async function directGeneration(chunk: Chunk, options: GenerateCommitMessageOptions): Promise<GenerationResult> {
@@ -56,6 +58,8 @@ async function directGeneration(chunk: Chunk, options: GenerateCommitMessageOpti
     failedFiles: [],
     totalChunks: 1,
     warnings: [],
+    promptTokens: result.promptTokens,
+    completionTokens: result.completionTokens,
   };
 }
 
@@ -114,5 +118,7 @@ export async function generateCommitMessage(chunks: readonly Chunk[], options: G
     failedFiles: mapResult.failedFiles,
     totalChunks: chunks.length,
     warnings: intentResult.warnings,
+    promptTokens: mapResult.promptTokens + intentResult.promptTokens + reduceResult.promptTokens,
+    completionTokens: mapResult.completionTokens + intentResult.completionTokens + reduceResult.completionTokens,
   };
 }
