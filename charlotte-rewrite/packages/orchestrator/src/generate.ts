@@ -1,11 +1,20 @@
 import type { CommitValidationMode } from "@charlotte/config";
-import { generateStructured, type GenerateStructuredOptions } from "@charlotte/providers";
 import type { Chunk } from "@charlotte/native-core";
-import { commitResponseSchema, type Warning } from "@charlotte/schemas";
+import { generateStructured, optional } from "@charlotte/providers";
+import type { GenerateStructuredOptions } from "@charlotte/providers";
+import { commitResponseSchema } from "@charlotte/schemas";
+import type { Warning } from "@charlotte/schemas";
+
 import { validateOrSalvage } from "./commit-message";
-import { detectContradictions, extractIntent, fallbackThemesFromSummaries, type IntentResult } from "./intent";
+import {
+  detectContradictions,
+  extractIntent,
+  fallbackThemesFromSummaries,
+} from "./intent";
+import type { IntentResult } from "./intent";
 import { mapPhase } from "./map-phase";
-import { buildDirectPrompt, buildSystemPrompt, type PromptContext } from "./prompt";
+import { buildDirectPrompt, buildSystemPrompt } from "./prompt";
+import type { PromptContext } from "./prompt";
 import { cleanResponse, reducePhase } from "./reduce-phase";
 
 /** Below this summary count, intent extraction is skipped entirely and
@@ -41,27 +50,39 @@ export interface GenerationResult {
   readonly completionTokens: number;
 }
 
-async function directGeneration(chunk: Chunk, options: GenerateCommitMessageOptions): Promise<GenerationResult> {
+const directGeneration = async (
+  chunk: Chunk,
+  options: GenerateCommitMessageOptions
+): Promise<GenerationResult> => {
   options.signal?.throwIfAborted();
 
   const prompt = `${buildSystemPrompt()}\n\n${buildDirectPrompt(chunk.content, options.context)}`;
-  const result = await generateStructured({ model: options.model, schema: commitResponseSchema, prompt, signal: options.signal });
+  const result = await generateStructured({
+    model: options.model,
+    prompt,
+    schema: commitResponseSchema,
+    ...optional("signal", options.signal),
+  });
 
   const cleaned = cleanResponse(result.object.message);
-  const validated = validateOrSalvage(cleaned, options.validationMode, options.maxLength);
+  const validated = validateOrSalvage(
+    cleaned,
+    options.validationMode,
+    options.maxLength
+  );
 
   return {
-    message: validated.message,
-    truncated: false,
-    salvaged: validated.salvaged,
+    completionTokens: result.completionTokens,
     failedChunks: 0,
     failedFiles: [],
-    totalChunks: 1,
-    warnings: [],
+    message: validated.message,
     promptTokens: result.promptTokens,
-    completionTokens: result.completionTokens,
+    salvaged: validated.salvaged,
+    totalChunks: 1,
+    truncated: false,
+    warnings: [],
   };
-}
+};
 
 /**
  * Generates a Conventional Commit message from already-chunked diff
@@ -70,7 +91,10 @@ async function directGeneration(chunk: Chunk, options: GenerateCommitMessageOpti
  * list is a caller error, a single chunk skips straight to direct
  * generation, and everything else runs map → (intent) → reduce.
  */
-export async function generateCommitMessage(chunks: readonly Chunk[], options: GenerateCommitMessageOptions): Promise<GenerationResult> {
+export const generateCommitMessage = async (
+  chunks: readonly Chunk[],
+  options: GenerateCommitMessageOptions
+): Promise<GenerationResult> => {
   options.signal?.throwIfAborted();
 
   if (chunks.length === 0) {
@@ -82,43 +106,55 @@ export async function generateCommitMessage(chunks: readonly Chunk[], options: G
   }
 
   const mapResult = await mapPhase(chunks, {
-    model: options.model,
     concurrencyLimit: options.concurrencyLimit,
     maxPartialFailureRate: options.maxPartialFailureRate,
-    signal: options.signal,
+    model: options.model,
+    ...optional("signal", options.signal),
   });
   options.signal?.throwIfAborted();
 
   let intentResult: IntentResult;
   if (mapResult.summaries.length <= MAX_SUMMARIES_WITHOUT_INTENT) {
     const warnings = detectContradictions(mapResult.summaries);
-    intentResult = { themes: fallbackThemesFromSummaries(mapResult.summaries), fallbackUsed: false, warnings, promptTokens: 0, completionTokens: 0 };
+    intentResult = {
+      completionTokens: 0,
+      fallbackUsed: false,
+      promptTokens: 0,
+      themes: fallbackThemesFromSummaries(mapResult.summaries),
+      warnings,
+    };
   } else {
     intentResult = await extractIntent(mapResult.summaries, {
-      model: options.model,
       concurrencyLimit: options.concurrencyLimit,
-      signal: options.signal,
+      model: options.model,
+      ...optional("signal", options.signal),
     });
   }
   options.signal?.throwIfAborted();
 
   const reduceResult = await reducePhase(intentResult.themes, {
     model: options.model,
-    context: options.context,
     validationMode: options.validationMode,
-    maxLength: options.maxLength,
-    signal: options.signal,
+    ...optional("context", options.context),
+    ...optional("maxLength", options.maxLength),
+    ...optional("signal", options.signal),
   });
 
   return {
-    message: reduceResult.message,
-    truncated: false,
-    salvaged: reduceResult.salvaged,
+    completionTokens:
+      mapResult.completionTokens +
+      intentResult.completionTokens +
+      reduceResult.completionTokens,
     failedChunks: mapResult.failedChunks,
     failedFiles: mapResult.failedFiles,
+    message: reduceResult.message,
+    promptTokens:
+      mapResult.promptTokens +
+      intentResult.promptTokens +
+      reduceResult.promptTokens,
+    salvaged: reduceResult.salvaged,
     totalChunks: chunks.length,
+    truncated: false,
     warnings: intentResult.warnings,
-    promptTokens: mapResult.promptTokens + intentResult.promptTokens + reduceResult.promptTokens,
-    completionTokens: mapResult.completionTokens + intentResult.completionTokens + reduceResult.completionTokens,
   };
-}
+};

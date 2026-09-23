@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { loadConfig, type ResolvedConfig } from "@charlotte/config";
-import { chunkDiff, NativeCoreError, readStagedDiff } from "@charlotte/native-core";
+
+import { loadConfig } from "@charlotte/config";
+import type { ResolvedConfig } from "@charlotte/config";
+import {
+  chunkDiff,
+  NativeCoreError,
+  readStagedDiff,
+} from "@charlotte/native-core";
 import { NativeCommitHistoryProvider } from "@charlotte/native-core/native-commit-history-provider";
-import { generateCommitMessage, type GenerationResult } from "@charlotte/orchestrator";
-import { resolveModel } from "@charlotte/providers";
+import { generateCommitMessage } from "@charlotte/orchestrator";
+import type { GenerationResult } from "@charlotte/orchestrator";
+import { optional, resolveModel } from "@charlotte/providers";
 import type { PipelineStage, RunOutcome, Warning } from "@charlotte/schemas";
 import { SessionWriter } from "@charlotte/session";
 import {
@@ -28,53 +35,82 @@ export interface GenerateOptions {
   readonly trace: boolean;
 }
 
-function formatWarning(warning: Warning): string {
+const formatWarning = (warning: Warning): string => {
   switch (warning.kind) {
-    case "truncation":
+    case "truncation": {
       return `truncated ${warning.filePath} (dropped ${warning.droppedBytes} bytes)`;
-    case "salvage":
+    }
+    case "salvage": {
       return `salvaged output during ${warning.stage}: ${warning.reason}`;
-    case "fallback":
+    }
+    case "fallback": {
       return `fell back during ${warning.stage}: ${warning.reason}`;
-    case "contradiction":
+    }
+    case "contradiction": {
       return `contradictory changes detected: "${warning.action}" vs "${warning.counteraction}"`;
-    default:
+    }
+    default: {
       return warning satisfies never;
+    }
   }
-}
+};
 
-async function writeStage<T>(writer: SessionWriter, trace: boolean, stage: PipelineStage, run: () => Promise<T>): Promise<T> {
-  await writer.write({ type: "stage_start", timestamp: new Date().toISOString(), stage });
+const writeStage = async <T>(
+  writer: SessionWriter,
+  trace: boolean,
+  stage: PipelineStage,
+  run: () => Promise<T>
+): Promise<T> => {
+  await writer.write({
+    stage,
+    timestamp: new Date().toISOString(),
+    type: "stage_start",
+  });
   if (trace) {
     printTrace(`stage: ${stage}`);
   }
   const startedAt = performance.now();
   const result = await run();
-  await writer.write({ type: "stage_end", timestamp: new Date().toISOString(), stage, durationMs: performance.now() - startedAt });
+  await writer.write({
+    durationMs: performance.now() - startedAt,
+    stage,
+    timestamp: new Date().toISOString(),
+    type: "stage_end",
+  });
   return result;
-}
+};
 
-async function validateRepository(repoPath: string): Promise<{ diff: string; files: string[] }> {
+const validateRepository = async (
+  repoPath: string
+): Promise<{ diff: string; files: string[] }> => {
   let staged: ReturnType<typeof readStagedDiff>;
   try {
     staged = readStagedDiff(repoPath);
   } catch (error) {
-    if (error instanceof NativeCoreError && error.message.includes("failed to open git repository")) {
-      throw new Error("No git repository found in the current directory. Run this from the repository root.");
+    if (
+      error instanceof NativeCoreError &&
+      error.message.includes("failed to open git repository")
+    ) {
+      throw new Error(
+        "No git repository found in the current directory. Run this from the repository root.",
+        { cause: error }
+      );
     }
     throw error;
   }
   if (staged.files.length === 0) {
-    throw new Error("No staged changes to commit. Stage your changes and try again.");
+    throw new Error(
+      "No staged changes to commit. Stage your changes and try again."
+    );
   }
   return { diff: staged.diff, files: [...staged.files] };
-}
+};
 
-function displayChanges(files: readonly string[]): void {
+const displayChanges = (files: readonly string[]): void => {
   printSection("Staged changes");
   printInfo(`${files.length} ${files.length === 1 ? "file" : "files"} staged`);
   printFileList(files, 10);
-}
+};
 
 /** `run_start`'s `configSummary`, per `08-session-storage-and-stats.md`:
  * no event may carry an API key or a resolved secret value. `apiKey` is a
@@ -82,9 +118,7 @@ function displayChanges(files: readonly string[]): void {
  * through unchanged, rather than deleting the field, means the transcript
  * still records which of `apiKey`'s two shapes applied (unset vs. set)
  * without the writer needing special-case knowledge of this one field. */
-function summarizeConfig(config: ResolvedConfig): Record<string, unknown> {
-  return { ...config };
-}
+const summarizeConfig = (config: ResolvedConfig): Record<string, unknown> => { ...config };
 
 const HISTORY_PREVIEW_MAX = 50;
 
@@ -92,17 +126,25 @@ const HISTORY_PREVIEW_MAX = 50;
  * bearing, so a git-history read failure (e.g. an unborn branch some other
  * process already handled at the native layer) degrades to no context
  * instead of failing the whole run. */
-async function buildHistoryContext(repoPath: string, depth: number): Promise<string | undefined> {
+const buildHistoryContext = async (
+  repoPath: string,
+  depth: number
+): Promise<string | undefined> => {
   if (depth <= 0) {
     return;
   }
   try {
-    const commits = new NativeCommitHistoryProvider().getCommitHistory(repoPath, Math.min(depth, HISTORY_PREVIEW_MAX));
-    return commits.length === 0 ? undefined : commits.map((commit) => `${commit.sha} ${commit.subject}`).join("\n");
+    const commits = new NativeCommitHistoryProvider().getCommitHistory(
+      repoPath,
+      Math.min(depth, HISTORY_PREVIEW_MAX)
+    );
+    return commits.length === 0
+      ? undefined
+      : commits.map((commit) => `${commit.sha} ${commit.subject}`).join("\n");
   } catch {
     return;
   }
-}
+};
 
 interface GenerationContext {
   readonly diff: string;
@@ -117,32 +159,45 @@ interface GenerationContext {
   readonly tokenUsage: { promptTokens: number; completionTokens: number };
 }
 
-async function generateOnce(ctx: GenerationContext): Promise<GenerationResult> {
-  const config = ctx.config;
+const generateOnce = async (
+  ctx: GenerationContext
+): Promise<GenerationResult> => {
+  const { config } = ctx;
   const spinner = createSpinner();
   spinner.start("preparing diff for the model");
   const onProgress = bindSpinnerToProgress(spinner);
 
-  const { chunks, historyContext } = await writeStage(ctx.writer, ctx.trace, "contextualize", async () => ({
-    chunks: chunkDiff(ctx.diff, config.maxTokens, config.lockfileTokenLimit),
-    historyContext: await buildHistoryContext(ctx.repoPath, config.commitHistoryDepth),
-  }));
+  const { chunks, historyContext } = await writeStage(
+    ctx.writer,
+    ctx.trace,
+    "contextualize",
+    async () => ({
+      chunks: chunkDiff(ctx.diff, config.maxTokens, config.lockfileTokenLimit),
+      historyContext: await buildHistoryContext(
+        ctx.repoPath,
+        config.commitHistoryDepth
+      ),
+    })
+  );
   if (ctx.trace) {
     printTrace(`diff chunks: ${chunks.length}`);
   }
 
   const model = resolveModel(config);
 
-  onProgress({ stage: "analyze", message: "generating commit message" });
+  onProgress({ message: "generating commit message", stage: "analyze" });
   const result = await writeStage(ctx.writer, ctx.trace, "analyze", () =>
     generateCommitMessage(chunks, {
-      model,
-      context: { userContext: ctx.userContext, historyContext },
-      validationMode: config.commitValidationMode,
-      maxLength: config.commitMessageMaxLength,
       concurrencyLimit: config.maxConcurrentRequests,
+      context: {
+        ...optional("userContext", ctx.userContext),
+        ...optional("historyContext", historyContext),
+      },
+      maxLength: config.commitMessageMaxLength,
       maxPartialFailureRate: config.partialFailureRate,
-    }),
+      model,
+      validationMode: config.commitValidationMode,
+    })
   );
 
   spinner.stop("done");
@@ -150,23 +205,40 @@ async function generateOnce(ctx: GenerationContext): Promise<GenerationResult> {
   ctx.tokenUsage.promptTokens += result.promptTokens;
   ctx.tokenUsage.completionTokens += result.completionTokens;
 
+  // Warnings must print and log in the order the pipeline produced them; the
+  // list is a handful of entries at most, so sequential writes cost nothing
+  // measurable.
+  // oxlint-disable no-await-in-loop
   for (const warning of result.warnings) {
     printWarning(formatWarning(warning));
-    await ctx.writer.write({ type: "warning", timestamp: new Date().toISOString(), warning });
+    await ctx.writer.write({
+      timestamp: new Date().toISOString(),
+      type: "warning",
+      warning,
+    });
   }
+  // oxlint-enable no-await-in-loop
 
   return result;
-}
+};
 
 type MessageState = "proposed" | "edited" | "regenerated";
 
 /** The accept/edit/regenerate/decline loop from `christina/src/ui/mod.rs`'s
  * `select_action`. Returns the final message, or `undefined` on decline. */
-async function confirmLoop(initialMessage: string, ctx: GenerationContext, yes: boolean): Promise<string | undefined> {
+const confirmLoop = async (
+  initialMessage: string,
+  ctx: GenerationContext,
+  yes: boolean
+): Promise<string | undefined> => {
   let message = initialMessage;
   let state: MessageState = "proposed";
   let showMessage = true;
 
+  // Every await here waits on the next interactive choice or its result —
+  // an interactive REPL loop is sequential by nature, there is nothing to
+  // batch into a `Promise.all`.
+  // oxlint-disable no-await-in-loop
   for (;;) {
     if (showMessage) {
       printSection(`Message · ${state}`);
@@ -180,8 +252,9 @@ async function confirmLoop(initialMessage: string, ctx: GenerationContext, yes: 
 
     const action = await selectCommitAction();
     switch (action) {
-      case "accept":
+      case "accept": {
         return message;
+      }
       case "edit": {
         printInfo("Edit message (enter to save, esc to cancel).");
         const edited = await editCommitMessageInline(message);
@@ -205,29 +278,51 @@ async function confirmLoop(initialMessage: string, ctx: GenerationContext, yes: 
         break;
       }
       case "decline":
-      case undefined:
+      case undefined: {
         return;
-      default:
+      }
+      default: {
         return action satisfies never;
+      }
     }
   }
-}
+  // oxlint-enable no-await-in-loop
+};
 
-async function executeCommit(repoPath: string, message: string): Promise<void> {
-  const proc = Bun.spawn(["git", "commit", "-m", message], { cwd: repoPath, stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+const executeCommit = async (
+  repoPath: string,
+  message: string
+): Promise<void> => {
+  const proc = Bun.spawn(["git", "commit", "-m", message], {
+    cwd: repoPath,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const [exitCode, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr).text(),
+  ]);
   if (exitCode !== 0) {
     if (/gpg/i.test(stderr)) {
-      printWarning("GPG signing failed. Configure your GPG key/agent or disable signing with: git config commit.gpgsign false");
+      printWarning(
+        "GPG signing failed. Configure your GPG key/agent or disable signing with: git config commit.gpgsign false"
+      );
     }
-    throw new Error(stderr.trim().length > 0 ? stderr.trim() : `git commit exited with code ${exitCode}`);
+    throw new Error(
+      stderr.trim().length > 0
+        ? stderr.trim()
+        : `git commit exited with code ${exitCode}`
+    );
   }
 
-  const oid = await new Response(Bun.spawn(["git", "rev-parse", "HEAD"], { cwd: repoPath, stdout: "pipe" }).stdout).text();
+  const oid = await new Response(
+    Bun.spawn(["git", "rev-parse", "HEAD"], { cwd: repoPath, stdout: "pipe" })
+      .stdout
+  ).text();
   printSuccess(`Created commit ${oid.trim().slice(0, 7)}`);
-}
+};
 
-export async function runGenerate(options: GenerateOptions): Promise<void> {
+export const runGenerate = async (options: GenerateOptions): Promise<void> => {
   printDivider();
 
   const sessionId = randomUUID();
@@ -237,23 +332,38 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
 
   let outcome: RunOutcome = "error";
   let finalMessageLength = 0;
-  const tokenUsage = { promptTokens: 0, completionTokens: 0 };
+  const tokenUsage = { completionTokens: 0, promptTokens: 0 };
 
   try {
-    const { diff, files } = await writeStage(writer, options.trace, "read", () => validateRepository(repoPath));
-    const config = await writeStage(writer, options.trace, "configure", () => loadConfig());
+    const { diff, files } = await writeStage(
+      writer,
+      options.trace,
+      "read",
+      () => validateRepository(repoPath)
+    );
+    const config = await writeStage(writer, options.trace, "configure", () =>
+      loadConfig()
+    );
 
     await writer.write({
-      type: "run_start",
-      timestamp: startedAt,
-      sessionId,
-      repositoryPath: repoPath,
       configSummary: summarizeConfig(config),
+      repositoryPath: repoPath,
+      sessionId,
+      timestamp: startedAt,
+      type: "run_start",
     });
 
     displayChanges(files);
 
-    const ctx: GenerationContext = { diff, repoPath, userContext: options.context, writer, trace: options.trace, tokenUsage, config };
+    const ctx: GenerationContext = {
+      config,
+      diff,
+      repoPath,
+      tokenUsage,
+      trace: options.trace,
+      writer,
+      ...optional("userContext", options.context),
+    };
     const result = await generateOnce(ctx);
 
     if (options.dryRun) {
@@ -264,27 +374,37 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
       return;
     }
 
-    const message = await writeStage(writer, options.trace, "clean-and-match", () => confirmLoop(result.message, ctx, options.yes));
+    const message = await writeStage(
+      writer,
+      options.trace,
+      "clean-and-match",
+      () => confirmLoop(result.message, ctx, options.yes)
+    );
     if (message === undefined) {
       printInfo("Commit cancelled.");
       outcome = "declined";
       return;
     }
 
-    await writeStage(writer, options.trace, "commit-and-record", () => executeCommit(repoPath, message));
+    await writeStage(writer, options.trace, "commit-and-record", () =>
+      executeCommit(repoPath, message)
+    );
     outcome = "success";
     finalMessageLength = message.length;
   } catch (error) {
-    outcome = error instanceof Error && error.name === "AbortError" ? "aborted" : "error";
+    outcome =
+      error instanceof Error && error.name === "AbortError"
+        ? "aborted"
+        : "error";
     throw error;
   } finally {
     await writer.write({
-      type: "run_end",
-      timestamp: new Date().toISOString(),
-      outcome,
-      totalPromptTokens: tokenUsage.promptTokens,
-      totalCompletionTokens: tokenUsage.completionTokens,
       finalMessageLength,
+      outcome,
+      timestamp: new Date().toISOString(),
+      totalCompletionTokens: tokenUsage.completionTokens,
+      totalPromptTokens: tokenUsage.promptTokens,
+      type: "run_end",
     });
   }
-}
+};

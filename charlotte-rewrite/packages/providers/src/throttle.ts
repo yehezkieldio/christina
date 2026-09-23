@@ -23,7 +23,7 @@ export interface RequestLimiterOptions {
 export class RequestLimiter {
   readonly #maxConcurrent: number;
   #active = 0;
-  readonly #waiters: Array<() => void> = [];
+  readonly #waiters: (() => void)[] = [];
 
   readonly #capacityMilli: number;
   #tokensMilli: number;
@@ -36,7 +36,8 @@ export class RequestLimiter {
     // Unbounded rate (Infinity/NaN/<=0) means "no rate limit": an
     // effectively infinite bucket that never needs a refill wait.
     this.#refillRateMilliPerSec =
-      Number.isFinite(options.requestsPerSecond) && options.requestsPerSecond > 0
+      Number.isFinite(options.requestsPerSecond) &&
+      options.requestsPerSecond > 0
         ? Math.ceil(options.requestsPerSecond * ONE_TOKEN_MILLI)
         : Number.POSITIVE_INFINITY;
     // Capacity = 2x the per-second rate, allowing a short burst while still
@@ -65,6 +66,10 @@ export class RequestLimiter {
     };
   }
 
+  // A token-bucket wait is sequential by definition: each pass either
+  // grants immediately or sleeps and rechecks, there is nothing else to run
+  // concurrently while waiting for the bucket to refill.
+  // oxlint-disable no-await-in-loop
   async #acquireToken(signal?: AbortSignal): Promise<void> {
     for (;;) {
       signal?.throwIfAborted();
@@ -75,6 +80,7 @@ export class RequestLimiter {
       await sleep(waitMs, signal);
     }
   }
+  // oxlint-enable no-await-in-loop
 
   #tryConsumeToken(): number {
     if (!Number.isFinite(this.#refillRateMilliPerSec)) {
@@ -82,7 +88,10 @@ export class RequestLimiter {
     }
     const now = performance.now();
     const elapsedSec = (now - this.#lastRefillMs) / 1000;
-    this.#tokensMilli = Math.min(this.#capacityMilli, this.#tokensMilli + elapsedSec * this.#refillRateMilliPerSec);
+    this.#tokensMilli = Math.min(
+      this.#capacityMilli,
+      this.#tokensMilli + elapsedSec * this.#refillRateMilliPerSec
+    );
     this.#lastRefillMs = now;
 
     if (this.#tokensMilli >= ONE_TOKEN_MILLI) {
@@ -93,20 +102,26 @@ export class RequestLimiter {
     return Math.ceil((deficitMilli / this.#refillRateMilliPerSec) * 1000);
   }
 
+  // A queued concurrency slot has no "already in flight" operation to await
+  // instead — `resolve`/`reject` are triggered later by `acquire`'s release
+  // closure or an abort event, which is exactly what the deferred-promise
+  // pattern below models. There is no library function to return instead.
+  // oxlint-disable-next-line promise/avoid-new
   #acquireSlot(signal?: AbortSignal): Promise<void> {
     if (this.#active < this.#maxConcurrent) {
       this.#active += 1;
       return Promise.resolve();
     }
     return new Promise((resolve, reject) => {
+      let onAbort: () => void;
       const grant = () => {
         signal?.removeEventListener("abort", onAbort);
         this.#active += 1;
         resolve();
       };
-      const onAbort = () => {
+      onAbort = () => {
         const index = this.#waiters.indexOf(grant);
-        if (index >= 0) {
+        if (index !== -1) {
           this.#waiters.splice(index, 1);
         }
         reject(signal?.reason);

@@ -44,17 +44,23 @@ export type RawSecret = string | SecretRef;
 
 export type ResolvedSecret =
   | { readonly kind: "literal"; readonly value: SecretString }
-  | { readonly kind: "env"; readonly name: string; readonly value: SecretString };
+  | {
+      readonly kind: "env";
+      readonly name: string;
+      readonly value: SecretString;
+    };
 
-function isSecretRef(raw: string): raw is SecretRef {
+const isSecretRef = (raw: string): raw is SecretRef => {
   return raw.startsWith("env:") && raw.length > "env:".length;
-}
+};
 
 export class MissingSecretEnvVarError extends Error {
   readonly variableName: string;
 
   constructor(variableName: string) {
-    super(`environment variable "${variableName}" is not set for a secret reference`);
+    super(
+      `environment variable "${variableName}" is not set for a secret reference`
+    );
     this.name = "MissingSecretEnvVarError";
     this.variableName = variableName;
   }
@@ -65,10 +71,10 @@ export class MissingSecretEnvVarError extends Error {
  * `process.env` and is only a parameter so tests can supply a fixed map
  * instead of mutating the real environment.
  */
-export function resolveSecret(
+export const resolveSecret = (
   raw: RawSecret,
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): ResolvedSecret {
+  env: Readonly<Record<string, string | undefined>> = process.env
+): ResolvedSecret => {
   if (isSecretRef(raw)) {
     const name = raw.slice("env:".length);
     const value = env[name];
@@ -78,4 +84,4 @@ export function resolveSecret(
     return { kind: "env", name, value: SecretString.of(value) };
   }
   return { kind: "literal", value: SecretString.of(raw) };
-}
+};

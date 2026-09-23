@@ -1,6 +1,7 @@
 import { stat, unlink } from "node:fs/promises";
-import { listSessionFiles } from "./reader";
+
 import { sessionsDir } from "./paths";
+import { listSessionFiles } from "./reader";
 
 /**
  * Retention policy chosen for `08-session-storage-and-stats.md`'s open
@@ -19,7 +20,9 @@ export interface PruneOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-export async function pruneSessions(options: PruneOptions = {}): Promise<string[]> {
+export const pruneSessions = async (
+  options: PruneOptions = {}
+): Promise<string[]> => {
   const dir = options.dir ?? sessionsDir(options.env);
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
 
@@ -29,11 +32,14 @@ export async function pruneSessions(options: PruneOptions = {}): Promise<string[
   }
 
   const withMtime = await Promise.all(
-    files.map(async (path) => ({ path, mtimeMs: (await stat(path)).mtimeMs })),
+    files.map(async (path) => {
+      const stats = await stat(path);
+      return { mtimeMs: stats.mtimeMs, path };
+    })
   );
   withMtime.sort((a, b) => a.mtimeMs - b.mtimeMs);
 
   const toRemove = withMtime.slice(0, withMtime.length - maxFiles);
   await Promise.all(toRemove.map((entry) => unlink(entry.path)));
   return toRemove.map((entry) => entry.path);
-}
+};

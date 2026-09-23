@@ -2,7 +2,8 @@ import type { CommitValidationMode } from "@charlotte/config";
 
 /** Matches Christina's `CONVENTIONAL_COMMIT_PATTERN`
  * (`christina-core/src/types/commit.rs`): `type(scope)?!?: description`. */
-const CONVENTIONAL_COMMIT_PATTERN = /^[A-Za-z]+(\([A-Za-z0-9._/@-]+\))?!?:\s*\S.*$/;
+const CONVENTIONAL_COMMIT_PATTERN =
+  /^[A-Za-z]+(\([A-Za-z0-9._/@-]+\))?!?:\s*\S.*$/;
 
 const DEFAULT_MAX_LENGTH = 72;
 
@@ -22,11 +23,11 @@ export interface ValidatedCommitMessage {
  * line, matches the Conventional Commits pattern, and respects `maxLength`
  * according to `mode` (`strict` rejects, `soft` warns, `disabled` skips the
  * length check entirely). */
-export function validateCommitMessage(
+export const validateCommitMessage = (
   value: string,
   mode: CommitValidationMode,
-  maxLength: number = DEFAULT_MAX_LENGTH,
-): ValidatedCommitMessage {
+  maxLength: number = DEFAULT_MAX_LENGTH
+): ValidatedCommitMessage => {
   const trimmed = value.trim();
   const warnings: string[] = [];
 
@@ -36,10 +37,14 @@ export function validateCommitMessage(
 
   if (trimmed.length > maxLength) {
     if (mode === "strict") {
-      throw new InvalidCommitMessageError(`Commit message exceeds ${maxLength} characters`);
+      throw new InvalidCommitMessageError(
+        `Commit message exceeds ${maxLength} characters`
+      );
     }
     if (mode === "soft") {
-      warnings.push(`Commit message exceeds recommended ${maxLength} character limit (${trimmed.length} chars)`);
+      warnings.push(
+        `Commit message exceeds recommended ${maxLength} character limit (${trimmed.length} chars)`
+      );
     }
   }
 
@@ -48,19 +53,29 @@ export function validateCommitMessage(
   }
 
   if (!CONVENTIONAL_COMMIT_PATTERN.test(trimmed)) {
-    throw new InvalidCommitMessageError("Commit message must follow conventional commits format: type(scope): description");
+    throw new InvalidCommitMessageError(
+      "Commit message must follow conventional commits format: type(scope): description"
+    );
   }
 
   return { message: trimmed, warnings };
-}
+};
 
 /** When the raw message doesn't validate as-is, scans for a `type: desc`
  * shaped substring around each colon and returns the earliest one that
  * does validate. Ported from Christina's `try_extract_valid_commit`. */
-export function tryExtractValidCommit(message: string, mode: CommitValidationMode, maxLength?: number): string | undefined {
+export const tryExtractValidCommit = (
+  message: string,
+  mode: CommitValidationMode,
+  maxLength?: number
+): string | undefined => {
   let earliest: { pos: number; candidate: string } | undefined;
 
-  for (let pos = message.indexOf(":"); pos !== -1; pos = message.indexOf(":", pos + 1)) {
+  for (
+    let pos = message.indexOf(":");
+    pos !== -1;
+    pos = message.indexOf(":", pos + 1)
+  ) {
     const start = Math.max(0, pos - 50);
     let candidate = message.slice(start).trimStart();
     const end = candidate.indexOf("\n");
@@ -73,21 +88,21 @@ export function tryExtractValidCommit(message: string, mode: CommitValidationMod
     }
 
     if (!earliest || pos < earliest.pos) {
-      earliest = { pos, candidate };
+      earliest = { candidate, pos };
     }
   }
 
   return earliest?.candidate;
-}
+};
 
 /** Combines direct validation with the salvage fallback, matching
  * Christina's `validate_commit_message`: try the raw message first, then
  * try to salvage a valid substring, then give up. */
-export function validateOrSalvage(
+export const validateOrSalvage = (
   message: string,
   mode: CommitValidationMode,
-  maxLength?: number,
-): ValidatedCommitMessage & { readonly salvaged: boolean } {
+  maxLength?: number
+): ValidatedCommitMessage & { readonly salvaged: boolean } => {
   const trimmed = message.trim();
 
   try {
@@ -103,5 +118,7 @@ export function validateOrSalvage(
     return { ...validated, salvaged: true };
   }
 
-  throw new InvalidCommitMessageError(`Generated message does not follow Conventional Commits format: ${trimmed}`);
-}
+  throw new InvalidCommitMessageError(
+    `Generated message does not follow Conventional Commits format: ${trimmed}`
+  );
+};

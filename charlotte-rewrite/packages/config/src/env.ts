@@ -17,7 +17,7 @@ export type EnvKeyOf<K extends string> = `CHARLOTTE_${SplitCamel<K>}`;
 
 /** Runtime mirror of `SplitCamel`. A hand-rolled loop instead of a regex:
  * one pass over the string, no backtracking, no intermediate match array. */
-function toEnvSuffix(key: string): string {
+const toEnvSuffix = (key: string): string => {
   let out = "";
   for (let i = 0; i < key.length; i++) {
     const ch = key[i] as string;
@@ -29,11 +29,13 @@ function toEnvSuffix(key: string): string {
     }
   }
   return out;
-}
+};
 
-export function toEnvKey<K extends keyof Config & string>(key: K): EnvKeyOf<K> {
+export const toEnvKey = <K extends keyof Config & string>(
+  key: K
+): EnvKeyOf<K> => {
   return `CHARLOTTE_${toEnvSuffix(key)}` as EnvKeyOf<K>;
-}
+};
 
 type EnvParser<V> = (raw: string) => V;
 
@@ -44,22 +46,22 @@ type EnvParser<V> = (raw: string) => V;
  * `EnvParser<string> | undefined` at the call site.
  */
 const ENV_PARSERS = {
-  provider: (raw) => raw as Config["provider"],
-  model: (raw) => raw,
   apiKey: (raw) => raw,
   apiUrl: (raw) => raw,
   azureApiVersion: (raw) => raw,
   azureDeploymentId: (raw) => raw,
-  temperature: (raw) => Number.parseFloat(raw),
-  reasoningEffort: (raw) => raw as Config["reasoningEffort"],
-  maxTokens: (raw) => Number.parseInt(raw, 10),
-  lockfileTokenLimit: (raw) => Number.parseInt(raw, 10),
-  ignorePatterns: (raw) => raw.split(",").map((pattern) => pattern.trim()),
-  commitMessageMaxLength: (raw) => Number.parseInt(raw, 10),
+  commitHistoryDepth: (raw) => Math.trunc(Number(raw)),
+  commitMessageMaxLength: (raw) => Math.trunc(Number(raw)),
   commitValidationMode: (raw) => raw as Config["commitValidationMode"],
-  commitHistoryDepth: (raw) => Number.parseInt(raw, 10),
-  maxConcurrentRequests: (raw) => Number.parseInt(raw, 10),
-  partialFailureRate: (raw) => Number.parseFloat(raw),
+  ignorePatterns: (raw) => raw.split(",").map((pattern) => pattern.trim()),
+  lockfileTokenLimit: (raw) => Math.trunc(Number(raw)),
+  maxConcurrentRequests: (raw) => Math.trunc(Number(raw)),
+  maxTokens: (raw) => Math.trunc(Number(raw)),
+  model: (raw) => raw,
+  partialFailureRate: (raw) => Number(raw),
+  provider: (raw) => raw as Config["provider"],
+  reasoningEffort: (raw) => raw as Config["reasoningEffort"],
+  temperature: (raw) => Number.parseFloat(raw),
 } satisfies { [K in keyof Config]: EnvParser<Config[K]> };
 
 /**
@@ -68,9 +70,9 @@ const ENV_PARSERS = {
  * `resolveSecret` takes one: deterministic tests without mutating the real
  * environment.
  */
-export function readEnvOverlay(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): Partial<Config> {
+export const readEnvOverlay = (
+  env: Readonly<Record<string, string | undefined>> = process.env
+): Partial<Config> => {
   const overlay: Partial<Config> = {};
   for (const key of Object.keys(ENV_PARSERS) as (keyof Config)[]) {
     const raw = env[toEnvKey(key)];
@@ -81,4 +83,4 @@ export function readEnvOverlay(
     (overlay as Record<string, unknown>)[key] = parse(raw);
   }
   return overlay;
-}
+};

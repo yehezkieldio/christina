@@ -1,10 +1,15 @@
 {
   "name": "@charlotte/cli",
-  "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "private": true,
   "bin": {
     "charlotte": "src/cli.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@charlotte/config": "workspace:*",
@@ -17,10 +22,5 @@
     "commander": "^15.0.0",
     "smol-toml": "^1.9.0",
     "zod": "^4.6.5"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test"
   }
 }

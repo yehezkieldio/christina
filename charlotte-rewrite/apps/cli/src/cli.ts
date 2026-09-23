@@ -1,19 +1,21 @@
 #!/usr/bin/env bun
+import { optional } from "@charlotte/providers";
 import { printError } from "@charlotte/ui";
 import { Command } from "commander";
+
 import packageJson from "../package.json" with { type: "json" };
 import { registerCompletionsCommand } from "./commands/completions";
 import { registerConfigCommand } from "./commands/config";
+import { runGenerate } from "./commands/generate";
 import { registerProfileCommand } from "./commands/profile";
 import { registerStatsCommand } from "./commands/stats";
-import { runGenerate } from "./commands/generate";
 
 /** Commander accepts a repeated `-v` but not a stacked `-vvv` the way
  * clap's `ArgAction::Count` does — christina/src/cli/mod.rs relies on that
  * stacking, so expand it before Commander ever sees the token. */
-function expandStackedVerbosity(argv: readonly string[]): string[] {
-  return argv.flatMap((arg) => (/^-v{2,}$/.test(arg) ? Array.from(arg.slice(1), () => "-v") : [arg]));
-}
+const expandStackedVerbosity = (argv: readonly string[]): string[] => argv.flatMap((arg) =>
+  /^-v{2,}$/.test(arg) ? Array.from(arg.slice(1), () => "-v") : [arg]
+);
 
 const program = new Command();
 
@@ -21,11 +23,31 @@ program
   .name("charlotte")
   .description("Automated Conventional Commit Generator Powered By LLMs")
   .version(packageJson.version)
-  .option("-v, --verbose", "increase logging verbosity (repeatable)", (_value: string, previous: number) => previous + 1, 0)
-  .option("--trace", "enable full pipeline tracing with detailed telemetry output", false)
-  .option("--yes", "skip interactive confirmations (non-interactive mode)", false)
-  .option("-c, --context <text>", "additional user-provided context appended to prompts")
-  .option("--dry-run", "generate commit message without creating the commit (preview mode)", false);
+  .option(
+    "-v, --verbose",
+    "increase logging verbosity (repeatable)",
+    (_value: string, previous: number) => previous + 1,
+    0
+  )
+  .option(
+    "--trace",
+    "enable full pipeline tracing with detailed telemetry output",
+    false
+  )
+  .option(
+    "--yes",
+    "skip interactive confirmations (non-interactive mode)",
+    false
+  )
+  .option(
+    "-c, --context <text>",
+    "additional user-provided context appended to prompts"
+  )
+  .option(
+    "--dry-run",
+    "generate commit message without creating the commit (preview mode)",
+    false
+  );
 
 registerConfigCommand(program);
 registerProfileCommand(program);
@@ -38,11 +60,21 @@ registerCompletionsCommand(program);
  * `program` reference, rather than off this action's own `this`, sidesteps
  * any question of whether a subcommand inherits the root's option values. */
 program
-  .command("generate", { isDefault: true, hidden: true })
+  .command("generate", { hidden: true, isDefault: true })
   .description("Generate a commit message from staged changes")
   .action(async () => {
-    const options = program.opts<{ yes: boolean; trace: boolean; dryRun: boolean; context?: string }>();
-    await runGenerate({ yes: options.yes, context: options.context, dryRun: options.dryRun, trace: options.trace });
+    const options = program.opts<{
+      yes: boolean;
+      trace: boolean;
+      dryRun: boolean;
+      context?: string;
+    }>();
+    await runGenerate({
+      dryRun: options.dryRun,
+      trace: options.trace,
+      yes: options.yes,
+      ...optional("context", options.context),
+    });
   });
 
 try {

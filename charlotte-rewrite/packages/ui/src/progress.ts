@@ -1,4 +1,5 @@
 import type { PipelineStage } from "@charlotte/schemas";
+
 import type { Spinner } from "./spinner";
 
 /** The progress event Christina's `send_generation_progress` pushes down
@@ -17,6 +18,4 @@ export type ProgressListener = (event: ProgressEvent) => void;
  * spinner and the persistent record." This only renders the spinner half;
  * writing the event to the session transcript is the caller's job
  * (`@charlotte/session`'s `SessionWriter`), not this package's. */
-export function bindSpinnerToProgress(spinner: Spinner): ProgressListener {
-  return (event) => spinner.update(event.message);
-}
+export const bindSpinnerToProgress = (spinner: Spinner): ProgressListener => (event) => spinner.update(event.message);

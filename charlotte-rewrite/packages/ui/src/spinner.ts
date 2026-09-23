@@ -13,11 +13,11 @@ export interface Spinner {
   stop(message?: string): void;
 }
 
-export function createSpinner(): Spinner {
+export const createSpinner = (): Spinner => {
   const inner = clackSpinner();
   return {
     start: (message) => inner.start(message),
-    update: (message) => inner.message(message),
     stop: (message) => inner.stop(message),
+    update: (message) => inner.message(message),
   };
-}
+};

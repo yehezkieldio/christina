@@ -1,16 +1,26 @@
 import type { CommitValidationMode } from "@charlotte/config";
-import { generateStructured, type GenerateStructuredOptions } from "@charlotte/providers";
-import { commitResponseSchema, type ThemeItem } from "@charlotte/schemas";
-import { type ValidatedCommitMessage, validateOrSalvage } from "./commit-message";
-import { buildReducePrompt, buildSystemPrompt, type PromptContext } from "./prompt";
+import { generateStructured, optional } from "@charlotte/providers";
+import type { GenerateStructuredOptions } from "@charlotte/providers";
+import { commitResponseSchema } from "@charlotte/schemas";
+import type { ThemeItem } from "@charlotte/schemas";
 
-const CODE_FENCE_PREAMBLES = ["here is the commit message:", "here's the commit message:", "commit message:", "the commit message is:"] as const;
+import { validateOrSalvage } from "./commit-message";
+import type { ValidatedCommitMessage } from "./commit-message";
+import { buildReducePrompt, buildSystemPrompt } from "./prompt";
+import type { PromptContext } from "./prompt";
+
+const CODE_FENCE_PREAMBLES = [
+  "here is the commit message:",
+  "here's the commit message:",
+  "commit message:",
+  "the commit message is:",
+] as const;
 
 /** Strips markdown code-fencing, a known preamble phrase, and everything
  * after the first line. Ported from Christina's `clean_response` — pure
  * string logic, no model call, used as a fallback when the model's
  * structured `message` field itself still carries noise. */
-export function cleanResponse(response: string): string {
+export const cleanResponse = (response: string): string => {
   let message = response.trim();
 
   if (message.startsWith("```")) {
@@ -35,7 +45,7 @@ export function cleanResponse(response: string): string {
   }
 
   return message;
-}
+};
 
 export interface ReducePhaseOptions {
   readonly model: GenerateStructuredOptions<unknown>["model"];
@@ -54,19 +64,30 @@ export interface ReducePhaseResult extends ValidatedCommitMessage {
 /** Synthesizes the final commit message from themes, then validates it
  * against the configured Conventional Commit mode. Ported from Christina's
  * `reduce_phase`. */
-export async function reducePhase(themes: readonly ThemeItem[], options: ReducePhaseOptions): Promise<ReducePhaseResult> {
+export const reducePhase = async (
+  themes: readonly ThemeItem[],
+  options: ReducePhaseOptions
+): Promise<ReducePhaseResult> => {
   options.signal?.throwIfAborted();
 
   const prompt = `${buildSystemPrompt()}\n\n${buildReducePrompt(themes, options.context)}`;
   const result = await generateStructured({
     model: options.model,
-    schema: commitResponseSchema,
     prompt,
-    signal: options.signal,
+    schema: commitResponseSchema,
+    ...optional("signal", options.signal),
   });
 
   const cleaned = cleanResponse(result.object.message);
-  const validated = validateOrSalvage(cleaned, options.validationMode, options.maxLength);
+  const validated = validateOrSalvage(
+    cleaned,
+    options.validationMode,
+    options.maxLength
+  );
 
-  return { ...validated, promptTokens: result.promptTokens, completionTokens: result.completionTokens };
-}
+  return {
+    ...validated,
+    completionTokens: result.completionTokens,
+    promptTokens: result.promptTokens,
+  };
+};

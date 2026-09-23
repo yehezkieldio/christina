@@ -1,4 +1,7 @@
-import type { CommitHistoryProvider, CommitSummary } from "./commit-history-provider";
+import type {
+  CommitHistoryProvider,
+  CommitSummary,
+} from "./commit-history-provider";
 import { readCommitHistory } from "./index";
 
 export class NativeCommitHistoryProvider implements CommitHistoryProvider {

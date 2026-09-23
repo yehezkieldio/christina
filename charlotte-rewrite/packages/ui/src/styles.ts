@@ -8,9 +8,9 @@ import { styleText } from "node:util";
  * `process.stdout.isTTY` themselves.
  */
 export const styles = {
-  header: (text: string): string => styleText("bold", text),
-  error: (text: string): string => styleText(["red", "bold"], text),
-  warning: (text: string): string => styleText(["yellow", "bold"], text),
   accent: (text: string): string => styleText(["cyan", "bold"], text),
+  error: (text: string): string => styleText(["red", "bold"], text),
+  header: (text: string): string => styleText("bold", text),
   muted: (text: string): string => styleText("dim", text),
+  warning: (text: string): string => styleText(["yellow", "bold"], text),
 } as const;

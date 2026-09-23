@@ -1,8 +1,16 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { add, chunkDiff, countTokens, isBinaryContent, readCommitHistory, readStagedDiff } from "./index";
+import path from "node:path";
+
+import {
+  add,
+  chunkDiff,
+  countTokens,
+  isBinaryContent,
+  readCommitHistory,
+  readStagedDiff,
+} from "./index";
 
 test("add calls the native core through bun:ffi", () => {
   expect(add(2, 3)).toBe(5);
@@ -42,26 +50,27 @@ test("chunkDiff returns nothing for an empty diff", () => {
   expect(chunkDiff("", 1000, 100)).toEqual([]);
 });
 
-function initRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "charlotte-native-core-"));
-  const run = (...args: string[]) => Bun.spawnSync({ cmd: ["git", ...args], cwd: dir });
+const initRepo = (): string => {
+  const dir = mkdtempSync(path.join(tmpdir(), "charlotte-native-core-"));
+  const run = (...args: string[]) =>
+    Bun.spawnSync({ cmd: ["git", ...args], cwd: dir });
   run("init", "-q");
   run("config", "user.name", "Test User");
   run("config", "user.email", "test@example.com");
   return dir;
-}
+};
 
 test("readStagedDiff returns the staged diff and file list", () => {
   const dir = initRepo();
   try {
-    writeFileSync(join(dir, "file.txt"), "hello\n");
+    writeFileSync(path.join(dir, "file.txt"), "hello\n");
     Bun.spawnSync({ cmd: ["git", "add", "file.txt"], cwd: dir });
 
     const staged = readStagedDiff(dir);
     expect(staged.files).toEqual(["file.txt"]);
     expect(staged.diff).toContain("+hello");
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { force: true, recursive: true });
   }
 });
 
@@ -72,25 +81,31 @@ test("readStagedDiff on an empty index returns an empty result", () => {
     expect(staged.files).toEqual([]);
     expect(staged.diff).toBe("");
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("readCommitHistory walks recent commit subjects", () => {
   const dir = initRepo();
   try {
-    writeFileSync(join(dir, "a.txt"), "a\n");
+    writeFileSync(path.join(dir, "a.txt"), "a\n");
     Bun.spawnSync({ cmd: ["git", "add", "a.txt"], cwd: dir });
-    Bun.spawnSync({ cmd: ["git", "commit", "-q", "-m", "first commit"], cwd: dir });
-    writeFileSync(join(dir, "b.txt"), "b\n");
+    Bun.spawnSync({
+      cmd: ["git", "commit", "-q", "-m", "first commit"],
+      cwd: dir,
+    });
+    writeFileSync(path.join(dir, "b.txt"), "b\n");
     Bun.spawnSync({ cmd: ["git", "add", "b.txt"], cwd: dir });
-    Bun.spawnSync({ cmd: ["git", "commit", "-q", "-m", "second commit"], cwd: dir });
+    Bun.spawnSync({
+      cmd: ["git", "commit", "-q", "-m", "second commit"],
+      cwd: dir,
+    });
 
     const history = readCommitHistory(dir, 5);
     expect(history.length).toBe(2);
     expect(history[0]?.subject).toBe("second commit");
     expect(history[1]?.subject).toBe("first commit");
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { force: true, recursive: true });
   }
 });

@@ -5,7 +5,13 @@ import { z } from "zod";
  * ships a provider for, plus a catch-all for self-hosted OpenAI-compatible
  * endpoints (Ollama and similar).
  */
-export const PROVIDERS = ["openai", "azure-openai", "anthropic", "google", "openai-compatible"] as const;
+export const PROVIDERS = [
+  "openai",
+  "azure-openai",
+  "anthropic",
+  "google",
+  "openai-compatible",
+] as const;
 
 export type Provider = (typeof PROVIDERS)[number];
 
@@ -13,9 +19,9 @@ export const providerSchema = z.enum(PROVIDERS);
 
 /** Exhaustiveness guard: a new `Provider` variant fails this at compile time
  * until every switch over `Provider` adds a matching case. */
-export function assertUnreachable(value: never): never {
+export const assertUnreachable = (value: never): never => {
   throw new Error(`unreachable provider variant: ${JSON.stringify(value)}`);
-}
+};
 
 /** Fields a provider requires beyond the shared `model` and `apiKey`. Only
  * `azure-openai` needs anything extra, and the type system reflects that:
@@ -24,23 +30,31 @@ export type ProviderExtraFields<P extends Provider> = P extends "azure-openai"
   ? { readonly apiVersion: string; readonly deploymentId: string }
   : undefined;
 
-export function requiresAzureFields(provider: Provider): provider is "azure-openai" {
+export const requiresAzureFields = (
+  provider: Provider
+): provider is "azure-openai" => {
   return provider === "azure-openai";
-}
+};
 
-export function describeProvider(provider: Provider): string {
+export const describeProvider = (provider: Provider): string => {
   switch (provider) {
-    case "openai":
+    case "openai": {
       return "OpenAI";
-    case "azure-openai":
+    }
+    case "azure-openai": {
       return "Azure OpenAI";
-    case "anthropic":
+    }
+    case "anthropic": {
       return "Anthropic";
-    case "google":
+    }
+    case "google": {
       return "Google";
-    case "openai-compatible":
+    }
+    case "openai-compatible": {
       return "OpenAI-compatible endpoint";
-    default:
+    }
+    default: {
       return assertUnreachable(provider);
+    }
   }
-}
+};

@@ -1,10 +1,15 @@
 {
   "name": "@charlotte/providers",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "module": "src/index.ts",
   "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.60",
     "@ai-sdk/azure": "^4.0.76",
@@ -14,10 +19,5 @@
     "@charlotte/config": "workspace:*",
     "ai": "^7.0.110",
     "zod": "^4.6.5"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test"
   }
 }

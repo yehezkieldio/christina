@@ -18,20 +18,41 @@ export type PipelineStage = (typeof PIPELINE_STAGES)[number];
  * pre-formatted display string, so both the CLI and the transcript can
  * render it their own way. */
 export const warningSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("truncation"), filePath: z.string(), droppedBytes: z.number().int().min(0) }),
-  z.object({ kind: z.literal("salvage"), stage: pipelineStageSchema, reason: z.string() }),
-  z.object({ kind: z.literal("fallback"), stage: pipelineStageSchema, reason: z.string() }),
+  z.object({
+    droppedBytes: z.number().int().min(0),
+    filePath: z.string(),
+    kind: z.literal("truncation"),
+  }),
+  z.object({
+    kind: z.literal("salvage"),
+    reason: z.string(),
+    stage: pipelineStageSchema,
+  }),
+  z.object({
+    kind: z.literal("fallback"),
+    reason: z.string(),
+    stage: pipelineStageSchema,
+  }),
   /** Two chunk summaries described opposing actions (e.g. "add" and
    * "remove") on the same change set. Ported from Christina's
    * `detect_contradictions`, which only logs; Charlotte surfaces it as
    * structured data instead so the CLI and transcript can both render it. */
-  z.object({ kind: z.literal("contradiction"), action: z.string(), counteraction: z.string() }),
+  z.object({
+    action: z.string(),
+    counteraction: z.string(),
+    kind: z.literal("contradiction"),
+  }),
 ]);
 export type Warning = z.infer<typeof warningSchema>;
 
 const timestamped = { timestamp: z.iso.datetime() };
 
-export const runOutcomeSchema = z.enum(["success", "declined", "aborted", "error"]);
+export const runOutcomeSchema = z.enum([
+  "success",
+  "declined",
+  "aborted",
+  "error",
+]);
 export type RunOutcome = z.infer<typeof runOutcomeSchema>;
 
 /**
@@ -44,40 +65,53 @@ export type RunOutcome = z.infer<typeof runOutcomeSchema>;
 export const sessionEventSchema = z.discriminatedUnion("type", [
   z.object({
     ...timestamped,
-    type: z.literal("run_start"),
-    sessionId: z.string(),
-    repositoryPath: z.string(),
     configSummary: z.record(z.string(), z.unknown()),
+    repositoryPath: z.string(),
+    sessionId: z.string(),
+    type: z.literal("run_start"),
   }),
-  z.object({ ...timestamped, type: z.literal("stage_start"), stage: pipelineStageSchema }),
   z.object({
     ...timestamped,
-    type: z.literal("stage_end"),
     stage: pipelineStageSchema,
-    durationMs: z.number().min(0),
+    type: z.literal("stage_start"),
   }),
   z.object({
     ...timestamped,
-    type: z.literal("request"),
-    provider: z.string(),
+    durationMs: z.number().min(0),
+    stage: pipelineStageSchema,
+    type: z.literal("stage_end"),
+  }),
+  z.object({
+    ...timestamped,
     model: z.string(),
     promptTokens: z.number().int().min(0),
+    provider: z.string(),
+    type: z.literal("request"),
   }),
   z.object({
     ...timestamped,
-    type: z.literal("response"),
     completionTokens: z.number().int().min(0),
     latencyMs: z.number().min(0),
+    type: z.literal("response"),
   }),
-  z.object({ ...timestamped, type: z.literal("retry"), attempt: z.number().int().min(1), reason: z.string() }),
-  z.object({ ...timestamped, type: z.literal("warning"), warning: warningSchema }),
   z.object({
     ...timestamped,
-    type: z.literal("run_end"),
-    outcome: runOutcomeSchema,
-    totalPromptTokens: z.number().int().min(0),
-    totalCompletionTokens: z.number().int().min(0),
+    attempt: z.number().int().min(1),
+    reason: z.string(),
+    type: z.literal("retry"),
+  }),
+  z.object({
+    ...timestamped,
+    type: z.literal("warning"),
+    warning: warningSchema,
+  }),
+  z.object({
+    ...timestamped,
     finalMessageLength: z.number().int().min(0),
+    outcome: runOutcomeSchema,
+    totalCompletionTokens: z.number().int().min(0),
+    totalPromptTokens: z.number().int().min(0),
+    type: z.literal("run_end"),
   }),
 ]);
 
@@ -86,15 +120,18 @@ export type SessionEventType = SessionEvent["type"];
 
 /** Narrow the union to one variant by its discriminant literal, e.g.
  * `SessionEventOfType<"run_end">` is exactly the `run_end` event shape. */
-export type SessionEventOfType<T extends SessionEventType> = Extract<SessionEvent, { type: T }>;
+export type SessionEventOfType<T extends SessionEventType> = Extract<
+  SessionEvent,
+  { type: T }
+>;
 
-export function assertSessionEventExhaustive(event: never): never {
+export const assertSessionEventExhaustive = (event: never): never => {
   throw new Error(`unreachable session event: ${JSON.stringify(event)}`);
-}
+};
 
-export function isSessionEventOfType<T extends SessionEventType>(
+export const isSessionEventOfType = <T extends SessionEventType>(
   event: SessionEvent,
-  type: T,
-): event is SessionEventOfType<T> {
+  type: T
+): event is SessionEventOfType<T> => {
   return event.type === type;
-}
+};

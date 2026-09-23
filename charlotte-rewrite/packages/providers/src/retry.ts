@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 /**
  * Exponential backoff with full jitter, ported from Christina's
  * `christina/src/orchestrator/retry.rs`. Full jitter (delay uniformly
@@ -17,44 +19,39 @@ export interface RetryPolicyOptions {
   readonly withJitter?: boolean;
 }
 
-export function createRetryPolicy(options: RetryPolicyOptions = {}): RetryPolicy {
-  return {
-    maxRetries: options.maxRetries ?? 3,
-    baseDelayMs: options.baseDelayMs ?? 1000,
-    withJitter: options.withJitter ?? true,
-  };
-}
+export const createRetryPolicy = (options: RetryPolicyOptions = {}): RetryPolicy => ({
+  baseDelayMs: options.baseDelayMs ?? 1000,
+  maxRetries: options.maxRetries ?? 3,
+  withJitter: options.withJitter ?? true,
+});
 
 /** A source of numbers in `[0, 1)`. Defaults to `Math.random`; tests pass a
  * seeded generator so retry-delay assertions are deterministic, matching
  * Christina's `calculate_delay_with_seed` pattern. */
 export type RandomSource = () => number;
 
-export function calculateDelayMs(policy: RetryPolicy, attempt: number, random: RandomSource = Math.random): number {
+export const calculateDelayMs = (
+  policy: RetryPolicy,
+  attempt: number,
+  random: RandomSource = Math.random
+): number => {
   const maxDelayMs = policy.baseDelayMs * 2 ** attempt;
   if (!policy.withJitter) {
     return maxDelayMs;
   }
   return Math.floor(random() * (maxDelayMs + 1));
-}
+};
 
-export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => {
   if (ms <= 0) {
     signal?.throwIfAborted();
     return Promise.resolve();
   }
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason);
-      },
-      { once: true },
-    );
-  });
-}
+  // `node:timers/promises`'s `setTimeout` accepts an abort signal natively,
+  // rejecting with the signal's reason when aborted — no need to hand-roll
+  // a `new Promise` plus a manual "abort" listener and `clearTimeout`.
+  return delay(ms, undefined, { signal });
+};
 
 export type IsTransient<E> = (error: E) => boolean;
 
@@ -66,12 +63,16 @@ export interface RetryOptions<E> {
 
 /** Retries `operation` under `policy` until it succeeds, a non-transient
  * error is thrown, or `policy.maxRetries` is exhausted. */
-export async function retryWithBackoff<T, E = unknown>(
+export const retryWithBackoff = async <T, E = unknown>(
   policy: RetryPolicy,
   operation: () => Promise<T>,
-  options: RetryOptions<E>,
-): Promise<T> {
+  options: RetryOptions<E>
+): Promise<T> => {
   let attempt = 0;
+  // Each retry depends on the previous attempt's outcome — there is nothing
+  // to run concurrently, `operation` must finish (or fail) before deciding
+  // whether to retry it.
+  // oxlint-disable no-await-in-loop
   for (;;) {
     options.signal?.throwIfAborted();
     try {
@@ -80,8 +81,12 @@ export async function retryWithBackoff<T, E = unknown>(
       if (!options.isTransient(error as E) || attempt >= policy.maxRetries) {
         throw error;
       }
-      await sleep(calculateDelayMs(policy, attempt, options.random), options.signal);
+      await sleep(
+        calculateDelayMs(policy, attempt, options.random),
+        options.signal
+      );
       attempt += 1;
     }
   }
-}
+  // oxlint-enable no-await-in-loop
+};

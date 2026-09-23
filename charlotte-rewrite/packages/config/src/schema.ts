@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { budgetInt, clampedNumber } from "./clamp";
 import { providerSchema } from "./provider";
 
@@ -8,7 +9,11 @@ export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 /** Matches Christina's `ValidationMode` (`christina-core/src/types/commit.rs`):
  * `strict` rejects an over-length message, `soft` warns but allows it,
  * `disabled` skips the length check entirely. */
-export const commitValidationModeSchema = z.enum(["strict", "soft", "disabled"]);
+export const commitValidationModeSchema = z.enum([
+  "strict",
+  "soft",
+  "disabled",
+]);
 export type CommitValidationMode = z.infer<typeof commitValidationModeSchema>;
 
 /**
@@ -18,29 +23,25 @@ export type CommitValidationMode = z.infer<typeof commitValidationModeSchema>;
  * of this schema, not a hand-maintained file.
  */
 export const configSchema = z.object({
-  provider: providerSchema,
-  model: z.string().min(1),
   apiKey: z.string().min(1),
   apiUrl: z.url().optional(),
   azureApiVersion: z.string().optional(),
   azureDeploymentId: z.string().optional(),
-
-  temperature: clampedNumber(0, 2).default(1),
-  reasoningEffort: reasoningEffortSchema.default("medium"),
-
-  /** Matches Christina's `max_input_tokens` default. */
-  maxTokens: budgetInt().default(256_000),
-  /** Matches Christina's `default_lockfile_token_limit`. */
-  lockfileTokenLimit: budgetInt().default(100),
-  ignorePatterns: z.array(z.string()).default([]),
-
+  commitHistoryDepth: budgetInt(0).default(5),
   commitMessageMaxLength: budgetInt().default(72),
   commitValidationMode: commitValidationModeSchema.default("strict"),
-  commitHistoryDepth: budgetInt(0).default(5),
-
+  ignorePatterns: z.array(z.string()).default([]),
+  /** Matches Christina's `default_lockfile_token_limit`. */
+  lockfileTokenLimit: budgetInt().default(100),
   maxConcurrentRequests: clampedNumber(1, 32).default(4),
+  /** Matches Christina's `max_input_tokens` default. */
+  maxTokens: budgetInt().default(256_000),
+  model: z.string().min(1),
   /** Matches Christina's `MIN_PARTIAL_FAILURE_RATE`/`MAX_PARTIAL_FAILURE_RATE`. */
   partialFailureRate: clampedNumber(0.01, 0.5).default(0.2),
+  provider: providerSchema,
+  reasoningEffort: reasoningEffortSchema.default("medium"),
+  temperature: clampedNumber(0, 2).default(1),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -51,17 +52,17 @@ export type ConfigOverlay = z.infer<typeof configOverlaySchema>;
 
 export const providerProfileSchema = configSchema
   .pick({
-    provider: true,
-    model: true,
     apiKey: true,
     apiUrl: true,
     azureApiVersion: true,
     azureDeploymentId: true,
-    maxTokens: true,
     lockfileTokenLimit: true,
+    maxTokens: true,
+    model: true,
+    provider: true,
   })
   .partial()
-  .required({ provider: true, model: true, apiKey: true });
+  .required({ apiKey: true, model: true, provider: true });
 
 export type ProviderProfile = z.infer<typeof providerProfileSchema>;
 

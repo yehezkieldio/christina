@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
+
 import { mapWithConcurrency } from "./concurrency";
 
 describe("mapWithConcurrency", () => {
   test("preserves result order regardless of completion order", async () => {
     const delays = [30, 10, 20, 0];
-    const results = await mapWithConcurrency(delays, 4, async (delay, index) => {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      return index;
-    });
+    const results = await mapWithConcurrency(
+      delays,
+      4,
+      async (delay, index) => {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return index;
+      }
+    );
     expect(results).toEqual([0, 1, 2, 3]);
   });
 

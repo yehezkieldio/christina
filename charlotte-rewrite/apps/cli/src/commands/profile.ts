@@ -1,6 +1,13 @@
 import { createInterface } from "node:readline/promises";
-import { profilesFilePath, profilesSchema, providerProfileSchema, type ProviderProfile } from "@charlotte/config";
+
+import {
+  profilesFilePath,
+  profilesSchema,
+  providerProfileSchema,
+} from "@charlotte/config";
+import type { ProviderProfile } from "@charlotte/config";
 import type { Command } from "commander";
+
 import { readToml, writeToml } from "../toml-io";
 
 interface ProfileOptions {
@@ -15,51 +22,61 @@ interface ProfileOptions {
   readonly azureDeploymentId?: string;
 }
 
-async function loadProfiles(): Promise<{ active: string | null; profiles: Record<string, ProviderProfile> }> {
-  return profilesSchema.parse(await readToml(profilesFilePath()));
-}
+const loadProfiles = async (): Promise<{
+  active: string | null;
+  profiles: Record<string, ProviderProfile>;
+}> => profilesSchema.parse(await readToml(profilesFilePath()));
 
-async function saveProfiles(data: { active: string | null; profiles: Record<string, ProviderProfile> }): Promise<void> {
-  await writeToml(profilesFilePath(), profilesSchema.parse(data) as unknown as Record<string, unknown>);
-}
+const saveProfiles = async (data: {
+  active: string | null;
+  profiles: Record<string, ProviderProfile>;
+}): Promise<void> => {
+  await writeToml(
+    profilesFilePath(),
+    profilesSchema.parse(data) as unknown as Record<string, unknown>
+  );
+};
 
-function warnPlaintextSecret(apiKey: string, allowPlaintext: boolean): void {
+const warnPlaintextSecret = (apiKey: string, allowPlaintext: boolean): void => {
   if (!(apiKey.startsWith("env:") || allowPlaintext)) {
     console.error("Warning: storing plaintext API key. Consider env:VAR_NAME.");
   }
-}
+};
 
-function applyOverrides(profile: ProviderProfile, options: ProfileOptions): ProviderProfile {
+const applyOverrides = (
+  profile: ProviderProfile,
+  options: ProfileOptions
+): ProviderProfile => {
   const next: Record<string, unknown> = { ...profile };
   if (options.provider !== undefined) {
-    next.provider = options.provider;
+    next["provider"] = options.provider;
   }
   if (options.model !== undefined) {
-    next.model = options.model;
+    next["model"] = options.model;
   }
   if (options.apiKey !== undefined) {
     warnPlaintextSecret(options.apiKey, options.allowPlaintext ?? false);
-    next.apiKey = options.apiKey;
+    next["apiKey"] = options.apiKey;
   }
   if (options.apiUrl !== undefined) {
-    next.apiUrl = options.apiUrl;
+    next["apiUrl"] = options.apiUrl;
   }
   if (options.maxTokens !== undefined) {
-    next.maxTokens = Number.parseInt(options.maxTokens, 10);
+    next["maxTokens"] = Math.trunc(Number(options.maxTokens));
   }
   if (options.lockfileTokenLimit !== undefined) {
-    next.lockfileTokenLimit = Number.parseInt(options.lockfileTokenLimit, 10);
+    next["lockfileTokenLimit"] = Math.trunc(Number(options.lockfileTokenLimit));
   }
   if (options.azureApiVersion !== undefined) {
-    next.azureApiVersion = options.azureApiVersion;
+    next["azureApiVersion"] = options.azureApiVersion;
   }
   if (options.azureDeploymentId !== undefined) {
-    next.azureDeploymentId = options.azureDeploymentId;
+    next["azureDeploymentId"] = options.azureDeploymentId;
   }
   return providerProfileSchema.parse(next);
-}
+};
 
-async function handleList(): Promise<void> {
+const handleList = async (): Promise<void> => {
   const { active, profiles } = await loadProfiles();
   const names = Object.keys(profiles);
   if (names.length === 0) {
@@ -74,9 +91,9 @@ async function handleList(): Promise<void> {
   if (active === null) {
     console.log("\nNo active profile set.");
   }
-}
+};
 
-async function handleShow(name: string): Promise<void> {
+const handleShow = async (name: string): Promise<void> => {
   const { active, profiles } = await loadProfiles();
   const profile = profiles[name];
   if (!profile) {
@@ -85,20 +102,31 @@ async function handleShow(name: string): Promise<void> {
   console.log(`Profile: ${name}`);
   console.log(`  Provider: ${profile.provider}`);
   console.log(`  Model: ${profile.model}`);
-  console.log(`  API Key: ${profile.apiKey.startsWith("env:") ? `<${profile.apiKey}>` : "<set>"}`);
+  console.log(
+    `  API Key: ${profile.apiKey.startsWith("env:") ? `<${profile.apiKey}>` : "<set>"}`
+  );
   console.log(`  API URL: ${profile.apiUrl ?? "<not set>"}`);
   console.log(`  Max Tokens: ${profile.maxTokens ?? "<not set>"}`);
-  console.log(`  Lockfile Token Limit: ${profile.lockfileTokenLimit ?? "<not set>"}`);
+  console.log(
+    `  Lockfile Token Limit: ${profile.lockfileTokenLimit ?? "<not set>"}`
+  );
   console.log(`  Azure API Version: ${profile.azureApiVersion ?? "<not set>"}`);
-  console.log(`  Azure Deployment ID: ${profile.azureDeploymentId ?? "<not set>"}`);
+  console.log(
+    `  Azure Deployment ID: ${profile.azureDeploymentId ?? "<not set>"}`
+  );
   if (active === name) {
     console.log("\n  [Active Profile]");
   }
-}
+};
 
-async function handleCreate(name: string, options: ProfileOptions): Promise<void> {
+const handleCreate = async (
+  name: string,
+  options: ProfileOptions
+): Promise<void> => {
   if (!(options.provider && options.model && options.apiKey)) {
-    throw new Error("--provider, --model, and --api-key are required to create a profile");
+    throw new Error(
+      "--provider, --model, and --api-key are required to create a profile"
+    );
   }
   const data = await loadProfiles();
   if (data.profiles[name]) {
@@ -107,22 +135,29 @@ async function handleCreate(name: string, options: ProfileOptions): Promise<void
 
   warnPlaintextSecret(options.apiKey, options.allowPlaintext ?? false);
   const profile = providerProfileSchema.parse({
-    provider: options.provider,
-    model: options.model,
     apiKey: options.apiKey,
     apiUrl: options.apiUrl,
-    maxTokens: options.maxTokens ? Number.parseInt(options.maxTokens, 10) : undefined,
-    lockfileTokenLimit: options.lockfileTokenLimit ? Number.parseInt(options.lockfileTokenLimit, 10) : undefined,
     azureApiVersion: options.azureApiVersion,
     azureDeploymentId: options.azureDeploymentId,
+    lockfileTokenLimit: options.lockfileTokenLimit
+      ? Math.trunc(Number(options.lockfileTokenLimit))
+      : undefined,
+    maxTokens: options.maxTokens
+      ? Math.trunc(Number(options.maxTokens))
+      : undefined,
+    model: options.model,
+    provider: options.provider,
   });
 
   data.profiles[name] = profile;
   await saveProfiles(data);
   console.log(`Created profile: ${name}`);
-}
+};
 
-async function handleEdit(name: string, options: ProfileOptions): Promise<void> {
+const handleEdit = async (
+  name: string,
+  options: ProfileOptions
+): Promise<void> => {
   const data = await loadProfiles();
   const existing = data.profiles[name];
   if (!existing) {
@@ -132,9 +167,9 @@ async function handleEdit(name: string, options: ProfileOptions): Promise<void> 
   data.profiles[name] = applyOverrides(existing, options);
   await saveProfiles(data);
   console.log(`Updated profile: ${name}`);
-}
+};
 
-async function confirm(question: string): Promise<boolean> {
+const confirm = async (question: string): Promise<boolean> => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     const answer = await rl.question(question);
@@ -142,9 +177,9 @@ async function confirm(question: string): Promise<boolean> {
   } finally {
     rl.close();
   }
-}
+};
 
-async function handleDelete(name: string, force: boolean): Promise<void> {
+const handleDelete = async (name: string, force: boolean): Promise<void> => {
   const data = await loadProfiles();
   if (!data.profiles[name]) {
     throw new Error(`Profile '${name}' not found`);
@@ -158,15 +193,16 @@ async function handleDelete(name: string, force: boolean): Promise<void> {
     }
   }
 
-  delete data.profiles[name];
+  const { [name]: _removed, ...remainingProfiles } = data.profiles;
+  data.profiles = remainingProfiles;
   if (data.active === name) {
     data.active = null;
   }
   await saveProfiles(data);
   console.log(`Deleted profile: ${name}`);
-}
+};
 
-async function handleSwitch(name: string): Promise<void> {
+const handleSwitch = async (name: string): Promise<void> => {
   const data = await loadProfiles();
   if (!data.profiles[name]) {
     throw new Error(`Profile '${name}' not found`);
@@ -174,9 +210,12 @@ async function handleSwitch(name: string): Promise<void> {
   data.active = name;
   await saveProfiles(data);
   console.log(`Switched to profile: ${name}`);
-}
+};
 
-async function handleDuplicate(source: string, newName: string): Promise<void> {
+const handleDuplicate = async (
+  source: string,
+  newName: string
+): Promise<void> => {
   const data = await loadProfiles();
   const sourceProfile = data.profiles[source];
   if (!sourceProfile) {
@@ -188,22 +227,31 @@ async function handleDuplicate(source: string, newName: string): Promise<void> {
   data.profiles[newName] = { ...sourceProfile };
   await saveProfiles(data);
   console.log(`Duplicated '${source}' to '${newName}'`);
-}
+};
 
-function withProfileOptions(command: Command): Command {
-  return command
+const withProfileOptions = (command: Command): Command =>
+  command
     .option("--provider <provider>", "Model provider")
     .option("--model <model>", "Model name")
     .option("--api-key <apiKey>", "API key")
-    .option("--allow-plaintext", "Allow storing plaintext API keys in config", false)
+    .option(
+      "--allow-plaintext",
+      "Allow storing plaintext API keys in config",
+      false
+    )
     .option("--api-url <apiUrl>", "API URL")
     .option("--max-tokens <maxTokens>", "Max tokens")
-    .option("--lockfile-token-limit <lockfileTokenLimit>", "Lockfile token limit")
+    .option(
+      "--lockfile-token-limit <lockfileTokenLimit>",
+      "Lockfile token limit"
+    )
     .option("--azure-api-version <azureApiVersion>", "Azure API version")
-    .option("--azure-deployment-id <azureDeploymentId>", "Azure deployment ID");
-}
+    .option(
+      "--azure-deployment-id <azureDeploymentId>",
+      "Azure deployment ID"
+    );
 
-export function registerProfileCommand(program: Command): void {
+export const registerProfileCommand = (program: Command): void => {
   const profile = program.command("profile").description("Profile management");
 
   profile
@@ -220,17 +268,17 @@ export function registerProfileCommand(program: Command): void {
       await handleShow(name);
     });
 
-  withProfileOptions(profile.command("create <name>").description("Create a new profile")).action(
-    async (name: string, options: ProfileOptions) => {
-      await handleCreate(name, options);
-    },
-  );
+  withProfileOptions(
+    profile.command("create <name>").description("Create a new profile")
+  ).action(async (name: string, options: ProfileOptions) => {
+    await handleCreate(name, options);
+  });
 
-  withProfileOptions(profile.command("edit <name>").description("Edit a profile")).action(
-    async (name: string, options: ProfileOptions) => {
-      await handleEdit(name, options);
-    },
-  );
+  withProfileOptions(
+    profile.command("edit <name>").description("Edit a profile")
+  ).action(async (name: string, options: ProfileOptions) => {
+    await handleEdit(name, options);
+  });
 
   profile
     .command("delete <name>")
@@ -253,4 +301,4 @@ export function registerProfileCommand(program: Command): void {
     .action(async (source: string, newName: string) => {
       await handleDuplicate(source, newName);
     });
-}
+};

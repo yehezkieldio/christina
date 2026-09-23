@@ -1,47 +1,88 @@
 import { describe, expect, test } from "bun:test";
-import type { ChunkSummary, SubTheme } from "@charlotte/schemas";
-import { aggregateSubThemes, detectContradictions, fallbackSubThemesFromSummaries, fallbackThemesFromSummaries } from "./intent";
 
-function summary(text: string, files: string[]): ChunkSummary {
-  return { summary: text, files };
-}
+import type { ChunkSummary, SubTheme } from "@charlotte/schemas";
+
+import {
+  aggregateSubThemes,
+  detectContradictions,
+  fallbackSubThemesFromSummaries,
+  fallbackThemesFromSummaries,
+} from "./intent";
+
+const summary = (text: string, files: string[]): ChunkSummary => { files, summary: text };
 
 describe("detectContradictions", () => {
   test("flags an add/remove contradiction", () => {
-    const warnings = detectContradictions([summary("add the new widget", ["a.ts"]), summary("remove the old widget", ["b.ts"])]);
-    expect(warnings).toEqual([{ kind: "contradiction", action: "add", counteraction: "remove" }]);
+    const warnings = detectContradictions([
+      summary("add the new widget", ["a.ts"]),
+      summary("remove the old widget", ["b.ts"]),
+    ]);
+    expect(warnings).toEqual([
+      { action: "add", counteraction: "remove", kind: "contradiction" },
+    ]);
   });
 
   test("returns no warnings for coherent summaries", () => {
-    expect(detectContradictions([summary("add the new widget", ["a.ts"]), summary("fix a typo", ["b.ts"])])).toEqual([]);
+    expect(
+      detectContradictions([
+        summary("add the new widget", ["a.ts"]),
+        summary("fix a typo", ["b.ts"]),
+      ])
+    ).toEqual([]);
   });
 });
 
 describe("fallbackThemesFromSummaries", () => {
   test("combines summaries into one theme", () => {
-    const themes = fallbackThemesFromSummaries([summary("add widget", ["a.ts"]), summary("fix typo", ["b.ts", "c.ts"])]);
-    expect(themes).toEqual([{ title: "Code changes", description: "add widget; fix typo", fileCount: 3, scope: null }]);
+    const themes = fallbackThemesFromSummaries([
+      summary("add widget", ["a.ts"]),
+      summary("fix typo", ["b.ts", "c.ts"]),
+    ]);
+    expect(themes).toEqual([
+      {
+        description: "add widget; fix typo",
+        fileCount: 3,
+        scope: null,
+        title: "Code changes",
+      },
+    ]);
   });
 
   test("falls back to a generic description when every summary is blank", () => {
-    expect(fallbackThemesFromSummaries([summary("  ", [])])[0]?.description).toBe("Code changes");
+    expect(
+      fallbackThemesFromSummaries([summary("  ", [])])[0]?.description
+    ).toBe("Code changes");
   });
 });
 
 describe("fallbackSubThemesFromSummaries", () => {
   test("combines a batch into one sub-theme", () => {
-    const themes = fallbackSubThemesFromSummaries([summary("add widget", ["a.ts"])]);
-    expect(themes).toEqual([{ title: "Code changes", description: "add widget", fileCount: 1, scope: null }]);
+    const themes = fallbackSubThemesFromSummaries([
+      summary("add widget", ["a.ts"]),
+    ]);
+    expect(themes).toEqual([
+      {
+        description: "add widget",
+        fileCount: 1,
+        scope: null,
+        title: "Code changes",
+      },
+    ]);
   });
 });
 
 describe("aggregateSubThemes", () => {
-  function subTheme(title: string, description: string, fileCount: number, scope: string | null): SubTheme {
-    return { title, description, fileCount, scope };
-  }
+  const subTheme = (title: string,
+  description: string,
+  fileCount: number,
+  scope: string | null): SubTheme => { description, fileCount, scope, title };
 
   test("groups by scope and sums file counts", () => {
-    const merged = aggregateSubThemes([subTheme("Auth", "add login", 2, "auth"), subTheme("Auth", "add logout", 1, "auth"), subTheme("UI", "restyle button", 3, "ui")]);
+    const merged = aggregateSubThemes([
+      subTheme("Auth", "add login", 2, "auth"),
+      subTheme("Auth", "add logout", 1, "auth"),
+      subTheme("UI", "restyle button", 3, "ui"),
+    ]);
 
     expect(merged).toHaveLength(2);
     const auth = merged.find((t) => t.scope === "auth");

@@ -1,6 +1,9 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-import { type SessionEvent, sessionEventSchema } from "@charlotte/schemas";
+import path from "node:path";
+
+import { sessionEventSchema } from "@charlotte/schemas";
+import type { SessionEvent } from "@charlotte/schemas";
+
 import { sessionFilePath } from "./paths";
 
 /**
@@ -16,7 +19,10 @@ export class SessionWriter {
   readonly #path: string;
   #directoryReady = false;
 
-  constructor(sessionId: string, env?: Readonly<Record<string, string | undefined>>) {
+  constructor(
+    sessionId: string,
+    env?: Readonly<Record<string, string | undefined>>
+  ) {
     this.sessionId = sessionId;
     this.#path = sessionFilePath(sessionId, env);
   }
@@ -30,9 +36,9 @@ export class SessionWriter {
   async write(event: SessionEvent): Promise<void> {
     sessionEventSchema.parse(event);
     if (!this.#directoryReady) {
-      await mkdir(dirname(this.#path), { recursive: true });
+      await mkdir(path.dirname(this.#path), { recursive: true });
       this.#directoryReady = true;
     }
-    await appendFile(this.#path, `${JSON.stringify(event)}\n`, "utf8");
+    await appendFile(this.#path, `${JSON.stringify(event)}\n`, "utf-8");
   }
 }

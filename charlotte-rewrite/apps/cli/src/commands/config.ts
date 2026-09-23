@@ -1,5 +1,10 @@
-import { configFilePath, configOverlaySchema, loadConfig } from "@charlotte/config";
+import {
+  configFilePath,
+  configOverlaySchema,
+  loadConfig,
+} from "@charlotte/config";
 import type { Command } from "commander";
+
 import { readToml, writeToml } from "../toml-io";
 
 type FieldParser = (raw: string) => unknown;
@@ -11,33 +16,41 @@ type FieldParser = (raw: string) => unknown;
  * (Charlotte merged `max_input_tokens`/`max_output_tokens` into one
  * `maxTokens` field per `03-config-and-profiles.md`'s clamp-policy work). */
 const FIELD_PARSERS: Record<string, FieldParser> = {
-  provider: (raw) => raw,
-  model: (raw) => raw,
   apiKey: (raw) => raw,
   apiUrl: (raw) => raw,
   azureApiVersion: (raw) => raw,
   azureDeploymentId: (raw) => raw,
-  temperature: (raw) => Number.parseFloat(raw),
-  reasoningEffort: (raw) => raw,
-  maxTokens: (raw) => Number.parseInt(raw, 10),
-  lockfileTokenLimit: (raw) => Number.parseInt(raw, 10),
+  commitHistoryDepth: (raw) => Math.trunc(Number(raw)),
+  commitMessageMaxLength: (raw) => Math.trunc(Number(raw)),
+  commitValidationMode: (raw) => raw,
   ignorePatterns: (raw) =>
     raw
       .split(",")
       .map((pattern) => pattern.trim())
       .filter((pattern) => pattern.length > 0),
-  commitMessageMaxLength: (raw) => Number.parseInt(raw, 10),
-  commitValidationMode: (raw) => raw,
-  commitHistoryDepth: (raw) => Number.parseInt(raw, 10),
-  maxConcurrentRequests: (raw) => Number.parseInt(raw, 10),
-  partialFailureRate: (raw) => Number.parseFloat(raw),
+  lockfileTokenLimit: (raw) => Math.trunc(Number(raw)),
+  maxConcurrentRequests: (raw) => Math.trunc(Number(raw)),
+  maxTokens: (raw) => Math.trunc(Number(raw)),
+  model: (raw) => raw,
+  partialFailureRate: (raw) => Number(raw),
+  provider: (raw) => raw,
+  reasoningEffort: (raw) => raw,
+  temperature: (raw) => Number(raw),
 };
 
-function isSecretLikeKey(key: string): boolean {
-  return key.toLowerCase().includes("key");
-}
+const isSecretLikeKey = (key: string): boolean => key.toLowerCase().includes("key");
 
-async function handleGet(key: string): Promise<void> {
+const formatValue = (value: unknown): string => {
+  if (value === undefined) {
+    return "<not set>";
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0 ? "<none>" : value.join(", ");
+  }
+  return String(value);
+};
+
+const handleGet = async (key: string): Promise<void> => {
   const config = await loadConfig();
   if (!(key in FIELD_PARSERS)) {
     throw new Error(`Unknown configuration key '${key}'`);
@@ -48,16 +61,16 @@ async function handleGet(key: string): Promise<void> {
     return;
   }
   console.log(`${key}: ${formatValue(value)}`);
-}
+};
 
-async function handleSet(key: string, value: string): Promise<void> {
+const handleSet = async (key: string, value: string): Promise<void> => {
   const parser = FIELD_PARSERS[key];
   if (!parser) {
     throw new Error(`Unknown configuration key '${key}'`);
   }
   const parsed = parser(value);
   if (typeof parsed === "number" && Number.isNaN(parsed)) {
-    throw new Error(`Invalid value for '${key}': ${value}`);
+    throw new TypeError(`Invalid value for '${key}': ${value}`);
   }
 
   const path = configFilePath();
@@ -65,37 +78,33 @@ async function handleSet(key: string, value: string): Promise<void> {
   const merged = { ...existing, [key]: parsed };
   const result = configOverlaySchema.safeParse(merged);
   if (!result.success) {
-    throw new Error(`Invalid value for '${key}': ${result.error.issues.map((issue) => issue.message).join("; ")}`);
+    throw new Error(
+      `Invalid value for '${key}': ${result.error.issues.map((issue) => issue.message).join("; ")}`
+    );
   }
 
   await writeToml(path, result.data as Record<string, unknown>);
   console.log(`Set ${key} = ${value}`);
-}
+};
 
-async function handleList(): Promise<void> {
+const handleList = async (): Promise<void> => {
   const config = await loadConfig();
   console.log("Configuration values:");
   for (const [key, value] of Object.entries(config)) {
-    console.log(`  ${key}: ${isSecretLikeKey(key) ? "<hidden>" : formatValue(value)}`);
+    console.log(
+      `  ${key}: ${isSecretLikeKey(key) ? "<hidden>" : formatValue(value)}`
+    );
   }
-}
+};
 
-function handlePath(): void {
+const handlePath = (): void => {
   console.log(configFilePath());
-}
+};
 
-function formatValue(value: unknown): string {
-  if (value === undefined) {
-    return "<not set>";
-  }
-  if (Array.isArray(value)) {
-    return value.length === 0 ? "<none>" : value.join(", ");
-  }
-  return String(value);
-}
-
-export function registerConfigCommand(program: Command): void {
-  const config = program.command("config").description("Configuration management");
+export const registerConfigCommand = (program: Command): void => {
+  const config = program
+    .command("config")
+    .description("Configuration management");
 
   config
     .command("get <key>")
@@ -124,4 +133,4 @@ export function registerConfigCommand(program: Command): void {
     .action(() => {
       handlePath();
     });
-}
+};

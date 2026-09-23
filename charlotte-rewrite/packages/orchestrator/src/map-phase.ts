@@ -1,6 +1,9 @@
-import { generateStructured, type GenerateStructuredOptions } from "@charlotte/providers";
-import { type ChunkSummary, summaryResponseSchema } from "@charlotte/schemas";
 import type { Chunk } from "@charlotte/native-core";
+import { generateStructured, optional } from "@charlotte/providers";
+import type { GenerateStructuredOptions } from "@charlotte/providers";
+import { summaryResponseSchema } from "@charlotte/schemas";
+import type { ChunkSummary } from "@charlotte/schemas";
+
 import { mapWithConcurrency } from "./concurrency";
 import { buildChunkSummaryPrompt, buildSystemPrompt } from "./prompt";
 
@@ -10,15 +13,21 @@ const SMALL_BATCH_THRESHOLD = 3;
 const MAX_CONCURRENT_REQUESTS = 5;
 
 /** Matches Christina's `map_concurrency`. */
-export function mapConcurrency(chunkCount: number, concurrencyLimit: number): number {
-  const base = chunkCount <= SMALL_BATCH_THRESHOLD ? Math.min(chunkCount, SMALL_BATCH_THRESHOLD) : MAX_CONCURRENT_REQUESTS;
+export const mapConcurrency = (
+  chunkCount: number,
+  concurrencyLimit: number
+): number => {
+  const base =
+    chunkCount <= SMALL_BATCH_THRESHOLD
+      ? Math.min(chunkCount, SMALL_BATCH_THRESHOLD)
+      : MAX_CONCURRENT_REQUESTS;
   return Math.max(1, Math.min(base, concurrencyLimit));
-}
+};
 
 /** Builds a readable fallback summary directly from file names when a
  * chunk's model call fails, or returns an empty/unusable summary. Ported
  * from Christina's `fallback_summary_from_files`. */
-export function fallbackSummaryFromFiles(files: readonly string[]): string {
+export const fallbackSummaryFromFiles = (files: readonly string[]): string => {
   if (files.length === 0) {
     return "Update staged files";
   }
@@ -28,8 +37,10 @@ export function fallbackSummaryFromFiles(files: readonly string[]): string {
 
   const previewLimit = 3;
   const preview = files.slice(0, previewLimit).join(", ");
-  return files.length > previewLimit ? `Update ${files.length} files: ${preview} …` : `Update ${files.length} files: ${preview}`;
-}
+  return files.length > previewLimit
+    ? `Update ${files.length} files: ${preview} …`
+    : `Update ${files.length} files: ${preview}`;
+};
 
 export interface MapPhaseOptions {
   readonly model: GenerateStructuredOptions<unknown>["model"];
@@ -57,37 +68,52 @@ export interface MapPhaseResult {
  * fast-path can be added once `@charlotte/providers` exposes an error
  * classification to check against.
  */
-export async function mapPhase(chunks: readonly Chunk[], options: MapPhaseOptions): Promise<MapPhaseResult> {
+export const mapPhase = async (
+  chunks: readonly Chunk[],
+  options: MapPhaseOptions
+): Promise<MapPhaseResult> => {
   options.signal?.throwIfAborted();
 
   const concurrency = mapConcurrency(chunks.length, options.concurrencyLimit);
   let promptTokens = 0;
   let completionTokens = 0;
 
-  type ChunkOutcome = { ok: true; summary: ChunkSummary } | { ok: false; files: readonly string[] };
+  type ChunkOutcome =
+    | { ok: true; summary: ChunkSummary }
+    | { ok: false; files: readonly string[] };
 
-  const outcomes = await mapWithConcurrency(chunks, concurrency, async (chunk): Promise<ChunkOutcome> => {
-    options.signal?.throwIfAborted();
-    try {
-      const prompt = `${buildSystemPrompt()}\n\n${buildChunkSummaryPrompt(chunk.content)}`;
-      const result = await generateStructured({
-        model: options.model,
-        schema: summaryResponseSchema,
-        prompt,
-        signal: options.signal,
-      });
-      promptTokens += result.promptTokens;
-      completionTokens += result.completionTokens;
+  const outcomes = await mapWithConcurrency(
+    chunks,
+    concurrency,
+    async (chunk): Promise<ChunkOutcome> => {
+      options.signal?.throwIfAborted();
+      try {
+        const prompt = `${buildSystemPrompt()}\n\n${buildChunkSummaryPrompt(chunk.content)}`;
+        const result = await generateStructured({
+          model: options.model,
+          prompt,
+          schema: summaryResponseSchema,
+          ...optional("signal", options.signal),
+        });
+        promptTokens += result.promptTokens;
+        completionTokens += result.completionTokens;
 
-      const summary = result.object.summary.trim();
-      return {
-        ok: true,
-        summary: { summary: summary.length > 0 ? summary : fallbackSummaryFromFiles(chunk.filePaths), files: [...chunk.filePaths] },
-      };
-    } catch {
-      return { ok: false, files: chunk.filePaths };
+        const summary = result.object.summary.trim();
+        return {
+          ok: true,
+          summary: {
+            files: [...chunk.filePaths],
+            summary:
+              summary.length > 0
+                ? summary
+                : fallbackSummaryFromFiles(chunk.filePaths),
+          },
+        };
+      } catch {
+        return { files: chunk.filePaths, ok: false };
+      }
     }
-  });
+  );
 
   const summaries: ChunkSummary[] = [];
   const failedFiles: string[] = [];
@@ -103,16 +129,24 @@ export async function mapPhase(chunks: readonly Chunk[], options: MapPhaseOption
   }
 
   if (summaries.length === 0) {
-    throw new Error(`All ${chunks.length} chunks failed to process. Files affected: ${failedFiles.join(", ")}`);
+    throw new Error(
+      `All ${chunks.length} chunks failed to process. Files affected: ${failedFiles.join(", ")}`
+    );
   }
 
   const totalChunks = summaries.length + failedChunks;
   const failureRate = failedChunks / totalChunks;
   if (failureRate > options.maxPartialFailureRate) {
     throw new Error(
-      `Partial failure rate too high: ${failedChunks}/${totalChunks} chunks failed (${Math.round(failureRate * 100)}%). This exceeds the ${Math.round(options.maxPartialFailureRate * 100)}% threshold. Files affected: ${failedFiles.join(", ")}`,
+      `Partial failure rate too high: ${failedChunks}/${totalChunks} chunks failed (${Math.round(failureRate * 100)}%). This exceeds the ${Math.round(options.maxPartialFailureRate * 100)}% threshold. Files affected: ${failedFiles.join(", ")}`
     );
   }
 
-  return { summaries, failedChunks, failedFiles, promptTokens, completionTokens };
-}
+  return {
+    completionTokens,
+    failedChunks,
+    failedFiles,
+    promptTokens,
+    summaries,
+  };
+};

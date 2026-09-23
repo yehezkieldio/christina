@@ -1,7 +1,7 @@
 {
   "name": "@charlotte/native-core",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "module": "src/index.ts",
   "exports": {
@@ -10,7 +10,7 @@
     "./native-commit-history-provider": "./src/native-commit-history-provider.ts"
   },
   "scripts": {
-    "build": "cargo build --release --manifest-path ../../native/charlotte-core/Cargo.toml",
+    "build": "tsc -p tsconfig.json && cargo build --release --manifest-path ../../native/charlotte-core/Cargo.toml",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "bun test"
   }

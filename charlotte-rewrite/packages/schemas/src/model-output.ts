@@ -15,27 +15,27 @@ export const summaryResponseSchema = z.object({
 export type SummaryResponse = z.infer<typeof summaryResponseSchema>;
 
 export const chunkSummarySchema = z.object({
-  summary: z.string().min(1),
   files: z.array(z.string()),
+  summary: z.string().min(1),
 });
 export type ChunkSummary = z.infer<typeof chunkSummarySchema>;
 
 export const subThemeSchema = z.object({
-  title: z.string().min(1),
   description: z.string().min(1),
   fileCount: z.number().int().min(0),
   scope: z.string().nullable(),
+  title: z.string().min(1),
 });
 export type SubTheme = z.infer<typeof subThemeSchema>;
 
 export const themeItemSchema = z.object({
-  title: z.string().min(1),
   description: z.string().min(1),
   fileCount: z.number().int().min(0),
   scope: z.string().nullable(),
   /** Present once the batch that produced this theme crossed
    * `MAX_SUMMARIES_PER_INTENT_BATCH`, per `07-orchestrator-pipeline.md`. */
   subThemes: z.array(subThemeSchema).optional(),
+  title: z.string().min(1),
 });
 export type ThemeItem = z.infer<typeof themeItemSchema>;
 
