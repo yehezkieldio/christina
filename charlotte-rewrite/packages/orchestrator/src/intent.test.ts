@@ -9,7 +9,7 @@ import {
   fallbackThemesFromSummaries,
 } from "./intent";
 
-const summary = (text: string, files: string[]): ChunkSummary => { files, summary: text };
+const summary = (text: string, files: string[]): ChunkSummary => ({ files, summary: text });
 
 describe("detectContradictions", () => {
   test("flags an add/remove contradiction", () => {
@@ -72,10 +72,12 @@ describe("fallbackSubThemesFromSummaries", () => {
 });
 
 describe("aggregateSubThemes", () => {
-  const subTheme = (title: string,
-  description: string,
-  fileCount: number,
-  scope: string | null): SubTheme => { description, fileCount, scope, title };
+  const subTheme = (
+    title: string,
+    description: string,
+    fileCount: number,
+    scope: string | null
+  ): SubTheme => ({ description, fileCount, scope, title });
 
   test("groups by scope and sums file counts", () => {
     const merged = aggregateSubThemes([

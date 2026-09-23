@@ -118,7 +118,7 @@ const displayChanges = (files: readonly string[]): void => {
  * through unchanged, rather than deleting the field, means the transcript
  * still records which of `apiKey`'s two shapes applied (unset vs. set)
  * without the writer needing special-case knowledge of this one field. */
-const summarizeConfig = (config: ResolvedConfig): Record<string, unknown> => { ...config };
+const summarizeConfig = (config: ResolvedConfig): Record<string, unknown> => ({ ...config });
 
 const HISTORY_PREVIEW_MAX = 50;
 

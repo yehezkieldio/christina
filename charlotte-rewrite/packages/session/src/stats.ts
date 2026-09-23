@@ -92,8 +92,8 @@ export interface Stats {
  * spec defers it to a fast-follow because it needs per-provider pricing
  * data that changes over time.
  */
-export const computeStats = (summaries: readonly RunSummary[]): Stats => {
+export const computeStats = (summaries: readonly RunSummary[]): Stats => ({
   byDay: groupBy(summaries, (summary) => summary.day),
   byModel: groupBy(summaries, (summary) => summary.model),
   byProvider: groupBy(summaries, (summary) => summary.provider),
-};
+});
