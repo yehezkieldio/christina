@@ -12,6 +12,7 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "dev": "turbo run dev",
+    "compile": "bun --filter @charlotte/cli compile",
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "turbo run typecheck",
