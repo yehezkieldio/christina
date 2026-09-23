@@ -1,6 +1,3 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-
 import { suffix } from "bun:ffi";
 
 // Unix crate output has a "lib" prefix; Windows does not.
@@ -11,14 +8,19 @@ const CRATE_DIR = new URL("../../../native/charlotte-core/", import.meta.url);
 const sourceTreePath = new URL(`target/release/${fileName}`, CRATE_DIR)
   .pathname;
 
-/** `bun build --compile`'s output has no `import.meta.url`-relative crate
- * directory to resolve against — `apps/cli/scripts/compile.ts` ships the
- * native library as a sidecar file next to the compiled executable instead,
- * so a `dlopen`-able real path still exists on disk either way. `dlopen`
- * itself is why this can't just embed the library as a bundled asset: it
- * needs a real filesystem path, not Bun's virtual compiled-asset FS. */
-const sidecarPath = path.join(path.dirname(process.execPath), fileName);
+/**
+ * `apps/cli/scripts/compile.ts` generates `./native-lib.generated.ts` right
+ * before invoking `bun build --compile`: a `with { type: "file" }` import of
+ * the current platform's compiled library, the one import shape Bun
+ * materializes to a real on-disk path at runtime — which `dlopen` needs and
+ * Bun's virtual compiled-asset filesystem cannot provide on its own. Running
+ * from source (`bun run`) has no such generated file, so this falls back to
+ * resolving the crate's own build output directly.
+ */
+const embeddedPath = await import("./native-lib.generated")
+  .then((mod) => mod.default)
+  .catch(() => {
+    /* no embedded library in this build; fall back to the source tree */
+  });
 
-export const nativeCoreLibraryPath = existsSync(sidecarPath)
-  ? sidecarPath
-  : sourceTreePath;
+export const nativeCoreLibraryPath = embeddedPath ?? sourceTreePath;
