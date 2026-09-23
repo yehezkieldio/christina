@@ -10,6 +10,8 @@ export const PROVIDERS = [
   "azure-openai",
   "anthropic",
   "google",
+  "groq",
+  "openrouter",
   "openai-compatible",
 ] as const;
 
@@ -47,6 +49,12 @@ export const describeProvider = (provider: Provider): string => {
     }
     case "google": {
       return "Google";
+    }
+    case "groq": {
+      return "Groq";
+    }
+    case "openrouter": {
+      return "OpenRouter";
     }
     case "openai-compatible": {
       return "OpenAI-compatible endpoint";

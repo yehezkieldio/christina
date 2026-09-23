@@ -1,10 +1,12 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createAzure } from "@ai-sdk/azure";
 import { createGoogle } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { assertUnreachable } from "@charlotte/config";
 import type { ResolvedConfig } from "@charlotte/config";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 
 import { optional } from "./optional";
@@ -41,6 +43,17 @@ export const resolveModel = (config: ResolvedConfig): LanguageModel => {
       return createGoogle({ apiKey, ...optional("baseURL", config.apiUrl) })(
         config.model
       );
+    }
+    case "groq": {
+      return createGroq({ apiKey, ...optional("baseURL", config.apiUrl) })(
+        config.model
+      );
+    }
+    case "openrouter": {
+      return createOpenRouter({
+        apiKey,
+        ...optional("baseURL", config.apiUrl),
+      })(config.model);
     }
     case "openai-compatible": {
       if (!config.apiUrl) {
