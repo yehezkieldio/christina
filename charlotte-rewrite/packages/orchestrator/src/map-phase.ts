@@ -3,6 +3,7 @@ import { generateStructured, optional } from "@charlotte/providers";
 import type {
   GenerateStructuredOptions,
   RequestLimiter,
+  RequestUsage,
 } from "@charlotte/providers";
 import { summaryResponseSchema } from "@charlotte/schemas";
 import type { ChunkSummary } from "@charlotte/schemas";
@@ -59,6 +60,7 @@ export interface MapPhaseResult {
   readonly failedFiles: string[];
   readonly promptTokens: number;
   readonly completionTokens: number;
+  readonly requests: RequestUsage[];
 }
 
 /**
@@ -81,6 +83,7 @@ export const mapPhase = async (
   const concurrency = mapConcurrency(chunks.length, options.concurrencyLimit);
   let promptTokens = 0;
   let completionTokens = 0;
+  const requests: RequestUsage[] = [];
 
   type ChunkOutcome =
     | { ok: true; summary: ChunkSummary }
@@ -102,6 +105,7 @@ export const mapPhase = async (
         });
         promptTokens += result.promptTokens;
         completionTokens += result.completionTokens;
+        requests.push(result.usage);
 
         const summary = result.object.summary.trim();
         return {
@@ -152,6 +156,7 @@ export const mapPhase = async (
     failedChunks,
     failedFiles,
     promptTokens,
+    requests,
     summaries,
   };
 };

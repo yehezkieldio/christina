@@ -86,12 +86,25 @@ export const sessionEventSchema = z.discriminatedUnion("type", [
     model: z.string(),
     promptTokens: z.number().int().min(0),
     provider: z.string(),
+    /** Pairs this event with its `response`, per the request-correlation id
+     * `06-providers-and-ai-sdk.md` calls for. The map phase issues several
+     * of these concurrently, so pairing by array order is not reliable. */
+    requestId: z.string(),
     type: z.literal("request"),
   }),
   z.object({
     ...timestamped,
+    /** Subsets of the paired `request` event's `promptTokens`, only known
+     * once the response returns: tokens read from the provider's prompt
+     * cache (billed below a fresh input token) and tokens written into it
+     * on this call (billed above one). Kept apart because they price in
+     * opposite directions — see `08-session-storage-and-stats.md`. Absent
+     * when the provider or call reported no cache usage. */
+    cacheReadTokens: z.number().int().min(0).optional(),
+    cacheWriteTokens: z.number().int().min(0).optional(),
     completionTokens: z.number().int().min(0),
     latencyMs: z.number().min(0),
+    requestId: z.string(),
     type: z.literal("response"),
   }),
   z.object({
@@ -109,6 +122,11 @@ export const sessionEventSchema = z.discriminatedUnion("type", [
     ...timestamped,
     finalMessageLength: z.number().int().min(0),
     outcome: runOutcomeSchema,
+    /** Sums of every `response` event's `cacheReadTokens`/`cacheWriteTokens`
+     * in this run. Optional because a run that predates these fields, or
+     * that made no cached-eligible calls, has nothing to report here. */
+    totalCacheReadTokens: z.number().int().min(0).optional(),
+    totalCacheWriteTokens: z.number().int().min(0).optional(),
     totalCompletionTokens: z.number().int().min(0),
     totalPromptTokens: z.number().int().min(0),
     type: z.literal("run_end"),

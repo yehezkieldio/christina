@@ -163,8 +163,45 @@ interface GenerationContext {
   /** Mutated in place by every `generateOnce` call, including regenerations
    * triggered from `confirmLoop` — `run_end`'s totals need every call's
    * usage summed, not just the last one. */
-  readonly tokenUsage: { promptTokens: number; completionTokens: number };
+  readonly tokenUsage: {
+    promptTokens: number;
+    completionTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  };
 }
+
+/** Writes the `request`/`response` pair for one model call, per
+ * `08-session-storage-and-stats.md`. `usage.startedAt`/`latencyMs` come from
+ * `@charlotte/providers`, the only layer that actually times the call, since
+ * these pairs are written once the whole pipeline stage completes rather
+ * than live as each call happens. The request event's timestamp is that
+ * recorded start time, not the moment this function runs; the response
+ * event's timestamp is derived by adding `latencyMs` to it. */
+const writeRequestUsage = async (
+  writer: SessionWriter,
+  usage: GenerationResult["requests"][number]
+): Promise<void> => {
+  await writer.write({
+    model: usage.model,
+    promptTokens: usage.promptTokens,
+    provider: usage.provider,
+    requestId: usage.requestId,
+    timestamp: usage.startedAt,
+    type: "request",
+  });
+  await writer.write({
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
+    completionTokens: usage.completionTokens,
+    latencyMs: usage.latencyMs,
+    requestId: usage.requestId,
+    timestamp: new Date(
+      new Date(usage.startedAt).getTime() + usage.latencyMs
+    ).toISOString(),
+    type: "response",
+  });
+};
 
 const generateOnce = async (
   ctx: GenerationContext
@@ -221,6 +258,21 @@ const generateOnce = async (
 
   ctx.tokenUsage.promptTokens += result.promptTokens;
   ctx.tokenUsage.completionTokens += result.completionTokens;
+  for (const usage of result.requests) {
+    ctx.tokenUsage.cacheReadTokens += usage.cacheReadTokens;
+    ctx.tokenUsage.cacheWriteTokens += usage.cacheWriteTokens;
+  }
+
+  // `result.requests` is already fully resolved by this point (the model
+  // calls themselves ran concurrently inside the pipeline stage above), so
+  // there is no latency win from firing these writes concurrently too —
+  // sequential keeps `SessionWriter.write`'s per-call schema validation
+  // failures attributable to one line instead of a `Promise.all` batch.
+  // oxlint-disable no-await-in-loop
+  for (const usage of result.requests) {
+    await writeRequestUsage(ctx.writer, usage);
+  }
+  // oxlint-enable no-await-in-loop
 
   // Warnings must print and log in the order the pipeline produced them; the
   // list is a handful of entries at most, so sequential writes cost nothing
@@ -348,7 +400,12 @@ export const runGenerate = async (options: GenerateOptions): Promise<void> => {
 
   let outcome: RunOutcome = "error";
   let finalMessageLength = 0;
-  const tokenUsage = { completionTokens: 0, promptTokens: 0 };
+  const tokenUsage = {
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    completionTokens: 0,
+    promptTokens: 0,
+  };
 
   try {
     const { diff, files } = await writeStage(
@@ -418,6 +475,8 @@ export const runGenerate = async (options: GenerateOptions): Promise<void> => {
       finalMessageLength,
       outcome,
       timestamp: new Date().toISOString(),
+      totalCacheReadTokens: tokenUsage.cacheReadTokens,
+      totalCacheWriteTokens: tokenUsage.cacheWriteTokens,
       totalCompletionTokens: tokenUsage.completionTokens,
       totalPromptTokens: tokenUsage.promptTokens,
       type: "run_end",

@@ -4,6 +4,7 @@ import { generateStructured, optional } from "@charlotte/providers";
 import type {
   GenerateStructuredOptions,
   RequestLimiter,
+  RequestUsage,
 } from "@charlotte/providers";
 import { commitResponseSchema } from "@charlotte/schemas";
 import type { Warning } from "@charlotte/schemas";
@@ -52,6 +53,7 @@ export interface GenerationResult {
   readonly warnings: Warning[];
   readonly promptTokens: number;
   readonly completionTokens: number;
+  readonly requests: RequestUsage[];
 }
 
 const directGeneration = async (
@@ -82,6 +84,7 @@ const directGeneration = async (
     failedFiles: [],
     message: validated.message,
     promptTokens: result.promptTokens,
+    requests: [result.usage],
     salvaged: validated.salvaged,
     totalChunks: 1,
     truncated: false,
@@ -127,6 +130,7 @@ export const generateCommitMessage = async (
       completionTokens: 0,
       fallbackUsed: false,
       promptTokens: 0,
+      requests: [],
       themes: fallbackThemesFromSummaries(mapResult.summaries),
       warnings,
     };
@@ -161,6 +165,11 @@ export const generateCommitMessage = async (
       mapResult.promptTokens +
       intentResult.promptTokens +
       reduceResult.promptTokens,
+    requests: [
+      ...mapResult.requests,
+      ...intentResult.requests,
+      ...reduceResult.requests,
+    ],
     salvaged: reduceResult.salvaged,
     totalChunks: chunks.length,
     truncated: false,
