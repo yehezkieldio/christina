@@ -30,16 +30,20 @@ const collectRunSummaries = async (): Promise<RunSummary[]> => {
 const printGroup = (
   title: string,
   headers: readonly string[],
-  rows: readonly (readonly [string, number, number])[]
+  rows: readonly (readonly [string, number, number, number, number])[]
 ): void => {
   printSection(title);
   printTable(
     headers,
-    rows.map(([key, inputTokens, outputTokens]) => [
-      key,
-      String(inputTokens),
-      String(outputTokens),
-    ])
+    rows.map(
+      ([key, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens]) => [
+        key,
+        String(inputTokens),
+        String(outputTokens),
+        String(cacheReadTokens),
+        String(cacheWriteTokens),
+      ]
+    )
   );
 };
 
@@ -58,24 +62,24 @@ const handleStats = async (): Promise<void> => {
           `${group.key} (${group.runCount} run${group.runCount === 1 ? "" : "s"})`,
           group.inputTokens,
           group.outputTokens,
+          group.cacheReadTokens,
+          group.cacheWriteTokens,
         ] as const
     );
 
-  printGroup(
-    "By day",
-    ["Day", "Input tokens", "Output tokens"],
-    toRows(stats.byDay)
-  );
+  const tokenHeaders = [
+    "Input tokens",
+    "Output tokens",
+    "Cache read tokens",
+    "Cache write tokens",
+  ];
+  printGroup("By day", ["Day", ...tokenHeaders], toRows(stats.byDay));
   printGroup(
     "By provider",
-    ["Provider", "Input tokens", "Output tokens"],
+    ["Provider", ...tokenHeaders],
     toRows(stats.byProvider)
   );
-  printGroup(
-    "By model",
-    ["Model", "Input tokens", "Output tokens"],
-    toRows(stats.byModel)
-  );
+  printGroup("By model", ["Model", ...tokenHeaders], toRows(stats.byModel));
 };
 
 const handleSessionsClean = async (): Promise<void> => {
@@ -100,11 +104,9 @@ export const statsParser = command(
 export const sessionsParser = command(
   "sessions",
   object({
-    action: command(
-      "clean",
-      object({ action: constant("clean") }),
-      { description: message`Prune session files past the retention limit` }
-    ),
+    action: command("clean", object({ action: constant("clean") }), {
+      description: message`Prune session files past the retention limit`,
+    }),
     group: constant("sessions"),
   }),
   { description: message`Session transcript management` }

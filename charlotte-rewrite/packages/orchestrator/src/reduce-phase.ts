@@ -3,6 +3,7 @@ import { generateStructured, optional } from "@charlotte/providers";
 import type {
   GenerateStructuredOptions,
   RequestLimiter,
+  RequestUsage,
 } from "@charlotte/providers";
 import { commitResponseSchema } from "@charlotte/schemas";
 import type { ThemeItem } from "@charlotte/schemas";
@@ -63,6 +64,7 @@ export interface ReducePhaseResult extends ValidatedCommitMessage {
   readonly salvaged: boolean;
   readonly promptTokens: number;
   readonly completionTokens: number;
+  readonly requests: RequestUsage[];
 }
 
 /** Synthesizes the final commit message from themes, then validates it
@@ -94,5 +96,6 @@ export const reducePhase = async (
     ...validated,
     completionTokens: result.completionTokens,
     promptTokens: result.promptTokens,
+    requests: [result.usage],
   };
 };

@@ -8,6 +8,13 @@ export interface RunSummary {
   readonly model: string;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  /** Subsets of `inputTokens` served from, or written into, the provider's
+   * prompt cache. `0` both for a run that reported no cache usage and for
+   * one recorded before these fields existed — the two are
+   * indistinguishable once summed into a group, and neither changes what
+   * the group total means. */
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
 }
 
 const findEvent = <T extends SessionEvent["type"]>(
@@ -37,6 +44,8 @@ export const summarizeRun = (
 
   const firstRequest = findEvent(events, "request");
   return {
+    cacheReadTokens: runEnd.totalCacheReadTokens ?? 0,
+    cacheWriteTokens: runEnd.totalCacheWriteTokens ?? 0,
     day: runStart.timestamp.slice(0, 10),
     inputTokens: runEnd.totalPromptTokens,
     model: firstRequest?.model ?? "unknown",
@@ -51,6 +60,8 @@ export interface StatsGroup {
   readonly runCount: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
 }
 
 const groupBy = (
@@ -59,11 +70,19 @@ const groupBy = (
 ): StatsGroup[] => {
   const totals = new Map<
     string,
-    { runCount: number; inputTokens: number; outputTokens: number }
+    {
+      runCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+    }
   >();
   for (const summary of summaries) {
     const key = keyOf(summary);
     const group = totals.get(key) ?? {
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       inputTokens: 0,
       outputTokens: 0,
       runCount: 0,
@@ -71,6 +90,8 @@ const groupBy = (
     group.runCount += 1;
     group.inputTokens += summary.inputTokens;
     group.outputTokens += summary.outputTokens;
+    group.cacheReadTokens += summary.cacheReadTokens;
+    group.cacheWriteTokens += summary.cacheWriteTokens;
     totals.set(key, group);
   }
   return [...totals.entries()]
@@ -86,10 +107,10 @@ export interface Stats {
 
 /**
  * `charlotte stats`'s grouping logic, per `08-session-storage-and-stats.md`:
- * total input tokens, total output tokens, and a run count, grouped by day,
- * by provider, and by model. Cost estimation is deliberately absent — the
- * spec defers it to a fast-follow because it needs per-provider pricing
- * data that changes over time.
+ * total input tokens, total output tokens, cache read/write tokens, and a
+ * run count, grouped by day, by provider, and by model. Cost estimation is
+ * deliberately absent — the spec defers it to a fast-follow because it
+ * needs per-provider pricing data that changes over time.
  */
 export const computeStats = (summaries: readonly RunSummary[]): Stats => ({
   byDay: groupBy(summaries, (summary) => summary.day),

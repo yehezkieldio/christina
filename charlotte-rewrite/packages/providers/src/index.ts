@@ -2,6 +2,7 @@ export { generateStructured } from "./generate";
 export type {
   GenerateStructuredOptions,
   GenerateStructuredResult,
+  RequestUsage,
 } from "./generate";
 export { resolveModel } from "./model";
 export { optional } from "./optional";

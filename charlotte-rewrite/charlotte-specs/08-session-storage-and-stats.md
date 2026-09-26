@@ -10,7 +10,7 @@ Each run writes one file under the XDG data directory: `~/.local/share/charlotte
 
 ## Event shape
 
-Every line carries a `type` field and a `timestamp` field. Seven event types exist. `run_start` carries a config summary and the repository path. `stage_start` and `stage_end` mark one of the six pipeline stages named in `01-architecture.md`. `request` carries the provider, model, and prompt token count. `response` carries the completion token count and latency. `retry` carries the attempt number and reason. `warning` carries the structured warning data from `07-orchestrator-pipeline.md`. `run_end` carries the outcome, total token usage, and final message length.
+Every line carries a `type` field and a `timestamp` field. Seven event types exist. `run_start` carries a config summary and the repository path. `stage_start` and `stage_end` mark one of the six pipeline stages named in `01-architecture.md`. `request` carries a `requestId`, the provider, model, and prompt token count; `response` carries the same `requestId`, the completion token count, latency, and — when the provider reported either — two subsets of the paired request's prompt tokens: `cacheReadTokens` (served from that provider's prompt cache, e.g. Anthropic's cache reads) and `cacheWriteTokens` (written into it on this call, e.g. Anthropic's cache creation). The two are kept apart rather than folded into one "cached tokens" count because they price in opposite directions — a cache write costs more than a fresh input token, a cache read costs much less — so collapsing them would make a later cost pass wrong in both directions at once. `requestId` is the request-correlation id `06-providers-and-ai-sdk.md` calls for: the map phase issues several calls concurrently, so a `request`/`response` pair cannot be matched by adjacency alone. `retry` carries the attempt number and reason. `warning` carries the structured warning data from `07-orchestrator-pipeline.md`. `run_end` carries the outcome, total token usage (including total cache read/write tokens, when reported), and final message length.
 
 ## Secret handling
 
@@ -18,7 +18,7 @@ No event can carry an API key, a resolved secret value, or the raw diff content 
 
 ## Stats command
 
-`charlotte stats` reads the session files and reports token usage grouped by day, by provider, and by model. A first version needs only total input tokens, total output tokens, and a run count per group. Cost estimation depends on per-provider pricing data, which changes over time, so cost display stays a fast-follow rather than part of the first stats release.
+`charlotte stats` reads the session files and reports token usage grouped by day, by provider, and by model. A first version needs only total input tokens, total output tokens, cache read/write tokens, and a run count per group. Cost estimation depends on per-provider pricing data, which changes over time, so cost display stays a fast-follow rather than part of the first stats release — but the cache read/write split is captured now, not deferred with it, because it cannot be reconstructed after the fact once a session file is written without it: Anthropic bills a cache write above, and a cache read far below, a plain input token, so a later cost pass needs this split already sitting in the transcript.
 
 ## Retention
 

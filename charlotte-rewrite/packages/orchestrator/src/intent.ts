@@ -2,6 +2,7 @@ import { generateStructured, optional } from "@charlotte/providers";
 import type {
   GenerateStructuredOptions,
   RequestLimiter,
+  RequestUsage,
 } from "@charlotte/providers";
 import { themeResponseSchema } from "@charlotte/schemas";
 import type {
@@ -153,6 +154,7 @@ export interface IntentResult {
   readonly warnings: Warning[];
   readonly promptTokens: number;
   readonly completionTokens: number;
+  readonly requests: RequestUsage[];
 }
 
 const extractSubThemes = async (
@@ -162,6 +164,7 @@ const extractSubThemes = async (
   themes: SubTheme[];
   promptTokens: number;
   completionTokens: number;
+  usage: RequestUsage;
 }> => {
   options.signal?.throwIfAborted();
   const prompt = `${buildSystemPrompt()}\n\n${buildIntentPrompt(batch)}`;
@@ -190,6 +193,7 @@ const extractSubThemes = async (
     completionTokens: result.completionTokens,
     promptTokens: result.promptTokens,
     themes,
+    usage: result.usage,
   };
 };
 
@@ -209,6 +213,7 @@ const extractIntentHierarchical = async (
   let promptTokens = 0;
   let completionTokens = 0;
   let anyFallback = false;
+  const requests: RequestUsage[] = [];
 
   const batchResults = await mapWithConcurrency(
     batches,
@@ -219,6 +224,7 @@ const extractIntentHierarchical = async (
         const result = await extractSubThemes(batch, options);
         promptTokens += result.promptTokens;
         completionTokens += result.completionTokens;
+        requests.push(result.usage);
         return result.themes;
       } catch {
         anyFallback = true;
@@ -233,6 +239,7 @@ const extractIntentHierarchical = async (
       completionTokens,
       fallbackUsed: true,
       promptTokens,
+      requests,
       themes: fallbackThemesFromSummaries(summaries),
       warnings: [],
     };
@@ -243,6 +250,7 @@ const extractIntentHierarchical = async (
     completionTokens,
     fallbackUsed: anyFallback,
     promptTokens,
+    requests,
     themes,
     warnings: [],
   };
@@ -293,6 +301,7 @@ export const extractIntent = async (
       completionTokens: result.completionTokens,
       fallbackUsed: false,
       promptTokens: result.promptTokens,
+      requests: [result.usage],
       themes,
       warnings,
     };
@@ -301,6 +310,7 @@ export const extractIntent = async (
       completionTokens: 0,
       fallbackUsed: true,
       promptTokens: 0,
+      requests: [],
       themes: fallbackThemesFromSummaries(summaries),
       warnings,
     };
