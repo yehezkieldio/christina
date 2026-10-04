@@ -38,7 +38,7 @@ read_staged_diff(repo_path: string) -> { diff: string, files: string[] }
 read_commit_history(repo_path: string, depth: number) -> { sha: string, subject: string }[]
 is_binary_content(bytes: Uint8Array, path: string) -> boolean
 count_tokens(text: string) -> number
-chunk_diff(diff: string, token_limit: number, lockfile_token_limit: number) -> Chunk[]
+chunk_diff(diff: Uint8Array, token_limit: number, lockfile_token_limit: number) -> Chunk[]
 ```
 
 `Chunk` is `{ content: string, filePaths: string[] }`, matching the shape of Christina's `ChunkBuffer`.

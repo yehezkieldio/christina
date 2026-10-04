@@ -172,16 +172,28 @@ pub unsafe extern "C" fn count_tokens(text: *const c_char) -> u32 {
     tokenizer::count_tokens(text)
 }
 
-/// `chunk_diff(diff: string, token_limit: number, lockfile_token_limit: number) -> Chunk[]`
+/// `chunk_diff(diff: Uint8Array, token_limit: number, lockfile_token_limit: number) -> Chunk[]`
+///
+/// The diff crosses as pointer plus length, not a C string: a diff can
+/// contain a NUL byte, and a C string would silently end there.
 ///
 /// # Safety
 ///
-/// `diff` must be null, or a valid pointer to a null-terminated C string
-/// that stays valid for the duration of this call.
+/// `diff_ptr` must be null, or a valid pointer to at least `diff_len`
+/// readable bytes that stay valid for the duration of this call.
 #[allow(unsafe_code, reason = "FFI export requires #[unsafe(no_mangle)] on an extern \"C\" fn")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn chunk_diff(diff: *const c_char, token_limit: u32, lockfile_token_limit: u32) -> *mut c_char {
-    let Some(diff) = borrow_str(diff) else {
+pub unsafe extern "C" fn chunk_diff(diff_ptr: *const u8, diff_len: u64, token_limit: u32, lockfile_token_limit: u32) -> *mut c_char {
+    let bytes: &[u8] = match usize::try_from(diff_len) {
+        Ok(0) | Err(_) => &[],
+        Ok(_) if diff_ptr.is_null() => &[],
+        #[allow(unsafe_code, reason = "the function's own # Safety section requires diff_ptr to point to at least diff_len valid, readable bytes")]
+        // SAFETY: `diff_ptr` is non-null in this arm, and the safety contract
+        // requires it to point to at least `diff_len` readable bytes for the
+        // duration of this call.
+        Ok(len) => unsafe { std::slice::from_raw_parts(diff_ptr, len) },
+    };
+    let Ok(diff) = std::str::from_utf8(bytes) else {
         return to_error_ptr("diff must be a valid UTF-8 string");
     };
     let chunks = chunking::chunk_diff(diff, token_limit, lockfile_token_limit);

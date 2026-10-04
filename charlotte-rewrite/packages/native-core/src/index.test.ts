@@ -46,6 +46,12 @@ test("chunkDiff returns a single chunk for a small diff", () => {
   expect(chunks[0]?.filePaths).toEqual(["file.txt"]);
 });
 
+test("chunkDiff keeps content after an embedded NUL byte", () => {
+  const diff = "diff --git a/file.txt b/file.txt\n@@ -0,0 +1 @@\n+a\0b\n";
+  const chunks = chunkDiff(diff, 10_000, 100);
+  expect(chunks[0]?.content).toContain("b\n");
+});
+
 test("chunkDiff returns nothing for an empty diff", () => {
   expect(chunkDiff("", 1000, 100)).toEqual([]);
 });

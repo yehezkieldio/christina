@@ -61,12 +61,32 @@ pub struct Chunk {
     pub file_paths: Vec<String>,
 }
 
+/// One file's diff before token counting. Counting is deferred until after
+/// truncation so the tokenizer never sees bytes that are about to be cut, and
+/// never runs at all when a byte-length bound already proves the diff fits.
+#[derive(Debug, Clone)]
+struct RawFile {
+    path: String,
+    content: String,
+}
+
 #[derive(Debug, Clone)]
 struct FileDiff {
     path: String,
     content: String,
     token_count: TokenCount,
 }
+
+/// A BPE token spans at least one byte, so `content.len()` is an upper bound
+/// on its token count. This is what lets small diffs skip the tokenizer.
+fn fits_by_byte_bound(byte_len: usize, limit: TokenCount) -> bool {
+    byte_len <= limit.get() as usize
+}
+
+/// Bytes of a lockfile examined per token of its limit. A lockfile line is far
+/// denser than this in practice, so the prefix always contains more than
+/// `limit` tokens when the full file does.
+const LOCKFILE_PREFIX_BYTES_PER_TOKEN: usize = 64;
 
 fn is_lockfile(path: &str) -> bool {
     let basename = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
@@ -97,7 +117,7 @@ fn parse_git_diff_header(line: &str) -> Option<String> {
     Some(stripped.to_string())
 }
 
-fn split_by_files(diff: &str) -> Vec<FileDiff> {
+fn split_by_files(diff: &str) -> Vec<RawFile> {
     let mut positions = Vec::new();
     let mut offset = 0usize;
     for line in diff.split_inclusive('\n') {
@@ -128,8 +148,7 @@ fn split_by_files(diff: &str) -> Vec<FileDiff> {
             raw_content.to_string()
         };
 
-        let token_count = TokenCount::new_at_least_one(tokenizer::count_tokens(&content));
-        files.push(FileDiff { path, content, token_count });
+        files.push(RawFile { path, content });
     }
 
     files
@@ -290,6 +309,12 @@ fn split_by_hunks(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
 
     let mut chunks = Vec::new();
     let mut buffer = header.to_string();
+    // Running estimate of `buffer`'s tokens: the sum of each part's own count.
+    // A merge across the `\n` + `@@` joint can only make the true count a
+    // token or so lower than the sum, which errs toward smaller chunks, the
+    // safe direction for a size limit. Re-encoding the whole buffer per hunk
+    // made this loop quadratic in tokens.
+    let mut buffer_tokens = header_tokens.get();
 
     for (i, &hunk_start) in hunk_positions.iter().enumerate() {
         let hunk_end = hunk_positions.get(i + 1).copied().unwrap_or(content.len());
@@ -300,31 +325,22 @@ fn split_by_hunks(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
             if !buffer.is_empty() {
                 chunks.push(Chunk { content: std::mem::take(&mut buffer), file_paths: vec![file_path.to_string()] });
             }
+            buffer_tokens = 0;
             chunks.extend(split_by_lines(file_path, hunk, token_limit));
             continue;
         }
 
-        // Append then measure, rolling back with `truncate` (O(1), no
-        // reallocation) instead of building a fresh `format!`-allocated
-        // candidate every hunk. The previous version copied the entire
-        // accumulated `buffer` on every iteration regardless of whether the
-        // candidate was kept, making a chunk group with `k` hunks O(k^2) in
-        // copying; this reuses `buffer`'s own growth, giving the same
-        // amortized O(k) that `split_recursive` already relies on elsewhere
-        // in this module.
-        let mark = buffer.len();
-        buffer.push('\n');
-        buffer.push_str(hunk);
-        let candidate_tokens = TokenCount::new_at_least_one(tokenizer::count_tokens(&buffer)).get();
-
+        let candidate_tokens = buffer_tokens.saturating_add(solo_tokens);
         if candidate_tokens > token_limit.get() {
-            buffer.truncate(mark);
             if !buffer.is_empty() {
                 chunks.push(Chunk { content: std::mem::take(&mut buffer), file_paths: vec![file_path.to_string()] });
             }
-            buffer.push('\n');
-            buffer.push_str(hunk);
+            buffer_tokens = solo_tokens;
+        } else {
+            buffer_tokens = candidate_tokens;
         }
+        buffer.push('\n');
+        buffer.push_str(hunk);
     }
 
     if !buffer.is_empty() {
@@ -548,20 +564,31 @@ pub fn chunk_diff(diff: &str, token_limit: u32, lockfile_token_limit: u32) -> Ve
     let token_limit = TokenCount::new_at_least_one(token_limit);
     let lockfile_token_limit = TokenCount::new_at_least_one(lockfile_token_limit);
 
-    let mut file_diffs = split_by_files(diff);
-    for file_diff in &mut file_diffs {
-        if is_deletion_only(&file_diff.content) {
-            let limit = deletion_line_limit(file_diff.content.len());
-            file_diff.content = truncate_deletion_diff(&file_diff.content, limit);
-            file_diff.token_count = TokenCount::new_at_least_one(tokenizer::count_tokens(&file_diff.content));
+    let mut raw_files = split_by_files(diff);
+    for file in &mut raw_files {
+        if is_deletion_only(&file.content) {
+            let limit = deletion_line_limit(file.content.len());
+            file.content = truncate_deletion_diff(&file.content, limit);
         }
-        if is_lockfile(&file_diff.path) && file_diff.token_count.get() > lockfile_token_limit.get() {
-            let mut truncated = truncate_to_token_limit(&file_diff.content, lockfile_token_limit);
-            truncated.push_str("\n[... truncated lockfile ...]\n");
-            file_diff.content = truncated;
-            file_diff.token_count = TokenCount::new_at_least_one(tokenizer::count_tokens(&file_diff.content));
+        if is_lockfile(&file.path) {
+            file.content = truncate_lockfile(std::mem::take(&mut file.content), lockfile_token_limit);
         }
     }
+
+    let total_bytes: usize = raw_files.iter().map(|f| f.content.len()).sum();
+    if fits_by_byte_bound(total_bytes, token_limit) {
+        let content = raw_files.iter().map(|f| f.content.as_str()).collect::<String>();
+        let files = raw_files.into_iter().map(|f| f.path).collect();
+        return vec![Chunk { content, file_paths: files }];
+    }
+
+    let file_diffs: Vec<FileDiff> = raw_files
+        .into_iter()
+        .map(|f| {
+            let token_count = TokenCount::new_at_least_one(tokenizer::count_tokens(&f.content));
+            FileDiff { path: f.path, content: f.content, token_count }
+        })
+        .collect();
 
     let total_tokens: u32 = file_diffs.iter().map(|f| f.token_count.get()).sum();
     if total_tokens <= token_limit.get() {
@@ -571,6 +598,24 @@ pub fn chunk_diff(diff: &str, token_limit: u32, lockfile_token_limit: u32) -> Ve
     }
 
     split_recursive(file_diffs, token_limit)
+}
+
+/// Truncates a lockfile diff to `limit` tokens, tokenizing at most a bounded
+/// prefix. Lockfile diffs are routinely the largest file in a commit, and the
+/// limit is small, so encoding the whole file only to discard most of it was
+/// the dominant tokenizer cost.
+fn truncate_lockfile(content: String, limit: TokenCount) -> String {
+    if fits_by_byte_bound(content.len(), limit) {
+        return content;
+    }
+    let prefix_bytes = (limit.get() as usize).saturating_mul(LOCKFILE_PREFIX_BYTES_PER_TOKEN);
+    let prefix = safe_truncate(&content, prefix_bytes);
+    if prefix.len() == content.len() && tokenizer::count_tokens(prefix) <= limit.get() {
+        return content;
+    }
+    let mut truncated = truncate_to_token_limit(prefix, limit);
+    truncated.push_str("\n[... truncated lockfile ...]\n");
+    truncated
 }
 
 #[cfg(test)]
@@ -635,6 +680,47 @@ mod tests {
         let chunks = chunk_diff(&diff, 10_000, 20);
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].content.contains("[... truncated lockfile ...]"));
+    }
+
+    #[test]
+    fn small_diff_below_byte_bound_is_one_chunk() {
+        let diff = sample_hunk("a.txt", &["+a"]);
+        let chunks = chunk_diff(&diff, u32::try_from(diff.len()).unwrap_or(0), 100);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].content, diff);
+    }
+
+    #[test]
+    fn lockfile_over_limit_is_truncated_from_a_bounded_prefix() {
+        let body: Vec<String> = (0..5000).map(|i| format!("+dependency-{i} = \"1.{i}.0\"")).collect();
+        let refs: Vec<&str> = body.iter().map(String::as_str).collect();
+        let diff = sample_hunk("Cargo.lock", &refs);
+        let chunks = chunk_diff(&diff, 1_000_000, 100);
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].content.contains("[... truncated lockfile ...]"));
+        assert!(chunks[0].content.len() < 100 * LOCKFILE_PREFIX_BYTES_PER_TOKEN + 64);
+    }
+
+    #[test]
+    fn lockfile_under_limit_is_untouched() {
+        let diff = sample_hunk("Cargo.lock", &["+a = 1"]);
+        let chunks = chunk_diff(&diff, 1_000_000, 10_000);
+        assert_eq!(chunks[0].content, diff);
+    }
+
+    #[test]
+    fn many_hunks_split_into_chunks_within_limit() {
+        let lines: Vec<String> = (0..200).map(|i| format!("+line number {i} with some text")).collect();
+        let mut diff = sample_header("big.rs");
+        for hunk in lines.chunks(5) {
+            diff.push_str("\n@@ -1,1 +1,5 @@\n");
+            diff.push_str(&hunk.join("\n"));
+        }
+        let chunks = chunk_diff(&diff, 120, 100);
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert!(tokenizer::count_tokens(&chunk.content) <= 125, "chunk exceeds limit plus joint slack");
+        }
     }
 
     #[test]

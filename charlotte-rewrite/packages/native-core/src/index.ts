@@ -13,7 +13,7 @@ const { symbols } = dlopen(nativeCoreLibraryPath, {
     returns: FFIType.void,
   },
   chunk_diff: {
-    args: [FFIType.cstring, FFIType.u32, FFIType.u32],
+    args: [FFIType.ptr, FFIType.u64, FFIType.u32, FFIType.u32],
     returns: FFIType.ptr,
   },
   count_tokens: {
@@ -129,6 +129,8 @@ export const isBinaryContent = (bytes: Uint8Array, path: string): boolean => {
 // returns 0, not an error, for input the native side cannot read.
 export const countTokens = (text: string): number => symbols.count_tokens(text);
 
+const textEncoder = new TextEncoder();
+
 export interface Chunk {
   readonly content: string;
   readonly filePaths: readonly string[];
@@ -139,8 +141,16 @@ export const chunkDiff = (
   tokenLimit: number,
   lockfileTokenLimit: number
 ): Chunk[] => {
+  // Pointer plus length, not a C string: a diff containing a NUL byte would be
+  // cut at that byte. `bytes` stays referenced until the call returns.
+  const bytes = textEncoder.encode(diff);
   const rawPtr = assertPointer(
-    symbols.chunk_diff(diff, tokenLimit, lockfileTokenLimit),
+    symbols.chunk_diff(
+      bytes.length === 0 ? null : ptr(bytes),
+      BigInt(bytes.length),
+      tokenLimit,
+      lockfileTokenLimit
+    ),
     "chunk_diff returned a null pointer"
   );
   return readJson<Chunk[]>(rawPtr);
