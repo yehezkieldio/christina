@@ -1,10 +1,8 @@
 import { styleText } from "node:util";
 
 /**
- * The five named styles from `christina/src/ui/mod.rs` and
- * `ui-extractable/src/primitive/mod.rs`. `node:util`'s `styleText` degrades
- * to plain text when `NO_COLOR` is set or stdout is not a TTY, matching
- * `console::Style`'s own auto-detection, so callers never need to check
+ * The five named styles. `node:util`'s `styleText` degrades to plain text
+ * when `NO_COLOR` is set or stdout is not a TTY, so callers never need to check
  * `process.stdout.isTTY` themselves.
  */
 export const styles = {

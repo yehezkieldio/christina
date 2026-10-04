@@ -13,8 +13,8 @@ export const PIPELINE_STAGES = [
 export const pipelineStageSchema = z.enum(PIPELINE_STAGES);
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
-/** Structured warning data, per the open decision in
- * `07-orchestrator-pipeline.md`: the orchestrator returns this shape, not a
+/** Structured warning data (see `07-orchestrator-pipeline.md`): the
+ * orchestrator returns this shape, not a
  * pre-formatted display string, so both the CLI and the transcript can
  * render it their own way. */
 export const warningSchema = z.discriminatedUnion("kind", [
@@ -34,9 +34,8 @@ export const warningSchema = z.discriminatedUnion("kind", [
     stage: pipelineStageSchema,
   }),
   /** Two chunk summaries described opposing actions (e.g. "add" and
-   * "remove") on the same change set. Ported from Christina's
-   * `detect_contradictions`, which only logs; Charlotte surfaces it as
-   * structured data instead so the CLI and transcript can both render it. */
+   * "remove") on the same change set. Structured so the CLI and transcript
+   * can both render it. */
   z.object({
     action: z.string(),
     counteraction: z.string(),

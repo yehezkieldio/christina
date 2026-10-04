@@ -1,7 +1,6 @@
 import type { CommitValidationMode } from "@charlotte/config";
 
-/** Matches Christina's `CONVENTIONAL_COMMIT_PATTERN`
- * (`christina-core/src/types/commit.rs`): `type(scope)?!?: description`. */
+/** `type(scope)?!?: description` */
 const CONVENTIONAL_COMMIT_PATTERN =
   /^[A-Za-z]+(?<scope>\([A-Za-z0-9._/@-]+\))?!?:\s*\S.*$/u;
 
@@ -19,10 +18,10 @@ export interface ValidatedCommitMessage {
   readonly warnings: readonly string[];
 }
 
-/** Ported from Christina's `CommitMessage::validate`: non-empty, single
- * line, matches the Conventional Commits pattern, and respects `maxLength`
- * according to `mode` (`strict` rejects, `soft` warns, `disabled` skips the
- * length check entirely). */
+/** Validates that the message is non-empty, single line, matches the
+ * Conventional Commits pattern, and respects `maxLength` according to `mode`
+ * (`strict` rejects, `soft` warns, `disabled` skips the length check
+ * entirely). */
 export const validateCommitMessage = (
   value: string,
   mode: CommitValidationMode,
@@ -63,7 +62,7 @@ export const validateCommitMessage = (
 
 /** When the raw message doesn't validate as-is, scans for a `type: desc`
  * shaped substring around each colon and returns the earliest one that
- * does validate. Ported from Christina's `try_extract_valid_commit`. */
+ * does validate. */
 export const tryExtractValidCommit = (
   message: string,
   mode: CommitValidationMode,
@@ -76,6 +75,9 @@ export const tryExtractValidCommit = (
     pos !== -1;
     pos = message.indexOf(":", pos + 1)
   ) {
+    // Look back at most 50 characters from each colon: enough to cover a
+    // `type(scope)!` prefix, short enough that preamble prose before it is
+    // not swallowed into the candidate.
     const start = Math.max(0, pos - 50);
     let candidate = message.slice(start).trimStart();
     const end = candidate.indexOf("\n");
@@ -95,9 +97,8 @@ export const tryExtractValidCommit = (
   return earliest?.candidate;
 };
 
-/** Combines direct validation with the salvage fallback, matching
- * Christina's `validate_commit_message`: try the raw message first, then
- * try to salvage a valid substring, then give up. */
+/** Combines direct validation with the salvage fallback: try the raw
+ * message first, then try to salvage a valid substring, then give up. */
 export const validateOrSalvage = (
   message: string,
   mode: CommitValidationMode,

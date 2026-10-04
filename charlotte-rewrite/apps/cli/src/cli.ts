@@ -3,9 +3,7 @@ import { optional } from "@charlotte/providers";
 import { printError } from "@charlotte/ui";
 import {
   constant,
-  map,
   message,
-  multiple,
   object,
   optional as optionalParser,
   option,
@@ -26,11 +24,6 @@ import {
   statsParser,
 } from "./commands/stats";
 
-/**
- * `-v`/`--verbose` is declared for parity with Christina's `ArgAction::Count`
- * flag (`christina/src/cli/mod.rs`), but nothing downstream reads its value
- * — matches the pre-migration `commander` CLI, which had the same gap.
- */
 const generateParser = object({
   context: optionalParser(option("-c", "--context", string())),
   dryRun: option("--dry-run", {
@@ -40,7 +33,9 @@ const generateParser = object({
   trace: option("--trace", {
     description: message`Enable full pipeline tracing with detailed telemetry output`,
   }),
-  verbosity: map(multiple(option("-v", "--verbose")), (flags) => flags.length),
+  verbose: option("-v", "--verbose", {
+    description: message`Print the chunk count and per-request model usage`,
+  }),
   yes: option("--yes", {
     description: message`Skip interactive confirmations (non-interactive mode)`,
   }),
@@ -78,6 +73,7 @@ const dispatch = async (result: CliResult): Promise<void> => {
       await runGenerate({
         dryRun: result.dryRun,
         trace: result.trace,
+        verbose: result.verbose,
         yes: result.yes,
         ...optional("context", result.context),
       });

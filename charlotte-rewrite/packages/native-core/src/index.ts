@@ -118,10 +118,15 @@ export const readCommitHistory = (
 };
 
 export const isBinaryContent = (bytes: Uint8Array, path: string): boolean => {
+  // Null for an empty buffer: the native side treats null and zero length
+  // the same, so no pointer into a zero-length array is ever handed over.
   const bufferPtr = bytes.length === 0 ? null : ptr(bytes);
   return symbols.is_binary_content(bufferPtr, BigInt(bytes.length), path);
 };
 
+// String arguments cross as C strings, which end at the first NUL byte: text
+// after an embedded NUL is invisible to the native side. `countTokens` also
+// returns 0, not an error, for input the native side cannot read.
 export const countTokens = (text: string): number => symbols.count_tokens(text);
 
 export interface Chunk {

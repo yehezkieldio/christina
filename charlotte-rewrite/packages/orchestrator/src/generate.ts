@@ -21,9 +21,8 @@ import { buildDirectPrompt, buildSystemPrompt } from "./prompt";
 import type { PromptContext } from "./prompt";
 import { cleanResponse, reducePhase } from "./reduce-phase";
 
-/** Below this summary count, intent extraction is skipped entirely and
- * `fallbackThemesFromSummaries` runs directly — matches Christina's
- * `MAX_SUMMARIES_WITHOUT_INTENT`. */
+/** At or below this summary count, intent extraction is skipped entirely and
+ * `fallbackThemesFromSummaries` runs directly. */
 const MAX_SUMMARIES_WITHOUT_INTENT = 3;
 
 export interface GenerateCommitMessageOptions {
@@ -42,9 +41,7 @@ export interface GenerationResult {
   /** Always `false` at this layer: diff truncation is a
    * `05-diff-processing-and-chunking.md` concern the native core already
    * resolved before chunks reach the orchestrator, not something this
-   * pipeline recomputes. Kept on the result shape for parity with
-   * Christina's `GenerationResult` and for a future caller that wants to
-   * thread native-core truncation flags through. */
+   * pipeline recomputes. */
   readonly truncated: boolean;
   readonly salvaged: boolean;
   readonly failedChunks: number;
@@ -94,8 +91,7 @@ const directGeneration = async (
 
 /**
  * Generates a Conventional Commit message from already-chunked diff
- * content. Ported from Christina's
- * `generate_commit_message_with_trace_and_cancellation`: an empty chunk
+ * content. An empty chunk
  * list is a caller error, a single chunk skips straight to direct
  * generation, and everything else runs map → (intent) → reduce.
  */

@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import path from "node:path";
 
-/** OS-appropriate XDG-style config directory, matching Christina's layout:
+/** OS-appropriate XDG-style config directory:
  * `~/.config/charlotte` on Linux and macOS, `%APPDATA%\charlotte` on Windows. */
 export const configDir = (
   env: Readonly<Record<string, string | undefined>> = process.env

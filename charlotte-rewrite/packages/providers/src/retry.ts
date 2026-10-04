@@ -1,8 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 /**
- * Exponential backoff with full jitter, ported from Christina's
- * `christina/src/orchestrator/retry.rs`. Full jitter (delay uniformly
+ * Exponential backoff with full jitter. Full jitter (delay uniformly
  * sampled from `[0, base * 2^attempt]`, not a fixed exponential value)
  * spreads out retries after a simultaneous failure instead of having every
  * caller retry at exactly the same instants.
@@ -28,8 +27,7 @@ export const createRetryPolicy = (
 });
 
 /** A source of numbers in `[0, 1)`. Defaults to `Math.random`; tests pass a
- * seeded generator so retry-delay assertions are deterministic, matching
- * Christina's `calculate_delay_with_seed` pattern. */
+ * seeded generator so retry-delay assertions are deterministic. */
 export type RandomSource = () => number;
 
 export const calculateDelayMs = (

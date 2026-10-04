@@ -1,6 +1,5 @@
 /**
- * Matches Christina's `CommitHistoryProvider` trait
- * (`christina/src/generate.rs`). This file deliberately has no dependency
+ * Source of recent commit subjects. This file deliberately has no dependency
  * on `./index` (the `bun:ffi` loader): `@charlotte/orchestrator`'s tests
  * import `FakeCommitHistoryProvider` from here so they can run without
  * loading the native module at all, per `04-git-integration.md`. The

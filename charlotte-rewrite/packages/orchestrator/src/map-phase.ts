@@ -11,12 +11,12 @@ import type { ChunkSummary } from "@charlotte/schemas";
 import { mapWithConcurrency } from "./concurrency";
 import { buildChunkSummaryPrompt, buildSystemPrompt } from "./prompt";
 
-/** Below this chunk count, map concurrency is just the chunk count (capped
- * at 3); at or above it, Christina's `MAX_CONCURRENT_REQUESTS` applies. */
+/** At or below this chunk count, map concurrency is just the chunk count;
+ * above it, `MAX_CONCURRENT_REQUESTS` applies. */
 const SMALL_BATCH_THRESHOLD = 3;
 const MAX_CONCURRENT_REQUESTS = 5;
 
-/** Matches Christina's `map_concurrency`. */
+/** Chunk summaries to run at once, bounded by `concurrencyLimit`. */
 export const mapConcurrency = (
   chunkCount: number,
   concurrencyLimit: number
@@ -29,8 +29,7 @@ export const mapConcurrency = (
 };
 
 /** Builds a readable fallback summary directly from file names when a
- * chunk's model call fails, or returns an empty/unusable summary. Ported
- * from Christina's `fallback_summary_from_files`. */
+ * chunk's model call fails, or returns an empty/unusable summary. */
 export const fallbackSummaryFromFiles = (files: readonly string[]): string => {
   if (files.length === 0) {
     return "Update staged files";
@@ -65,14 +64,12 @@ export interface MapPhaseResult {
 
 /**
  * Summarizes every chunk concurrently, tolerating per-chunk failure up to
- * `maxPartialFailureRate`. Ported from Christina's `map_phase`.
+ * `maxPartialFailureRate`.
  *
- * Simplification: Christina fast-aborts on a detected "systemic" failure
- * (auth/rate-limit errors that would doom every remaining call) before the
- * failure-rate threshold is even reached. This port only checks the
- * failure-rate threshold and the all-failed case; a systemic-failure
- * fast-path can be added once `@charlotte/providers` exposes an error
- * classification to check against.
+ * Only the failure-rate threshold and the all-failed case stop the run. A
+ * systemic failure (auth or rate-limit errors that doom every remaining
+ * call) is not detected early, because `@charlotte/providers` exposes no
+ * error classification to check against.
  */
 export const mapPhase = async (
   chunks: readonly Chunk[],
@@ -119,6 +116,11 @@ export const mapPhase = async (
           },
         };
       } catch {
+        // Any failure, including an abort, becomes a failed chunk so the
+        // failure-rate check below decides the outcome. The caller's
+        // `throwIfAborted` after this phase is what surfaces a cancellation.
+        // The token counters above are shared across workers: that is safe
+        // only because each `+=` runs with no `await` between read and write.
         return { files: chunk.filePaths, ok: false };
       }
     }

@@ -2,7 +2,7 @@ import type { ChunkSummary, ThemeItem } from "@charlotte/schemas";
 
 /** Free-text context supplied by the operator (`--context`) and/or the
  * trimmed commit-history window, appended identically to every stage's
- * prompt — mirrors how Christina's `PromptBuilder` layers these on. */
+ * prompt. */
 export interface PromptContext {
   readonly userContext?: string;
   readonly historyContext?: string;

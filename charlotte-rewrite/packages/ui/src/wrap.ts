@@ -1,5 +1,4 @@
-/** Greedy word wrap, ported from `wrap_text` in `christina/src/ui/mod.rs`
- * and `ui-extractable/src/primitive/mod.rs`. A blank input line stays a
+/** Greedy word wrap. A blank input line stays a
  * blank output line rather than being dropped, so callers can render it as
  * an empty bordered row. */
 export const wrapText = (text: string, width: number): string[] => {

@@ -1,8 +1,6 @@
 /**
  * Runs `fn` over `items` with at most `limit` calls in flight at once,
- * replacing Christina's semaphore-bounded `buffer_unordered` stream
- * (`christina/src/orchestrator/mod.rs`'s `map_phase`) with a plain
- * `Promise`-based limiter, per `07-orchestrator-pipeline.md`.
+ * using plain `Promise`-based workers, per `07-orchestrator-pipeline.md`.
  */
 export const mapWithConcurrency = async <T, R>(
   items: readonly T[],

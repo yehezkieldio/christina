@@ -1,26 +1,18 @@
-//! Diff chunking, ported from Christina's
-//! `christina-core/src/processing/chunking.rs` (`split_recursive` and the
-//! hunk/line/token-span fallback chain) and `christina/src/git/parsing.rs`
-//! (file-header splitting and deletion-only truncation). Per
-//! `02-native-core-and-ffi.md`, this module's only externally relevant
-//! entry point is [`chunk_diff`]; everything else is an internal step in
-//! that pipeline.
+//! Diff chunking. The only externally relevant entry point is [`chunk_diff`]
+//! (see `02-native-core-and-ffi.md`); everything else is an internal step in
+//! that pipeline: split by file, pack files into chunks, and fall back from
+//! hunk to line to raw token span when a single piece exceeds the limit.
 //!
-//! Simplification (open decision in `05-diff-processing-and-chunking.md`):
-//! Christina pools `ChunkBuffer` allocations across recursive splits
-//! (`acquire_buffer`/`release_buffer`) to cut allocation overhead. This
-//! port allocates plain `String`/`Vec` values instead. The FFI boundary's
-//! own JSON serialization cost likely dominates the runtime here anyway;
-//! reintroduce pooling only if a benchmark on a representative large diff
-//! shows it matters.
+//! Buffers are plain `String`/`Vec` values, not pooled across recursive
+//! splits. The FFI boundary's JSON serialization cost likely dominates the
+//! runtime, so add pooling only if a benchmark on a representative large
+//! diff shows it matters.
 //!
-//! Simplification: `02-native-core-and-ffi.md`'s `chunk_diff` signature
-//! takes a single `lockfile_token_limit`, not Christina's caller-supplied
-//! `ignore_patterns` list (`03-config-and-profiles.md`'s config-driven
-//! patterns apply at a higher layer in Charlotte, not inside the native
-//! core). This module instead recognizes a fixed set of common lockfile
-//! basenames directly, matching the spirit of Christina's "lockfile"
-//! special-casing without threading a pattern list across the FFI edge.
+//! `chunk_diff` takes a single `lockfile_token_limit` rather than a list of
+//! ignore patterns: config-driven patterns apply at a higher layer in
+//! Charlotte, not inside the native core. This module instead recognizes a
+//! fixed set of common lockfile basenames directly, so no pattern list
+//! crosses the FFI edge.
 
 // Offset/length arithmetic throughout this module operates on `usize`
 // lengths and indices of a diff already loaded into memory as a `String`
@@ -37,11 +29,11 @@
 
 use crate::tokenizer::{self, TokenCount};
 
-/// Matches Christina's `LOCKFILE_TOKEN_LIMIT` default: preserves the "a
-/// lockfile changed" signal without spending prompt budget on
-/// auto-generated noise. `chunk_diff`'s FFI signature takes this value from
-/// the caller rather than defaulting it here — `@charlotte/config`'s schema
-/// owns the real default — so this constant only exists for tests below.
+/// A small lockfile budget preserves the "a lockfile changed" signal without
+/// spending prompt budget on auto-generated noise. `chunk_diff`'s FFI
+/// signature takes this value from the caller rather than defaulting it
+/// here — `@charlotte/config`'s schema owns the real default — so this
+/// constant only exists for tests below.
 #[cfg(test)]
 const DEFAULT_LOCKFILE_TOKEN_LIMIT: u32 = 100;
 
@@ -59,8 +51,7 @@ const KNOWN_LOCKFILE_BASENAMES: &[&str] = &[
 ];
 
 const FILE_HEADER: &str = "diff --git ";
-/// Per-file cap keeps one pathological file diff from dominating memory,
-/// matching Christina's `MAX_FILE_DIFF_SIZE`.
+/// Per-file cap keeps one pathological file diff from dominating memory.
 const MAX_FILE_DIFF_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -94,10 +85,9 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
 }
 
 /// Extracts the destination (`b/`) path from a `diff --git a/... b/...`
-/// header line. Simplified from Christina's `parse_git_diff_header`: this
-/// port handles the common unquoted-path case (the overwhelming majority of
-/// real diffs) and skips the quoted/escaped-path edge case for paths
-/// containing spaces or control characters.
+/// header line. Handles only the common unquoted-path case (the overwhelming
+/// majority of real diffs); the quoted/escaped form git uses for paths with
+/// spaces or control characters is not parsed.
 fn parse_git_diff_header(line: &str) -> Option<String> {
     let after_git = line.trim().strip_prefix(FILE_HEADER)?;
     let mut parts = after_git.split_whitespace();
@@ -160,8 +150,7 @@ fn is_deletion_only(content: &str) -> bool {
 }
 
 /// Truncates a deletion-only diff to `max_deletion_lines` deletion lines per
-/// hunk, keeping every metadata line. Ported from Christina's
-/// `truncate_deletion_diff`.
+/// hunk, keeping every metadata line.
 fn truncate_deletion_diff(content: &str, max_deletion_lines: usize) -> String {
     let mut result = String::new();
     let mut deletion_lines_shown = 0usize;
@@ -222,15 +211,13 @@ fn truncate_deletion_diff(content: &str, max_deletion_lines: usize) -> String {
 }
 
 /// The two-tier deletion-line cap: a very large deletion-only diff (≥500 KB)
-/// keeps more lines of context (100) than a smaller one (50), matching
-/// Christina's `process`/`process_file_diff`.
+/// keeps more lines of context (100) than a smaller one (50).
 fn deletion_line_limit(content_len: usize) -> usize {
     if content_len >= 500 * 1024 { 100 } else { 50 }
 }
 
 /// Truncates `content` to at most `limit` tokens, preferring to land on a
-/// line boundary when that only costs a small amount of budget. Ported from
-/// Christina's `truncate_to_token_limit`.
+/// line boundary when that only costs a small amount of budget.
 fn truncate_to_token_limit(content: &str, limit: TokenCount) -> String {
     let tokens = tokenizer::encode(content);
     if tokens.len() <= limit.get() as usize {
@@ -242,6 +229,10 @@ fn truncate_to_token_limit(content: &str, limit: TokenCount) -> String {
     };
     match tokenizer::decode(truncated_tokens) {
         Some(mut result) => {
+            // Cutting mid-line leaves a dangling half statement in the prompt, so
+            // snap back to the last newline, but only if that keeps at least 80%
+            // of the budget. The kept size is estimated from byte proportion, not
+            // re-tokenized, to avoid a second tokenizer pass on a large diff.
             if let Some(last_newline) = result.rfind('\n') {
                 let line_slice = &result[..=last_newline];
                 let line_token_count = line_slice.len() * limit.get() as usize / result.len().max(1);
@@ -272,7 +263,7 @@ fn truncate_to_token_limit_fallback(content: &str, limit: TokenCount) -> String 
 
 /// Splits a single file's diff by hunk (`@@`), falling back to line-level
 /// splitting when a single hunk (or the file header itself) exceeds the
-/// token limit. Ported from Christina's `split_by_hunks`.
+/// token limit.
 fn split_by_hunks(file_path: &str, content: &str, token_limit: TokenCount) -> Vec<Chunk> {
     const HUNK_HEADER: &str = "\n@@";
 
@@ -284,6 +275,9 @@ fn split_by_hunks(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
         return split_by_lines(file_path, content, token_limit);
     }
 
+    // `+ 1` skips the leading `\n` of the match so each hunk starts at its `@@`.
+    // The separator is re-added when hunks are joined below, and is counted in
+    // `solo_tokens`, so measured sizes match what is actually emitted.
     let hunk_positions: Vec<usize> = content.match_indices(HUNK_HEADER).map(|(idx, _)| idx + 1).collect();
 
     if hunk_positions.is_empty() {
@@ -341,7 +335,7 @@ fn split_by_hunks(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
 }
 
 /// Splits content line by line, the second-to-last resort before splitting
-/// a single oversized line. Ported from Christina's `split_by_lines`.
+/// a single oversized line.
 fn split_by_lines(file_path: &str, content: &str, token_limit: TokenCount) -> Vec<Chunk> {
     let mut chunks = Vec::new();
     let mut buffer = String::new();
@@ -384,8 +378,7 @@ fn split_by_lines(file_path: &str, content: &str, token_limit: TokenCount) -> Ve
 
 /// Splits a single oversized line: first by exact raw token span, falling
 /// back to a binary-search byte-slice approach if token-level slicing can't
-/// round-trip. Ported from Christina's `split_oversized_line`,
-/// `split_oversized_line_by_tokens`, and `split_oversized_line_by_search`.
+/// round-trip.
 fn split_oversized_line(file_path: &str, line: &str, token_limit: TokenCount) -> Vec<Chunk> {
     if let Some(chunks) = split_oversized_line_by_tokens(file_path, line, token_limit) {
         return chunks;
@@ -403,6 +396,10 @@ fn split_oversized_line_by_tokens(file_path: &str, line: &str, token_limit: Toke
     let mut chunks = Vec::with_capacity(tokens.len().div_ceil(limit));
     let mut byte_offset = 0usize;
 
+    // BPE token boundaries are not guaranteed to fall on UTF-8 character
+    // boundaries, and decoding a span can differ from the original bytes. Any
+    // mismatch returns `None` so the caller falls back to byte-slice search,
+    // rather than emitting chunks that silently drop or alter input.
     for token_chunk in tokens.chunks(limit) {
         let decoded = tokenizer::decode(token_chunk)?;
         if decoded.is_empty() || !line[byte_offset..].starts_with(&decoded) {
@@ -423,6 +420,11 @@ fn split_oversized_line_by_search(file_path: &str, line: &str, token_limit: Toke
     let mut chunks = Vec::new();
     let mut start = 0usize;
 
+    // Binary search for the longest prefix within the limit. Token count is
+    // monotonic in prefix length, which is what makes the search valid. Every
+    // probe is snapped to a char boundary, and each pass advances at least one
+    // character, so the loop terminates even if a single character exceeds the
+    // limit (such a piece is dropped by the check below).
     while start < line.len() {
         let mut low = start + 1;
         let mut high = line.len();
@@ -479,7 +481,7 @@ fn split_oversized_line_by_search(file_path: &str, line: &str, token_limit: Toke
 
 /// Packs whole files into chunks by greedy first-fit, splitting a file that
 /// alone exceeds `token_limit` by hunk (then line, then raw token span).
-/// Ported from Christina's `split_recursive`. Callers must already have
+/// Callers must already have
 /// applied lockfile truncation to `file_diffs` (see [`chunk_diff`]) — this
 /// function only packs, it does not special-case any path by name.
 fn split_recursive(file_diffs: Vec<FileDiff>, token_limit: TokenCount) -> Vec<Chunk> {

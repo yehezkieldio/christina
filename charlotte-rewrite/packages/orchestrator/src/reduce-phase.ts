@@ -21,7 +21,7 @@ const CODE_FENCE_PREAMBLES = [
 ] as const;
 
 /** Strips markdown code-fencing, a known preamble phrase, and everything
- * after the first line. Ported from Christina's `clean_response` — pure
+ * after the first line. Pure
  * string logic, no model call, used as a fallback when the model's
  * structured `message` field itself still carries noise. */
 export const cleanResponse = (response: string): string => {
@@ -68,8 +68,7 @@ export interface ReducePhaseResult extends ValidatedCommitMessage {
 }
 
 /** Synthesizes the final commit message from themes, then validates it
- * against the configured Conventional Commit mode. Ported from Christina's
- * `reduce_phase`. */
+ * against the configured Conventional Commit mode. */
 export const reducePhase = async (
   themes: readonly ThemeItem[],
   options: ReducePhaseOptions

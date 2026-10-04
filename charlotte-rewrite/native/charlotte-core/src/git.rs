@@ -1,13 +1,10 @@
-//! Staged diff reading and commit history walking, ported from Christina's
-//! `christina/src/git/adapter.rs` (`collect_staged_changes`,
-//! `format_patch_bounded`) and `christina/src/generate.rs`
-//! (`get_commit_history_impl`). The commit-creation path stays out of this
-//! module: Charlotte shells out to the operator's own `git commit` for the
-//! commit step itself, per the open decision in `04-git-integration.md`.
+//! Staged diff reading and commit history walking. The commit-creation path
+//! stays out of this module: Charlotte shells out to the operator's own
+//! `git commit` for the commit step itself (see `04-git-integration.md`).
 
 use git2::{DiffOptions, Repository};
 
-/// Matches Christina's `MAX_DIFF_SIZE` (`christina-core/src/types/diff.rs`).
+/// Upper bound on the patch text returned to the caller.
 pub const MAX_DIFF_SIZE: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
@@ -47,6 +44,7 @@ impl From<git2::Error> for GitError {
     }
 }
 
+/// A deleted file has no new path, so the old path is the only name it has.
 fn get_delta_path(delta: &git2::DiffDelta) -> Option<String> {
     match delta.status() {
         git2::Delta::Deleted => delta.old_file().path(),
@@ -77,6 +75,9 @@ pub fn read_staged_diff(repo_path: &str) -> Result<StagedDiff, GitError> {
 
     let mut diff = repo.diff_tree_to_index(head_tree.as_ref(), Some(&repo.index()?), Some(&mut opts))?;
 
+    // `find_similar` must run before the `foreach` below: it rewrites delta
+    // statuses to renamed/copied, which `get_delta_path` and the printed patch
+    // both depend on.
     let mut find_opts = git2::DiffFindOptions::new();
     find_opts
         .renames(true)
@@ -100,6 +101,8 @@ pub fn read_staged_diff(repo_path: &str) -> Result<StagedDiff, GitError> {
         None,
     )?;
 
+    // Checked before `format_patch_bounded` so an empty index never pays for
+    // patch rendering.
     if files.is_empty() {
         return Ok(StagedDiff::default());
     }
@@ -109,8 +112,8 @@ pub fn read_staged_diff(repo_path: &str) -> Result<StagedDiff, GitError> {
 }
 
 /// Formats a diff as a patch, truncated to `MAX_DIFF_SIZE` bytes with a
-/// trailing notice, matching Christina's `format_patch_bounded` exactly:
-/// truncation lands on a UTF-8 char boundary, never mid-codepoint.
+/// trailing notice. Truncation lands on a UTF-8 char boundary, never
+/// mid-codepoint.
 fn format_patch_bounded(diff: &git2::Diff) -> Result<String, GitError> {
     use std::fmt::Write;
 
@@ -149,11 +152,10 @@ fn format_patch_bounded(diff: &git2::Diff) -> Result<String, GitError> {
     Ok(diff_string)
 }
 
-/// Walks recent commit subjects for style context, matching Christina's
-/// `get_commit_history_impl`: merge commits and `fixup!`/`squash!`/`amend!`
-/// subjects are skipped since they add noise to style inference, a shallow
-/// clone caps the effective depth at 3, and each sha is the short 7-char
-/// form.
+/// Walks recent commit subjects for style context: merge commits and
+/// `fixup!`/`squash!`/`amend!` subjects are skipped since they add noise to
+/// style inference, a shallow clone caps the effective depth at 3, and each
+/// sha is the short 7-char form.
 pub fn read_commit_history(repo_path: &str, depth: u32) -> Result<Vec<CommitSummary>, GitError> {
     let repo = Repository::open(repo_path).map_err(GitError::Open)?;
 

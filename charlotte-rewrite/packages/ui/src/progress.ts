@@ -2,11 +2,9 @@ import type { PipelineStage } from "@charlotte/schemas";
 
 import type { Spinner } from "./spinner";
 
-/** The progress event Christina's `send_generation_progress` pushes down
- * `generate.rs`'s channel. `stage` is the structural pipeline stage (also
+/** A generation progress event. `stage` is the structural pipeline stage (also
  * used by the `stage_start`/`stage_end` session events); `message` is the
- * free-text spinner line Christina's call sites already pass
- * (`"connecting to provider"`, `"processing diff"`, ...). */
+ * free-text spinner line (`"connecting to provider"`, `"processing diff"`, ...). */
 export interface ProgressEvent {
   readonly stage: PipelineStage;
   readonly message: string;

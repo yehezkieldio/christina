@@ -33,6 +33,7 @@ export interface GenerateOptions {
   readonly context?: string;
   readonly dryRun: boolean;
   readonly trace: boolean;
+  readonly verbose: boolean;
 }
 
 const formatWarning = (warning: Warning): string => {
@@ -159,6 +160,7 @@ interface GenerationContext {
   readonly userContext?: string;
   readonly writer: SessionWriter;
   readonly trace: boolean;
+  readonly verbose: boolean;
   readonly config: ResolvedConfig;
   /** Mutated in place by every `generateOnce` call, including regenerations
    * triggered from `confirmLoop` — `run_end`'s totals need every call's
@@ -228,7 +230,7 @@ const generateOnce = async (
         ),
       })
   );
-  if (ctx.trace) {
+  if (ctx.trace || ctx.verbose) {
     printTrace(`diff chunks: ${chunks.length}`);
   }
 
@@ -261,6 +263,11 @@ const generateOnce = async (
   for (const usage of result.requests) {
     ctx.tokenUsage.cacheReadTokens += usage.cacheReadTokens;
     ctx.tokenUsage.cacheWriteTokens += usage.cacheWriteTokens;
+    if (ctx.verbose) {
+      printTrace(
+        `request ${usage.provider}/${usage.model}: ${usage.promptTokens} in (${usage.cacheReadTokens} cached read, ${usage.cacheWriteTokens} cached write), ${usage.completionTokens} out, ${Math.round(usage.latencyMs)} ms`
+      );
+    }
   }
 
   // `result.requests` is already fully resolved by this point (the model
@@ -293,8 +300,8 @@ const generateOnce = async (
 
 type MessageState = "proposed" | "edited" | "regenerated";
 
-/** The accept/edit/regenerate/decline loop from `christina/src/ui/mod.rs`'s
- * `select_action`. Returns the final message, or `undefined` on decline. */
+/** The accept/edit/regenerate/decline loop. Returns the final message, or
+ * `undefined` on decline. */
 const confirmLoop = async (
   initialMessage: string,
   ctx: GenerationContext,
@@ -434,6 +441,7 @@ export const runGenerate = async (options: GenerateOptions): Promise<void> => {
       repoPath,
       tokenUsage,
       trace: options.trace,
+      verbose: options.verbose,
       writer,
       ...optional("userContext", options.context),
     };

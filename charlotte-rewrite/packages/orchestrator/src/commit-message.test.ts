@@ -57,8 +57,8 @@ describe("validateCommitMessage", () => {
 
 describe("tryExtractValidCommit", () => {
   test("finds a conventional-commit-shaped substring", () => {
-    // `tryExtractValidCommit` only looks back 50 characters from each colon
-    // (matching Christina's `try_extract_valid_commit`), so the padding here
+    // `tryExtractValidCommit` only looks back 50 characters from each colon, so
+    // the padding here
     // pushes the real colon past that window — otherwise the candidate slice
     // still includes "Sure, here you go" and never matches.
     const message = `Sure, here you go: ${" ".repeat(41)}feat(ui): add dark mode toggle. Let me know if that works!`;

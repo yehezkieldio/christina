@@ -11,11 +11,8 @@ const formatRow = (
     .map((width, index) => padToWidth(cells[index] ?? "", width))
     .join("  ");
 
-/** Table rendering, folded in from `ui-extractable/src/primitive/mod.rs`'s
- * `print_table` per `09-cli-and-ui.md` — Charlotte does not keep a second
- * compiled artifact for this, so it lives alongside the rest of the
- * styling logic instead of a standalone crate/package. Used by
- * `charlotte stats`'s grouped totals. */
+/** Table rendering (see `09-cli-and-ui.md`). Used by `charlotte stats`'s
+ * grouped totals. */
 export const printTable = (
   headers: readonly string[],
   rows: readonly (readonly string[])[]

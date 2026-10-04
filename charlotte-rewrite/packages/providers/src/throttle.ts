@@ -9,15 +9,13 @@ export interface RequestLimiterOptions {
 }
 
 /**
- * Combined concurrency + rate limiter, replacing a hand-rolled token-bucket
- * (Christina's `christina/src/orchestrator/throttle.rs`) with two focused,
- * actively maintained libraries: `p-limit` for the concurrency cap and
+ * Combined concurrency + rate limiter from two focused libraries: `p-limit`
+ * for the concurrency cap and
  * `p-throttle` for the rate cap. The two mechanisms cover different failure
  * modes — a concurrency cap alone cannot prevent an API rate-limit
  * violation (many short requests can still exceed requests-per-second), and
  * a rate limiter alone cannot prevent resource exhaustion (nothing stops
- * the number of requests in flight from climbing) — so both run together,
- * same as the design they replace.
+ * the number of requests in flight from climbing) — so both run together.
  */
 // `p-throttle` wraps one fixed-signature function once, shared across every
 // call so the rate window is actually shared state — `run<T>`'s per-call
@@ -52,10 +50,8 @@ export class RequestLimiter {
    * Runs `fn` once both a concurrency slot and a rate-limit slot are
    * available. `signal` is only checked before `fn` is submitted to either
    * queue — once queued, neither `p-limit` nor `p-throttle` supports
-   * cancelling a single already-queued call, unlike the hand-rolled waiter
-   * queue this replaces. Nothing in this codebase passes a populated
-   * `AbortSignal` here today, so this is a documented simplification, not a
-   * regression against real usage.
+   * cancelling a single already-queued call. Nothing in this codebase passes
+   * a populated `AbortSignal` here today.
    */
   run<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     signal?.throwIfAborted();

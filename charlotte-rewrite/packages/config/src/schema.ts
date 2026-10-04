@@ -6,8 +6,7 @@ import { providerSchema } from "./provider";
 export const reasoningEffortSchema = z.enum(["low", "medium", "high"]);
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 
-/** Matches Christina's `ValidationMode` (`christina-core/src/types/commit.rs`):
- * `strict` rejects an over-length message, `soft` warns but allows it,
+/** `strict` rejects an over-length message, `soft` warns but allows it,
  * `disabled` skips the length check entirely. */
 export const commitValidationModeSchema = z.enum([
   "strict",
@@ -17,8 +16,7 @@ export const commitValidationModeSchema = z.enum([
 export type CommitValidationMode = z.infer<typeof commitValidationModeSchema>;
 
 /**
- * Mirrors Christina's `Config` field set (`christina/src/config/settings.rs`),
- * defined as a Zod schema instead of a `schemars`-derived JSON Schema per
+ * The Zod schema is the source of truth for configuration, per
  * `03-config-and-profiles.md`. The generated JSON Schema is a build output
  * of this schema, not a hand-maintained file.
  */
@@ -31,13 +29,11 @@ export const configSchema = z.object({
   commitMessageMaxLength: budgetInt().default(72),
   commitValidationMode: commitValidationModeSchema.default("strict"),
   ignorePatterns: z.array(z.string()).default([]),
-  /** Matches Christina's `default_lockfile_token_limit`. */
   lockfileTokenLimit: budgetInt().default(100),
   maxConcurrentRequests: clampedNumber(1, 32).default(4),
-  /** Matches Christina's `max_input_tokens` default. */
   maxTokens: budgetInt().default(256_000),
   model: z.string().min(1),
-  /** Matches Christina's `MIN_PARTIAL_FAILURE_RATE`/`MAX_PARTIAL_FAILURE_RATE`. */
+  /** Fraction of chunks allowed to fail before the run aborts. */
   partialFailureRate: clampedNumber(0.01, 0.5).default(0.2),
   provider: providerSchema,
   reasoningEffort: reasoningEffortSchema.default("medium"),

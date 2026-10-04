@@ -1,12 +1,9 @@
-//! Binary content detection, ported from Christina's
-//! `christina/src/git/diff_processor.rs` (`DiffProcessor::is_binary_content`)
-//! and the extension list in `christina-core/src/git/stage.rs`
-//! (`BINARY_EXTENSIONS`). The FFI signature in `02-native-core-and-ffi.md`
-//! is `is_binary_content(bytes, path) -> boolean`: raw file bytes plus an
-//! explicit path, matching `05-diff-processing-and-chunking.md`'s 8 KB
-//! sample bound.
+//! Binary content detection: a NUL byte in the leading sample of the file's
+//! bytes, or a known binary extension on `path`. The FFI signature in
+//! `02-native-core-and-ffi.md` is `is_binary_content(bytes, path) -> boolean`,
+//! with the 8 KB sample bound from `05-diff-processing-and-chunking.md`.
 
-/// Matches Christina's `BINARY_EXTENSIONS`.
+/// Extensions treated as binary regardless of content.
 const BINARY_EXTENSIONS: &[&str] = &[
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".pdf", ".zip", ".tar", ".gz", ".rar", ".7z", ".exe",
     ".dll", ".so", ".dylib", ".wasm", ".pyc", ".class", ".ttf", ".otf", ".woff", ".woff2", ".mp3", ".mp4", ".avi",

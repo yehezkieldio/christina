@@ -11,7 +11,7 @@ const DIVIDER_MAX_WIDTH = 80;
 
 const terminalWidth = (): number => process.stdout.columns ?? FALLBACK_COLUMNS;
 
-/** The nine print helpers from `christina/src/ui/mod.rs`: success, error,
+/** Print helpers: success, error,
  * warning, info, trace, section, divider, file list, and commit message. */
 export const printSuccess = (message: string): void => {
   console.log(`${styles.muted("✓")} ${message}`);

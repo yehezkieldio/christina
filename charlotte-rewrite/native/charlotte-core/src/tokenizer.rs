@@ -1,23 +1,17 @@
-//! Token counting, ported from Christina's
-//! `christina-core/src/processing/tokenizer.rs` and
-//! `christina-core/src/types/tokens.rs`. Charlotte keeps the same
-//! `o200k_base` encoding via `tiktoken-rs`, so counts match Christina's
-//! exactly for the same input.
+//! Token counting with the `o200k_base` encoding via `tiktoken-rs`.
 //!
-//! Simplification: Christina layers a `moka` LRU cache over the raw BPE call
-//! for hot-path repeat counts. That cache is a measured optimization over
-//! there; here it would be an unmeasured one, so this module skips it and
-//! calls the tokenizer directly. Add it back if a benchmark on a real
-//! Charlotte workload shows it matters.
+//! There is no cache over the raw BPE call: it would be an unmeasured
+//! optimization, so the tokenizer is called directly. Add a cache if a
+//! benchmark on a real workload shows it matters.
 
 use std::num::NonZeroU32;
 use std::sync::OnceLock;
 
 use tiktoken_rs::CoreBPE;
 
-/// Count of tokens in text, guaranteed non-zero. Mirrors Christina's
-/// `TokenCount` newtype: `new_at_least_one` clamps 0 up to 1 so a caller
-/// that needs "at least one token" never has to special-case empty input.
+/// Count of tokens in text, guaranteed non-zero:
+/// `new_at_least_one` clamps 0 up to 1 so a caller that needs "at least one
+/// token" never has to special-case empty input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TokenCount(NonZeroU32);
 
@@ -45,8 +39,7 @@ impl std::ops::Add for TokenCount {
 fn bpe() -> &'static CoreBPE {
     static BPE: OnceLock<CoreBPE> = OnceLock::new();
     BPE.get_or_init(|| {
-        // `o200k_base` is the encoding GPT-4o and newer OpenAI models use;
-        // matching Christina's choice keeps token counts comparable.
+        // `o200k_base` is the encoding GPT-4o and newer OpenAI models use.
         #[allow(clippy::panic, reason = "loading a bundled, version-pinned encoding table cannot fail in practice; a failure here means the crate itself is broken, an invariant violation, not a recoverable error")]
         tiktoken_rs::o200k_base().unwrap_or_else(|_| panic!("failed to load the o200k_base tiktoken encoding"))
     })

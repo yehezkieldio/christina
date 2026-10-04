@@ -1,6 +1,6 @@
 import { isCancel, select, text } from "@clack/prompts";
 
-/** Mirrors `select_action`'s option set from `christina/src/ui/mod.rs`. */
+/** The actions offered for a proposed commit message. */
 export const COMMIT_ACTIONS = [
   "accept",
   "edit",
@@ -16,8 +16,7 @@ const ACTION_LABELS: Record<CommitAction, string> = {
   regenerate: "Regenerate",
 };
 
-/** `undefined` on Ctrl-C/Esc, matching Christina's own cancel-to-decline
- * behavior at the call site. */
+/** `undefined` on Ctrl-C/Esc, which callers treat as a decline. */
 export const selectCommitAction = async (): Promise<
   CommitAction | undefined
 > => {
@@ -35,14 +34,11 @@ const sanitizeInlineMessage = (message: string): string =>
   message.split("\n").join(" ");
 
 /**
- * Mirrors `edit_commit_message_inline` from `christina/src/ui/mod.rs`.
- *
- * Open decision from `09-cli-and-ui.md`: Christina bound Ctrl-Left/Right to
- * jump by word (`bind_ctrl_word_navigation`, via `rustyline`).
- * `@clack/prompts`'s `text` prompt exposes no equivalent binding hook — its
+ * Inline commit message editor. Ctrl-Left/Right do not jump by word:
+ * `@clack/prompts`'s `text` prompt exposes no binding hook for it — its
  * `aliases` map covers action keys (cancel/up/down), not word-wise cursor
- * movement — so this drops the binding and uses the prompt's own default
- * line editing rather than hand-rolling raw keypress handling for it.
+ * movement — and hand-rolling raw keypress handling was rejected in favor of
+ * the prompt's own default line editing.
  */
 export const editCommitMessageInline = async (
   initialContent: string

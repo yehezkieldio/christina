@@ -132,6 +132,8 @@ pub unsafe extern "C" fn read_commit_history(repo_path: *const c_char, depth: u3
 #[allow(unsafe_code, reason = "FFI export requires #[unsafe(no_mangle)] on an extern \"C\" fn")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn is_binary_content(bytes_ptr: *const u8, bytes_len: u64, path: *const c_char) -> bool {
+    // Same limitation as `count_tokens`: a bad `path` reads as "not binary"
+    // because `bool` cannot carry an error.
     let Some(path) = borrow_str(path) else {
         return false;
     };
@@ -161,6 +163,9 @@ pub unsafe extern "C" fn is_binary_content(bytes_ptr: *const u8, bytes_len: u64,
 #[allow(unsafe_code, reason = "FFI export requires #[unsafe(no_mangle)] on an extern \"C\" fn")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn count_tokens(text: *const c_char) -> u32 {
+    // Unlike the JSON exports, this return type cannot carry an error, so an
+    // invalid pointer or non-UTF-8 input collapses to 0. A caller that must
+    // distinguish "empty" from "unreadable" cannot use this function.
     let Some(text) = borrow_str(text) else {
         return 0;
     };

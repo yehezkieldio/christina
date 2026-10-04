@@ -20,11 +20,8 @@ import { readToml, writeToml } from "../toml-io";
 type FieldParser<V> = (raw: string) => V;
 
 /** One parser per settable `Config` field, keyed the same way the field
- * appears in `@charlotte/config`'s schema (camelCase) — the CLI's key
- * vocabulary matches the TypeScript config shape directly rather than
- * Christina's Rust field names, since the two do not line up one-to-one
- * (Charlotte merged `max_input_tokens`/`max_output_tokens` into one
- * `maxTokens` field per `03-config-and-profiles.md`'s clamp-policy work).
+ * appears in `@charlotte/config`'s schema (camelCase). `maxTokens` is the
+ * single token budget field (see `03-config-and-profiles.md`'s clamp policy).
  * `satisfies` checks this against every `Config` field's real type without
  * widening the literal keys, so an out-of-range enum value below is a
  * compile error rather than a runtime surprise. */

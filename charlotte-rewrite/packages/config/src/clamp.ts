@@ -1,8 +1,7 @@
 import { z } from "zod";
 
 /**
- * Written clamp policy (resolves the open decision in
- * `03-config-and-profiles.md`). Apply it once here; do not re-decide a
+ * Clamp policy (see `03-config-and-profiles.md`). Apply it once here; do not re-decide a
  * field's bound at the point of definition.
  *
  * A numeric field gets a hard clamp only when a value outside the bound is

@@ -2,11 +2,7 @@ import { z } from "zod";
 
 /**
  * Structured `generateObject` schemas for the map-reduce pipeline in
- * `07-orchestrator-pipeline.md`. Field shapes mirror Christina's
- * `christina/src/orchestrator/mod.rs` structs (`ChunkSummary`,
- * `SummaryResponse`, `SubTheme`, `ThemeItem`, `ThemeResponse`,
- * `CommitResponse`) exactly, so a Charlotte fixture built from a Christina
- * trace round-trips without reshaping.
+ * `07-orchestrator-pipeline.md`.
  */
 
 export const summaryResponseSchema = z.object({

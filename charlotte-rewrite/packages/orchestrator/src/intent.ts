@@ -15,7 +15,7 @@ import type {
 import { mapWithConcurrency } from "./concurrency";
 import { buildIntentPrompt, buildSystemPrompt } from "./prompt";
 
-/** Matches Christina's `MAX_SUMMARIES_PER_INTENT_BATCH`: above this count,
+/** Above this count,
  * intent extraction batches summaries and aggregates per-batch sub-themes
  * instead of sending everything in one call. */
 export const MAX_SUMMARIES_PER_INTENT_BATCH = 20;
@@ -31,10 +31,10 @@ const CONTRADICTORY_PAIRS: readonly (readonly [string, string])[] = [
 /** Flags a summary batch that mentions both halves of a known
  * action/counteraction pair (e.g. "add" and "remove"), a heuristic signal
  * that two chunks may describe conflicting changes. Pure, no model call.
- * Ported from Christina's `detect_contradictions`, which only logs; this
- * port returns structured `Warning` data instead (per the open decision in
- * `07-orchestrator-pipeline.md`). Stops at the first match, matching
- * Christina's early return. */
+ * Matching is by substring, so "new" also hits "renewed". The result is
+ * advisory only: false positives cost a warning, never a failed run.
+ * Returns structured `Warning` data (see `07-orchestrator-pipeline.md`) and
+ * stops at the first match. */
 export const detectContradictions = (
   summaries: readonly ChunkSummary[]
 ): Warning[] => {
@@ -58,7 +58,7 @@ const combinedDescription = (summaries: readonly ChunkSummary[]): string => {
   return parts.length > 0 ? parts.join("; ") : "Code changes";
 };
 
-/** Ported from Christina's `fallback_themes_from_summaries`: used when
+/** Used when
  * intent extraction is skipped (small summary count) or fails outright. */
 export const fallbackThemesFromSummaries = (
   summaries: readonly ChunkSummary[]
@@ -74,7 +74,7 @@ export const fallbackThemesFromSummaries = (
   ];
 };
 
-/** Ported from Christina's `fallback_sub_themes_from_summaries`: used when
+/** Used when
  * one batch's sub-theme extraction call fails during hierarchical intent
  * extraction. */
 export const fallbackSubThemesFromSummaries = (
@@ -92,11 +92,9 @@ export const fallbackSubThemesFromSummaries = (
 };
 
 /** Groups sub-themes by scope, picks the most common title per group
- * (Christina breaks ties by whichever title the traversal order favors;
- * this port keeps the first-seen title among ties for the same reason:
- * neither language guarantees a stable "true" majority winner here),
- * joins descriptions, sums file counts, then keeps the 3 largest groups by
- * file count. Ported from Christina's `aggregate_sub_themes`. */
+ * (ties keep the first-seen title, since `Map` iterates in insertion order
+ * and the comparison below is strict `>`), joins descriptions, sums file counts, then keeps the 3 largest groups by
+ * file count. */
 export const aggregateSubThemes = (
   subThemes: readonly SubTheme[]
 ): ThemeItem[] => {
@@ -197,7 +195,7 @@ const extractSubThemes = async (
   };
 };
 
-/** Ported from Christina's `extract_intent_hierarchical`: batches
+/** Batches
  * summaries at `MAX_SUMMARIES_PER_INTENT_BATCH`, extracts sub-themes per
  * batch concurrently (falling back per-batch on failure), then aggregates
  * every sub-theme into the final theme list. */
@@ -256,7 +254,7 @@ const extractIntentHierarchical = async (
   };
 };
 
-/** Ported from Christina's `extract_intent`: always checks for
+/** Always checks for
  * contradictions first, then either delegates to hierarchical batching
  * (above `MAX_SUMMARIES_PER_INTENT_BATCH`) or makes a single themed-batch
  * call, falling back to `fallbackThemesFromSummaries` on any failure. */
